@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Compile the core and resolve its install-time patches into an assembly recipe."""
 
-import json
 import struct
 from dataclasses import dataclass
 
@@ -9,6 +8,7 @@ import declarations
 from declarations import Copy, Kind
 from symbols import require
 from toolchain import compile_payload
+
 from recipes.segments import Input, Recipe
 
 BASE = 0x08000000

@@ -7,19 +7,17 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import setup
-from version import identity
-
-import firmware
-
 from recipes.companion import build_recipe as build_companion_recipe
 from recipes.osos import build_recipe
 from toolchain import run
+from version import identity
+
+import firmware
 
 ROOT = Path(__file__).resolve().parents[1]
 

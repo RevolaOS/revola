@@ -7,6 +7,7 @@ from enum import IntEnum
 
 from symbols import require
 from toolchain import read_section
+
 from recipes.segments import Input
 
 RECORD = struct.Struct("<4I32s")
