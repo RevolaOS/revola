@@ -69,7 +69,7 @@ def compile_payload(
         if obj in objects:
             raise ValueError(f"Duplicate compilation unit basename: {obj}")
         objects.append(obj)
-        options = ["-mthumb", "-std=c11"] if name.endswith(".c") else []
+        options = ["-mthumb", "-mlong-calls", "-std=c11"] if name.endswith(".c") else []
         commands.append(
             [
                 prefix + "gcc",
