@@ -6,19 +6,28 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 ## Layout
 
-Directories are created when code lands in them.
-
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload: hook sites and dispatcher, loader, settings, UI runtime, memory policy |
-| `sdk/` | Public headers, linker script and Make include for extensions; versioned |
-| `tools/` | Recipe builder, `rvx-pack`, build and release scripts |
-| `boot/` | Companion loader and Rockbox bootloader patches |
-| `docs/` | How the core works |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), panic screen |
+| `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
+| `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
+| `tools/` | Recipe builder, build and release scripts, tests |
+
+Directories for the SDK and extension loader are created when their code lands.
 
 ## Build
 
-TODO: toolchain setup and build steps once the first core boots.
+Requires Python 3.11+, Rockbox's `arm-elf-eabi-` GCC 9.5.0 (`firmware/apple.json` pins the version), and decrypted 2.0.5 inputs produced by the installer tooling. TODO: the recipe assembler is still the RepriseOS `reprise` CLI on PATH until the installer repository ships revola's.
+
+```sh
+python3 tools/build.py osos --inputs /path/to/firmware-2.0.5 --cross-prefix /path/to/arm-elf-eabi-
+python3 tools/build.py loader-recipe
+cd tools && python3 -m unittest discover -s tests
+```
+
+`osos` writes `build/osos.json`, `build/osos.data` and the assembled `build/osos-cfw.bin`; `osos-recipe` stops before assembly and needs no Apple inputs. Boot the image in the emulator with `ipodvm launch --firmware build/osos-cfw.bin --disk <test disk>` from this directory.
+
+Apple symbols: `firmware/osos-2.0.5.ld` is passed to the linker with `--just-symbols`, so C code calls Apple functions by the names declared in `firmware/osos-2.0.5.h`. Both files are copied from the reversing repository; never edit them here.
 
 ## What drives development
 
