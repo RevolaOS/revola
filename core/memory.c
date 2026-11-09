@@ -167,6 +167,13 @@ static const struct core_hook read_ahead_hooks[] = {
     {CORE_SITE_MediaPlayer_ReadAheadMinSet_word, CORE_HOOK_REPLACE, 0, (void *)NOP},
 };
 
+/* Apple rounds fixed-pool slots to 16 bytes; 8 keeps the 36-byte ArtworkDB thumbnail
+ * records in 40-byte slots instead of 48. */
+static const struct core_hook pool_hooks[] = {
+    {CORE_SITE_FixedPool_SlotRoundAdd_word, CORE_HOOK_REPLACE, 0, (void *)0xe2840007u},
+    {CORE_SITE_FixedPool_SlotRoundMask_word, CORE_HOOK_REPLACE, 0, (void *)0xe3c00007u},
+};
+
 static void bind_all(const struct core_hook *hooks, uint32_t count)
 {
     for (uint32_t i = 0; i < count; i++)
@@ -184,4 +191,6 @@ void core_memory_bind(void)
         bind_all(cache_budget_hooks, 4);
     if (enabled(CORE_KEY_READAHEAD_FLOOR))
         bind_all(read_ahead_hooks, 2);
+    if (enabled(CORE_KEY_POOL_SLOTS))
+        bind_all(pool_hooks, 2);
 }

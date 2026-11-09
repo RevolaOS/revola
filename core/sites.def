@@ -59,6 +59,12 @@ SITE(MediaPlayer_ReadAheadMinTest_word, SITE_MediaPlayer_ReadAheadMinTest_word, 
 SITE(MediaPlayer_ReadAheadMinSet_word, SITE_MediaPlayer_ReadAheadMinSet_word, WORD, 0,
      0xb3a00606, 0, 0, 0)
 
+/* FixedPool_Create rounds the slot size: add r0, r4, #15; bic r0, r0, #15. */
+SITE(FixedPool_SlotRoundAdd_word, SITE_FixedPool_SlotRoundAdd_word, WORD, 0, 0xe284000f, 0,
+     0, 0)
+SITE(FixedPool_SlotRoundMask_word, SITE_FixedPool_SlotRoundMask_word, WORD, 0, 0xe3c0000f, 0,
+     0, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */
