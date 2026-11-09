@@ -13,7 +13,9 @@
  *   word0/1   the Apple words at the site, checked against the pinned image at build
  *             time and at install time
  *   chain     1 when Apple's semantics are understood well enough for several handlers
- *   argc      register arguments the handler receives (at most 4)
+ *   argc      register arguments the handler receives (at most 4), plus STACK(n) for
+ *             n (1 or 2) further arguments Apple passes on the stack; the handler sees
+ *             them after `next`
  *   copy      0, or a register (4 to 11) the stub copies into r[argc-1] first, so a
  *             value Apple keeps in a callee-saved register at the site is an argument
  */
@@ -80,6 +82,8 @@ SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlock
  * the entry in r1. Nothing is inside it while core_boot runs during UI start-up. */
 SITE(MediaList_GetEntryOrderIndex_entry, SITE_MediaList_GetEntryOrderIndex_entry, ENTRY,
      REPLAY(MediaList_GetEntryOrderIndex_entry), 0xe92d40f7, 0xe1b06000, 0, 3, 0)
+
+#define STACK(words) ((words) << 4)
 
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be

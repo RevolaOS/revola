@@ -20,12 +20,28 @@
 #define INSERT 5
 #define BL(address, callee) 0
 #define REPLAY(name) 0
+#define STACK(words) ((words) << 4)
 
 .set index, 0
 
+.macro next_in_register count, root
+.if \count == 0
+    ldr r0, =\root
+.elseif \count == 1
+    ldr r1, =\root
+.elseif \count == 2
+    ldr r2, =\root
+.else
+    ldr r3, =\root
+.endif
+.endm
+
 /* next in r<argc> for up to three arguments; a frame pushes it as the first stack
- * argument for four (push {r4, r5, lr} plus the word keeps sp 8-byte aligned). */
-.macro site_stub name, kind, address, word0, word1, argc, copy
+ * argument for four, below copies of Apple's own stack arguments (one or two), with
+ * the pushed registers chosen to keep sp 8-byte aligned at the call. */
+.macro site_stub name, kind, address, word0, word1, args, copy
+.set argc, \args & 15
+.set stack, \args >> 4
 .if \kind != WORD
 .text
 .balign 4
@@ -34,27 +50,27 @@ core_stub_\name:
     push {r0-r3, r12, lr}
 .endif
 .if \copy
-.if \argc == 1
+.if argc == 1
     mov r0, r\copy
-.elseif \argc == 2
+.elseif argc == 2
     mov r1, r\copy
-.elseif \argc == 3
+.elseif argc == 3
     mov r2, r\copy
 .else
     mov r3, r\copy
 .endif
 .endif
 .if \kind == INSERT
-    ldr r\argc, =core_root_\name
+    next_in_register argc, core_root_\name
     ldr r12, =core_site_slots + 4 * index
     ldr r12, [r12]
     blx r12
     pop {r0-r3, r12, pc}
-.elseif \argc < 4
-    ldr r\argc, =core_root_\name
+.elseif argc < 4
+    next_in_register argc, core_root_\name
     ldr r12, =core_site_slots + 4 * index
     ldr pc, [r12]
-.else
+.elseif stack == 0
     push {r4, r5, lr}
     ldr r4, =core_root_\name
     push {r4}
@@ -62,6 +78,28 @@ core_stub_\name:
     ldr r12, [r12]
     blx r12
     add sp, sp, #4
+    pop {r4, r5, pc}
+.elseif stack == 1
+    push {r4, r5, r6, lr}
+    ldr r4, [sp, #16]
+    ldr r5, =core_root_\name
+    push {r4, r5}
+    ldr r12, =core_site_slots + 4 * index
+    ldr r12, [r12]
+    blx r12
+    add sp, sp, #8
+    pop {r4, r5, r6, pc}
+.else
+    push {r4, r5, lr}
+    ldr r4, [sp, #12]
+    ldr r5, [sp, #16]
+    push {r4, r5}
+    ldr r4, =core_root_\name
+    push {r4}
+    ldr r12, =core_site_slots + 4 * index
+    ldr r12, [r12]
+    blx r12
+    add sp, sp, #12
     pop {r4, r5, pc}
 .endif
 .ltorg

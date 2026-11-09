@@ -40,12 +40,13 @@ typedef uint32_t (*fn0)(const struct core_next *);
 typedef uint32_t (*fn1)(uint32_t, const struct core_next *);
 typedef uint32_t (*fn2)(uint32_t, uint32_t, const struct core_next *);
 typedef uint32_t (*fn3)(uint32_t, uint32_t, uint32_t, const struct core_next *);
-typedef uint32_t (*fn4)(uint32_t, uint32_t, uint32_t, uint32_t, const struct core_next *);
+typedef uint32_t (*fn4)(uint32_t, uint32_t, uint32_t, uint32_t, const struct core_next *,
+                        uint32_t, uint32_t);
 
 static uint32_t call(void *fn, uint8_t argc, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                     const struct core_next *next)
+                     const struct core_next *next, uint32_t e, uint32_t f)
 {
-    switch (argc) {
+    switch (argc & 15) {
     case 0:
         return ((fn0)fn)(next);
     case 1:
@@ -55,21 +56,23 @@ static uint32_t call(void *fn, uint8_t argc, uint32_t a, uint32_t b, uint32_t c,
     case 3:
         return ((fn3)fn)(a, b, c, next);
     default:
-        return ((fn4)fn)(a, b, c, d, next);
+        return ((fn4)fn)(a, b, c, d, next, e, f);
     }
 }
 
-uint32_t core_next_call(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
-                        uint32_t d)
+uint32_t core_next_call6(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
+                         uint32_t d, uint32_t e, uint32_t f)
 {
     const struct core_site_row *row = &core_sites[next->site];
     struct hook_list *list = lists[next->site];
     if (list && next->index < list->count) {
         struct core_next following = {next->site, next->index + 1};
-        return call(list->hooks[next->index]->handler, row->argc, a, b, c, d, &following);
+        return call(list->hooks[next->index]->handler, row->argc, a, b, c, d, &following, e,
+                    f);
     }
-    typedef uint32_t (*original_fn)(uint32_t, uint32_t, uint32_t, uint32_t);
-    return ((original_fn)row->original)(a, b, c, d);
+    typedef uint32_t (*original_fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+                                    uint32_t);
+    return ((original_fn)row->original)(a, b, c, d, e, f);
 }
 
 /* Chain entries: the slot target while two or more handlers are bound. The stub
@@ -91,9 +94,10 @@ static uint32_t chain3(uint32_t a, uint32_t b, uint32_t c, const struct core_nex
     return chain(n, a, b, c, 0);
 }
 static uint32_t chain4(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                       const struct core_next *n)
+                       const struct core_next *n, uint32_t e, uint32_t f)
 {
-    return chain(n, a, b, c, d);
+    struct core_next first = {n->site, 0};
+    return core_next_call6(&first, a, b, c, d, e, f);
 }
 static void *const chains[] = {chain0, chain1, chain2, chain3, chain4};
 
@@ -167,7 +171,7 @@ static void publish(uint32_t site, struct hook_list *list)
     if (count == 1)
         target = (uint32_t)list->hooks[0]->handler;
     else if (count > 1)
-        target = (uint32_t)chains[row->argc];
+        target = (uint32_t)chains[row->argc & 15];
 
     lists[site] = list;
     if (row->kind != CORE_SITE_WORD)

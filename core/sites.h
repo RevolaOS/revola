@@ -6,8 +6,9 @@
 
 /* A handler is called with the Apple arguments followed by `next`: in r[argc] when
  * the site takes at most three register arguments, as the first stack argument when
- * it takes four. A filter may call core_next_call to continue; a replace handler
- * never does and excludes every other handler on the site. */
+ * it takes four, followed by any arguments Apple passed on the stack. A filter may
+ * call core_next_call to continue; a replace handler never does and excludes every
+ * other handler on the site. */
 enum core_site_kind {
     CORE_SITE_CALL,
     CORE_SITE_VTABLE,
@@ -67,8 +68,9 @@ extern uint32_t core_site_slots[CORE_SITE_COUNT];
 void core_sites_init(void);
 int core_hook_bind(const struct core_hook *hook);
 int core_hook_unbind(const struct core_hook *hook);
-uint32_t core_next_call(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
-                        uint32_t d);
+uint32_t core_next_call6(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
+                         uint32_t d, uint32_t e, uint32_t f);
+#define core_next_call(next, a, b, c, d) core_next_call6(next, a, b, c, d, 0, 0)
 /* Frees handler arrays retired since the last call. Only at the grace point. */
 void core_grace_tick(void);
 

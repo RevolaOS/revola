@@ -52,11 +52,17 @@ class SiteTests(unittest.TestCase):
                 BASE, 0, 0, 0, INSERT, 0, 4, 0
             ),  # four arguments need the stack
             sites.ROW.pack(BASE, 0, 0, 0, INSERT, 1, 2, 0),  # exclusive by construction
+            sites.ROW.pack(
+                BASE, 0, 0, 0, CALL, 0, 0x13, 0
+            ),  # stack words need four registers
+            sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0x34, 0),  # at most two stack words
         ):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 sites.read(struct.pack("<I", 1) + row, symbols, 0x1000)
         copied = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 3, 4)
         self.assertEqual(sites.read(copied, symbols, 0x1000)[0].copy, 4)
+        stacked = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0x24, 0)
+        self.assertEqual(sites.read(stacked, symbols, 0x1000)[0].argc, 0x24)
 
     def test_matches_expected_words_against_the_firmware(self):
         table = [site(BASE + 8, CALL, 0xEB000001), site(BASE + 16, VTABLE, 0x08123456)]

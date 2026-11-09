@@ -44,13 +44,18 @@ def read(code, symbols, core_start):
         address, original, word0, word1, kind, chain, argc, copy = ROW.unpack_from(
             code, offset
         )
-        if kind > INSERT or argc > 4 or chain > 1:
+        registers, stack = argc & 15, argc >> 4
+        if kind > INSERT or registers > 4 or stack > 2 or chain > 1:
             raise ValueError(f"Malformed site row at {address:#x}")
-        if kind == INSERT and (argc > 3 or chain):
+        if stack and registers != 4:
+            raise ValueError(
+                f"Site {address:#x}: stack arguments need four register arguments"
+            )
+        if kind == INSERT and (registers > 3 or chain):
             raise ValueError(
                 f"Insert site {address:#x}: at most three arguments, no chain"
             )
-        if copy and (copy < 4 or copy > 11 or argc < 1 or kind == WORD):
+        if copy and (copy < 4 or copy > 11 or registers < 1 or kind == WORD):
             raise ValueError(
                 f"Site {address:#x}: register copy needs r4-r11 and an argument"
             )
