@@ -9,6 +9,7 @@
 
 #include "ui/canvas.h"
 #include "ui/controllers.h"
+#include "ui/gfx.h"
 #include "osos-2.0.5.h"
 #include "ui/screens.h"
 #include "ui/templates.h"
@@ -45,7 +46,8 @@ static void draw(void *view, void *argument, const int32_t *clip)
     GraphicsContext_ConstructDefault(context);
     View_BindGraphicsContext(view, context);
     View_GetLocalContentRect(view, bounds);
-    s->declaration->canvas.draw(context, bounds);
+    core_gfx_begin(context, bounds);
+    s->declaration->canvas.draw(&core_gfx, bounds[3] - bounds[1], bounds[2] - bounds[0]);
 }
 
 static void *create(void *owner, void *parent, void *event_target, const void *descriptor)

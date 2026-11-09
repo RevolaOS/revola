@@ -6,7 +6,7 @@
  * hook call appends an event to a log the emulator reads through the exported
  * symbol in the module's data. */
 
-#include "osos-2.0.5.h"
+#include "osos-2.0.5.h" /* the BMap layout of the pane icon */
 #include "rv_api.h"
 #include "rv_menus.h"
 #include "rv_sites.h"
@@ -91,15 +91,14 @@ static const char *const about[] = {
 static int32_t box_left = 20;
 static uint8_t box_colour;
 
-static void sketch_draw(void *context, const int32_t *bounds)
+static void sketch_draw(const struct rv_gfx *g, int width, int height)
 {
-    static const uint8_t white[4] = {255, 255, 255, 255};
-    static const uint8_t box_colours[2][4] = {{0, 102, 204, 255}, {204, 51, 0, 255}};
-    int32_t box[4] = {bounds[0] + 40, bounds[1] + box_left, bounds[0] + 100, bounds[1] + box_left + 60};
-    GraphicsContext_SetColor(context, white);
-    GraphicsContext_FillRect(context, bounds);
-    GraphicsContext_SetColor(context, box_colours[box_colour]);
-    GraphicsContext_FillRect(context, box);
+    struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
+    struct rv_rect box = {(int16_t)box_left, 20, 60, 60};
+    int line = g->line_height(RV_FONT_TEXT);
+    g->fill(&all, g->color(RV_COLOR_BACKGROUND));
+    g->fill(&box, box_colour ? RV_RGB(204, 51, 0) : RV_RGB(0, 102, 204));
+    g->text(4, height - line - 4, RV_FONT_TEXT, g->color(RV_COLOR_TEXT), "Select recolours");
 }
 
 static int sketch_input(const struct rv_input *input)
@@ -188,7 +187,7 @@ static void build_icon(void)
 
 static const struct rv_entry entries[] = {
     RV_ENTRY("settings", RV_SETTINGS_LEGAL, RV_PUSH("Hello", "menu"),
-             .caption = "Fixture extension", .bitmap = icon),
+             .caption = "Fixture extension", .bitmap = (const struct rv_bitmap *)icon),
     RV_ENTRY("main", RV_MAIN_EXTRAS, RV_PUSH("Hello", "menu")),
     RV_ENTRY("music", 0, RV_PUSH("Hello", "menu")),
     RV_ENTRY("extras", 0, RV_PUSH("Hello", "menu")),

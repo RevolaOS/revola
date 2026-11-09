@@ -12,6 +12,9 @@
 
 #define RV_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
+/* An opaque colour from its components. */
+#define RV_RGB(r, g, b) ((rv_color)0xff000000u | (rv_color)(r) << 16 | (rv_color)(g) << 8 | (rv_color)(b))
+
 /* Rows of a list screen or of an entry. */
 #define RV_PUSH(label_, screen_) {.label = (label_), .kind = RV_ROW_PUSH, .screen = (screen_)}
 #define RV_TOGGLE(label_, key_) {.label = (label_), .kind = RV_ROW_TOGGLE, .key = (key_)}

@@ -138,6 +138,44 @@ enum rv_layout {
     RV_LAYOUT_SPLIT, /* the list on the left, the Settings preview pane on the right */
 };
 
+/* A bitmap in the device's own format, lent by the module while it is loaded.
+ * TODO: the SDK tool that makes one from a PNG. */
+struct rv_bitmap;
+
+/* Drawing, for canvas screens. Coordinates count from the top left of the
+ * canvas, below the title bar; the canvas is clipped for the extension. */
+struct rv_rect {
+    int16_t x, y, width, height;
+};
+
+typedef uint32_t rv_color; /* 0xAARRGGBB */
+
+/* The stock colours of the list screens; a theme may change what a role is. */
+enum rv_color_role {
+    RV_COLOR_BACKGROUND,
+    RV_COLOR_TEXT,
+    RV_COLOR_HIGHLIGHT,      /* the selected row */
+    RV_COLOR_HIGHLIGHT_TEXT, /* text on the selected row */
+    RV_COLOR_DIM,            /* secondary text, such as a row's detail */
+    RV_COLOR_ROLE_COUNT,
+};
+
+/* The stock fonts: the title bar's, the text pages' and the preview pane's
+ * large caption. */
+enum rv_font { RV_FONT_TITLE, RV_FONT_TEXT, RV_FONT_LARGE, RV_FONT_COUNT };
+
+/* What a canvas draws with. Valid inside the draw callback only. Append-only
+ * like rv_api: check `size` before using a newer entry. */
+struct rv_gfx {
+    uint32_t size;
+    rv_color (*color)(uint8_t role);
+    void (*fill)(const struct rv_rect *rect, rv_color color);
+    /* `y` is the top of the text line. */
+    void (*text)(int x, int y, uint8_t font, rv_color color, const char *utf8);
+    int (*measure)(uint8_t font, const char *utf8); /* width in pixels */
+    int (*line_height)(uint8_t font);
+};
+
 enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
 enum rv_key { RV_KEY_CENTER, RV_KEY_MENU, RV_KEY_PREVIOUS, RV_KEY_NEXT, RV_KEY_PLAY };
 
@@ -173,9 +211,9 @@ struct rv_screen {
             uint32_t count;
         } text;
         struct {
-            /* Draw into `bounds` {top, left, bottom, right} with the Apple graphics
-             * context; input returns 1 when consumed, 0 to leave the key to Apple. */
-            void (*draw)(void *context, const int32_t *bounds);
+            /* Draws the canvas, `width` by `height` pixels; input returns 1 when
+             * consumed, 0 to leave the key to the system. */
+            void (*draw)(const struct rv_gfx *gfx, int width, int height);
             int (*input)(const struct rv_input *input);
         } canvas;
         struct {
@@ -190,14 +228,13 @@ struct rv_screen {
 
 /* A row the extension adds to a menu. `in` names the menu: "main", "music",
  * "extras", "settings", the menu a long press of Select opens on Now Playing
- * "nowplaying" or on a song, album or artist row "song", "album" and "artist",
- * or a container id such as "settings.sound". `after` is a stock row of that menu from
- * rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under Settings the preview pane
- * shows the label, `caption` as the line below and `bitmap` as the icon while
- * the row is highlighted; `bitmap` is a BMap resource (BMap_* in the symbols
- * header). Either may be NULL, and the pane then shows nothing in its place.
- * Rows under Main and Music appear in Settings > Main Menu and Music Menu,
- * `visible` is their default there. */
+ * ("nowplaying") or on a song, album or artist row ("song", "album",
+ * "artist"), or a container id such as "settings.sound". `after` is a stock
+ * row of that menu from rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under
+ * Settings the preview pane shows the label, `caption` as the line below and
+ * `bitmap` as the icon while the row is highlighted; either may be NULL, and
+ * the pane then shows nothing in its place. Rows under Main and Music appear in
+ * Settings > Main Menu and Music Menu, `visible` is their default there. */
 struct rv_entry {
     const char *in;
     uint8_t visible;
@@ -205,7 +242,7 @@ struct rv_entry {
     uint32_t after;
     struct rv_row row;
     const char *caption;
-    const void *bitmap;
+    const struct rv_bitmap *bitmap;
 };
 
 /* Returned by the module entry; everything it points to lives as long as the
