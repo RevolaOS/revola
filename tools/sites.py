@@ -22,6 +22,7 @@ class Site:
     kind: int
     chain: int
     argc: int
+    copy: int = 0
 
     @property
     def is_entry(self):
@@ -40,12 +41,16 @@ def read(code, symbols, core_start):
     offset = require(symbols, "core_sites") - core_start
     sites = []
     for _ in range(count):
-        address, original, word0, word1, kind, chain, argc, _pad = ROW.unpack_from(
+        address, original, word0, word1, kind, chain, argc, copy = ROW.unpack_from(
             code, offset
         )
         if kind > WORD or argc > 4 or chain > 1:
             raise ValueError(f"Malformed site row at {address:#x}")
-        sites.append(Site(address, original, word0, word1, kind, chain, argc))
+        if copy and (copy < 4 or copy > 11 or argc < 1 or kind == WORD):
+            raise ValueError(
+                f"Site {address:#x}: register copy needs r4-r11 and an argument"
+            )
+        sites.append(Site(address, original, word0, word1, kind, chain, argc, copy))
         offset += ROW.size
     return sites
 

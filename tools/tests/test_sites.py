@@ -41,9 +41,18 @@ class SiteTests(unittest.TestCase):
             ],
         )
         self.assertEqual(table[1].expected, struct.pack("<II", 0xE1A00000, PUSH_LR))
-        bad = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, 7, 0, 1, 0)
-        with self.assertRaises(ValueError):
-            sites.read(bad, symbols, 0x1000)
+        for row in (
+            sites.ROW.pack(BASE, 0, 0, 0, 7, 0, 1, 0),
+            sites.ROW.pack(
+                BASE, 0, 0, 0, CALL, 0, 1, 3
+            ),  # copy from a scratch register
+            sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0, 4),  # copy with no argument slot
+            sites.ROW.pack(BASE, 0, 0, 0, WORD, 0, 1, 4),
+        ):
+            with self.subTest(row=row), self.assertRaises(ValueError):
+                sites.read(struct.pack("<I", 1) + row, symbols, 0x1000)
+        copied = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 3, 4)
+        self.assertEqual(sites.read(copied, symbols, 0x1000)[0].copy, 4)
 
     def test_matches_expected_words_against_the_firmware(self):
         table = [site(BASE + 8, CALL, 0xEB000001), site(BASE + 16, VTABLE, 0x08123456)]

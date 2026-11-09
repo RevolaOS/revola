@@ -3,7 +3,7 @@
 /* Hook sites of OSOS 2.0.5, one row each. Included by sites.c (table and ids) and
  * stubs.S (per-site stubs and slots), so the two never disagree.
  *
- * SITE(name, address, kind, original, word0, word1, chain, argc)
+ * SITE(name, address, kind, original, word0, word1, chain, argc, copy)
  *   address   the patched word (SITE_* from the symbols header)
  *   kind      CALL, VTABLE, ENTRY, ENTRY_NORETURN or WORD
  *   original  what an unbound site does: the callee of a CALL, the pointer in a
@@ -11,69 +11,71 @@
  *   word0/1   the Apple words at the site, checked against the pinned image at build
  *             time and at install time
  *   chain     1 when Apple's semantics are understood well enough for several handlers
- *   argc      register arguments the Apple function takes (at most 4)
+ *   argc      register arguments the handler receives (at most 4)
+ *   copy      0, or a register (4 to 11) the stub copies into r[argc-1] first, so a
+ *             value Apple keeps in a callee-saved register at the site is an argument
  */
 
 /* Apple loads its preferences here; the disk is readable from this point on. */
 SITE(Preferences_LoadFile_call, SITE_Preferences_LoadFile_call, CALL,
      ADDR_Preferences_LoadFile, BL(SITE_Preferences_LoadFile_call, ADDR_Preferences_LoadFile), 0,
-     1, 1)
+     1, 1, 0)
 
 /* Called once per row while Apple builds a menu's ITEM list. */
 SITE(ResourceBlockList_AppendBorrowedBlock_call, SITE_ResourceBlockList_AppendBorrowedBlock_call,
      CALL, ADDR_ResourceBlockList_AppendBorrowedBlock,
      BL(SITE_ResourceBlockList_AppendBorrowedBlock_call, ADDR_ResourceBlockList_AppendBorrowedBlock),
-     0, 1, 4)
+     0, 1, 4, 0)
 
 /* Settings model property lookup: (model, type, property, out). */
 SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsModel_GetProperty,
-     ADDR_SettingsModel_GetProperty, 0, 1, 4)
+     ADDR_SettingsModel_GetProperty, 0, 1, 4, 0)
 
 /* Light sleep: the disk powers down inside, so stores are written on the way in. */
 SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_Power_EnterLightSleep,
-     BL(SITE_Sleep_Idle_call, ADDR_Power_EnterLightSleep), 0, 1, 1)
+     BL(SITE_Sleep_Idle_call, ADDR_Power_EnterLightSleep), 0, 1, 1, 0)
 SITE(Sleep_Request_call, SITE_Sleep_Request_call, CALL, ADDR_Power_EnterLightSleep,
-     BL(SITE_Sleep_Request_call, ADDR_Power_EnterLightSleep), 0, 1, 1)
+     BL(SITE_Sleep_Request_call, ADDR_Power_EnterLightSleep), 0, 1, 1, 0)
 
 /* Apple's save-all (USB disk mode entry among its callers) writes its preferences. */
 SITE(Preferences_FlushIfDirty_call, SITE_Preferences_FlushIfDirty_call, CALL, ADDR_Preferences_FlushIfDirty,
-     BL(SITE_Preferences_FlushIfDirty_call, ADDR_Preferences_FlushIfDirty), 0, 1, 1)
+     BL(SITE_Preferences_FlushIfDirty_call, ADDR_Preferences_FlushIfDirty), 0, 1, 1, 0)
 
 /* Reset All Settings confirmed; Apple resets its preferences and menus. */
 SITE(SettingsModel_ResetAllSettings_call, SITE_SettingsModel_ResetAllSettings_call, CALL, ADDR_SettingsModel_ResetAllSettings,
-     BL(SITE_SettingsModel_ResetAllSettings_call, ADDR_SettingsModel_ResetAllSettings), 0, 1, 1)
+     BL(SITE_SettingsModel_ResetAllSettings_call, ADDR_SettingsModel_ResetAllSettings), 0, 1, 1, 0)
 
 /* Library_FinishImport sizes the block cache: r0 = heap total, r1 = import cost, then
  * sub, reserve, floor test, floor set, and BlockCache_Grow(r0). The first word becomes
  * a call that returns the size; the other three become nops while bound. */
-SITE(BlockCache_ImportCost_word, SITE_BlockCache_ImportCost_word, CALL, 0, 0xe0400001, 0, 0, 2)
+SITE(BlockCache_ImportCost_word, SITE_BlockCache_ImportCost_word, CALL, 0, 0xe0400001, 0, 0, 2, 0)
 SITE(BlockCache_ReserveNative_word, SITE_BlockCache_ReserveNative_word, WORD, 0, 0xe240060e, 0,
-     0, 0)
-SITE(BlockCache_FloorTest_word, SITE_BlockCache_FloorTest_word, WORD, 0, 0xe350060e, 0, 0, 0)
-SITE(BlockCache_FloorSet_word, SITE_BlockCache_FloorSet_word, WORD, 0, 0x33a0060e, 0, 0, 0)
+     0, 0, 0)
+SITE(BlockCache_FloorTest_word, SITE_BlockCache_FloorTest_word, WORD, 0, 0xe350060e, 0, 0, 0, 0)
+SITE(BlockCache_FloorSet_word, SITE_BlockCache_FloorSet_word, WORD, 0, 0x33a0060e, 0, 0, 0, 0)
 
 /* MediaPlayer_ReadAheadBytes: r0 = cache bytes - 10 MiB, then cmp/movlt against the
  * 6 MiB minimum. The compare becomes a call returning the read-ahead, the movlt a nop. */
 SITE(MediaPlayer_ReadAheadMinTest_word, SITE_MediaPlayer_ReadAheadMinTest_word, CALL, 0,
-     0xe3500606, 0, 0, 1)
+     0xe3500606, 0, 0, 1, 0)
 SITE(MediaPlayer_ReadAheadMinSet_word, SITE_MediaPlayer_ReadAheadMinSet_word, WORD, 0,
-     0xb3a00606, 0, 0, 0)
+     0xb3a00606, 0, 0, 0, 0)
 
 /* FixedPool_Create rounds the slot size: add r0, r4, #15; bic r0, r0, #15. */
 SITE(FixedPool_SlotRoundAdd_word, SITE_FixedPool_SlotRoundAdd_word, WORD, 0, 0xe284000f, 0,
-     0, 0)
+     0, 0, 0)
 SITE(FixedPool_SlotRoundMask_word, SITE_FixedPool_SlotRoundMask_word, WORD, 0, 0xe3c0000f, 0,
-     0, 0)
+     0, 0, 0)
 
 /* eApp block manager: acquire (message 0xeab0) and release (0xeab1) of a game's blocks. */
 SITE(EAppBlocks_Acquire_call, SITE_EAppBlocks_Acquire_call, CALL, ADDR_EAppBlocks_Acquire,
-     BL(SITE_EAppBlocks_Acquire_call, ADDR_EAppBlocks_Acquire), 0, 0, 1)
+     BL(SITE_EAppBlocks_Acquire_call, ADDR_EAppBlocks_Acquire), 0, 0, 1, 0)
 SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlocks_Release,
-     BL(SITE_EAppBlocks_Release_call, ADDR_EAppBlocks_Release), 0, 0, 1)
+     BL(SITE_EAppBlocks_Release_call, ADDR_EAppBlocks_Release), 0, 0, 1, 0)
 
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */
 SITE(SettingsModel_ResetMainMenu_entry, SITE_SettingsModel_ResetMainMenu_entry, ENTRY,
-     REPLAY(SettingsModel_ResetMainMenu_entry), 0xe92d47f0, 0xe1a09000, 0, 1)
+     REPLAY(SettingsModel_ResetMainMenu_entry), 0xe92d47f0, 0xe1a09000, 0, 1, 0)
 #endif

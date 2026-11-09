@@ -24,11 +24,14 @@
 
 /* next in r<argc> for up to three arguments; a frame pushes it as the first stack
  * argument for four (push {r4, r5, lr} plus the word keeps sp 8-byte aligned). */
-.macro site_stub name, kind, address, word0, word1, argc
+.macro site_stub name, kind, address, word0, word1, argc, copy
 .if \kind != WORD
 .text
 .balign 4
 core_stub_\name:
+.if \copy
+    mov r(\argc - 1), r\copy
+.endif
 .if \argc < 4
     ldr r\argc, =core_root_\name
     ldr r12, =core_site_slots + 4 * index
@@ -61,8 +64,8 @@ core_root_\name:
 .set index, index + 1
 .endm
 
-#define SITE(name, address, kind, original, word0, word1, chain, argc)                    \
-    site_stub name, kind, address, word0, word1, argc
+#define SITE(name, address, kind, original, word0, word1, chain, argc, copy)                    \
+    site_stub name, kind, address, word0, word1, argc, copy
 #include "sites.def"
 #undef SITE
 
@@ -78,7 +81,7 @@ core_site_stubs:
     .word core_stub_\name
 .endif
 .endm
-#define SITE(name, address, kind, original, word0, word1, chain, argc) site_entry name, kind
+#define SITE(name, address, kind, original, word0, word1, chain, argc, copy) site_entry name, kind
 #include "sites.def"
 #undef SITE
 
