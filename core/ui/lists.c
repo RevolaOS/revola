@@ -52,12 +52,18 @@ static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_
     }
 }
 
+uint32_t core_lists_screen_id(const struct core_screen *s, int split)
+{
+    return split ? s->id + s->ids - CORE_LIST_SPLIT_IDS : s->id;
+}
+
 /* A split layout: the Settings > Main Menu layout with the title and the pane
  * rebound (the caption shows the title, the other pane views are hidden), and
  * the list bound by the screen's VSlt (the stock split screens bind their list
  * there, not in the list instance). Takes one id from *next for the pane.
  * TODO: a pane icon and caption per screen. */
-static int clone_split(struct core_screen *s, uint32_t *next, uint8_t *scratch, uint32_t bytes)
+static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, uint8_t *scratch,
+                       uint32_t bytes)
 {
     struct core_writer w = {scratch, 0};
     uint32_t pane_id = (*next)++, stock_pane = core_panes_write(&w, s->id + 2, 0, 0);
@@ -65,8 +71,8 @@ static int clone_split(struct core_screen *s, uint32_t *next, uint8_t *scratch, 
         return 0;
     core_panes_store(pane_id, scratch, w.at, stock_pane);
     uint32_t vslt[5] = {1, 8, ViewBinding_ItemTable, RES_SettingsList_View, s->id + 3};
-    ResourceBank_SetResource(bank, Resource_VSlt, s->id, vslt, sizeof vslt);
-    struct layout_clone c = {RES_Settings_MainMenu_Layout, s->id + 1, RES_StatusBarWhite_Text,
+    ResourceBank_SetResource(bank, Resource_VSlt, screen, vslt, sizeof vslt);
+    struct layout_clone c = {RES_Settings_MainMenu_Layout, screen + 1, RES_StatusBarWhite_Text,
                              s->id + 2, 0, stock_pane, pane_id, 0, NULL};
     return core_clone_layout(&c, next, scratch, bytes);
 }
@@ -89,14 +95,12 @@ static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *va
     }
 }
 
-/* Ids of a list: id screen, +1 layout, +2 title, +3 items, +4.. layout clones,
- * then per row the item id (its title property) and its source id (its value
- * property). An indexed list has one such row. */
-static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_bytes)
+/* The shared part of a list: the title source and, per row, the item id (its
+ * title property) and the source id (its value property) in the ITEM table. */
+static int write_rows(struct core_screen *s, uint8_t *scratch)
 {
     const struct rv_screen *d = s->declaration;
-    uint32_t next = s->id + 4, rows = CORE_SCREEN_ROWS(s);
-    uint32_t count = indexed(s) ? 1 : d->list.count;
+    uint32_t rows = CORE_SCREEN_ROWS(s), count = indexed(s) ? 1 : d->list.count;
     core_set_source(bank, s->id + 2, s->id + 2, 1);
     struct core_writer w = {scratch, 0};
     core_write_word(&w, count);
@@ -123,24 +127,36 @@ static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_
             core_set_source(bank, source, item, 1);
     }
     ResourceBank_SetResource(bank, Resource_ITEM, s->id + 3, scratch, w.at);
-    int split = d->layout == RV_LAYOUT_SPLIT;
-    struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, s->id + 1, RES_StatusBarWhite_Text,
-                             s->id + 2, s->id + 3, 0, 0, 0, NULL};
-    if (!(split ? clone_split(s, &next, scratch, scratch_bytes)
-                : core_clone_layout(&c, &next, scratch, scratch_bytes)) ||
-        next > rows)
+    return 1;
+}
+
+/* Ids of a list: id screen, +1 layout, +2 title, +3 items, +4.. layout clones,
+ * then per row the item id and its source id (an indexed list has one such
+ * row), then the split layout's screen, layout, pane and layout clones. */
+static int clone_list(struct core_screen *s, int split, uint8_t *scratch, uint32_t scratch_bytes)
+{
+    uint32_t rows = CORE_SCREEN_ROWS(s), count = indexed(s) ? 1 : s->declaration->list.count;
+    uint32_t screen = core_lists_screen_id(s, split), next = split ? screen + 2 : s->id + 4;
+    uint32_t last = split ? screen + CORE_LIST_SPLIT_IDS : rows;
+    if (!s->built && !write_rows(s, scratch))
         return 0;
-    w.at = 0;
+    struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, screen + 1, RES_StatusBarWhite_Text,
+                             s->id + 2, s->id + 3, 0, 0, 0, NULL};
+    if (!(split ? clone_split(s, screen, &next, scratch, scratch_bytes)
+                : core_clone_layout(&c, &next, scratch, scratch_bytes)) ||
+        next > last)
+        return 0;
+    struct core_writer w = {scratch, 0};
     core_clone_layout_events(&w);
-    ResourceBank_SetResource(bank, Resource_SEVT, s->id + 1, scratch, w.at);
+    ResourceBank_SetResource(bank, Resource_SEVT, screen + 1, scratch, w.at);
     w.at = 0;
     write_row_events(&w, rows, count);
-    return core_clone_screen(s->id, s->id + 1, RES_SettingsMenu_Main_Screen,
+    return core_clone_screen(screen, screen + 1, RES_SettingsMenu_Main_Screen,
                              split ? RES_Settings_MainMenu_Screen : RES_Notes_List_Screen_Alt,
                              scratch, w.at, scratch + w.at, scratch_bytes - w.at);
 }
 
-int core_clone_list(struct core_screen *s)
+int core_clone_list(struct core_screen *s, int split)
 {
     uint32_t count = indexed(s) ? 1 : s->declaration->list.count;
     if (count > CORE_MAX_LIST_ROWS)
@@ -153,7 +169,7 @@ int core_clone_list(struct core_screen *s)
     uint8_t *scratch = Heap_AllocateZeroed(bytes);
     if (!scratch)
         return 0;
-    int built = clone_list(s, scratch, bytes);
+    int built = clone_list(s, split, scratch, bytes);
     Heap_Free(scratch);
     return built;
 }

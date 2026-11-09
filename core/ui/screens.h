@@ -17,9 +17,13 @@ struct core_screen {
     uint32_t id;                         /* first resource id: the screen; the rest follow */
     uint32_t ids;                        /* ids used from `id`; 0 for a free record */
     uint16_t open;                       /* times on the navigation stack */
-    uint8_t built;
+    uint8_t built;                       /* CORE_BUILT_* bits */
+    uint8_t split;                       /* the layout of the last push, list kinds */
     uint8_t stale;
 };
+/* A list screen has clones for both layouts, built on first use. */
+#define CORE_BUILT_FULL 1
+#define CORE_BUILT_SPLIT 2
 /* First row item id (list), paragraph source id (text) or bar source id (slider). */
 #define CORE_SCREEN_ROWS(s) ((s)->id + 8)
 

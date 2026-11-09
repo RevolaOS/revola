@@ -3,7 +3,7 @@
   "sha256": {
     "README.md": "740240ce719a612cee3ba21b5d2da514572bba2e18657eb32887bfbbcf3ba208",
     "rv.mk": "7d9205e4db633ef361e07241597fd64cc3101f7bafaf48138407ce8fa836e53b",
-    "rv_api.h": "a3503f000bcd439ee7af35dd8c70170a184bd1b466971b4e95f5dfb0a5299b9a",
+    "rv_api.h": "dc7dfd314774dac57d3bae7823e40ce4a03248dd3e6a2a259b1305ed360f1000",
     "rvx.lds": "07bc581d5a97caa12e640324199499e9976a661b44aafae8ee3d5c4a01c7bc40"
   }
 }

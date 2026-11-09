@@ -14,9 +14,23 @@ static inline int core_lists_indexed(uint8_t kind)
            kind == RV_SCREEN_RUNTIME_LIST;
 }
 
-/* Stores the clones of a list, choice, multi-choice or runtime list screen; 0
- * when a stock resource is missing or the heap is full. */
-int core_clone_list(struct core_screen *screen);
+/* 1 for every list kind: the ones with two layouts. */
+static inline int core_lists_kind(uint8_t kind)
+{
+    return kind == RV_SCREEN_LIST || core_lists_indexed(kind);
+}
+
+/* Ids the split layout of a list screen takes after the full layout's: its
+ * screen, its layout, the pane and four layout clones. */
+#define CORE_LIST_SPLIT_IDS 7
+
+/* The screen id a list screen is pushed as: its first id for the full layout,
+ * the split layout's otherwise. */
+uint32_t core_lists_screen_id(const struct core_screen *screen, int split);
+/* Stores the clones of a list, choice, multi-choice or runtime list screen in
+ * one layout; 0 when a stock resource is missing or the heap is full. The rows
+ * and sources are shared and built with the first layout. */
+int core_clone_list(struct core_screen *screen, int split);
 void core_lists_init(void *bank);
 
 #endif

@@ -151,7 +151,7 @@ static const struct rv_row rows[] = {
 };
 
 static const struct rv_screen screens[] = {
-    {"hello.menu", "Hello", RV_SCREEN_LIST, RV_LAYOUT_FULL, {0}, {.list = {rows, 9}}},
+    {"hello.menu", "Hello", RV_SCREEN_LIST, RV_LAYOUT_AUTO, {0}, {.list = {rows, 9}}},
     {"hello.about", "About Hello", RV_SCREEN_TEXT, 0, {0}, {.text = {about, 2}}},
     {"hello.level", "Level", RV_SCREEN_SLIDER, 0, {0}, {.choice = {SETTING_LEVEL, 0, levels, 5}}},
     {"hello.sketch", "Sketch", RV_SCREEN_CANVAS, 0, {0}, {.canvas = {sketch_draw, sketch_input}}},
@@ -159,7 +159,7 @@ static const struct rv_screen screens[] = {
      {.choice = {SETTING_COLOUR, 0, colours, 4}}},
     {"hello.planets", "Planets", RV_SCREEN_RUNTIME_LIST, RV_LAYOUT_SPLIT, {0},
      {.runtime = {planet_count, planet_row, planet_select, 1}}},
-    {"hello.toppings", "Toppings", RV_SCREEN_MULTI_CHOICE, RV_LAYOUT_SPLIT, {0},
+    {"hello.toppings", "Toppings", RV_SCREEN_MULTI_CHOICE, RV_LAYOUT_AUTO, {0},
      {.choice = {SETTING_TOPPINGS, 0, toppings, 4}}},
 };
 

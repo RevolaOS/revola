@@ -170,42 +170,64 @@ static uint32_t deactivated(uint32_t controller, uint32_t leaving, const struct 
     return result;
 }
 
-static int build(struct core_screen *s)
+/* The layout a list screen opens in from `controller`'s screen: what it
+ * declares, else its parent's: a split list of the runtime or one of Apple's
+ * Settings lists (the Settings menu and its submenus share one class) gives
+ * split, anything else full width. */
+static int split_from(const struct core_screen *s, void *controller)
 {
-    if (s->built)
+    uint8_t layout = s->declaration->layout;
+    if (layout != RV_LAYOUT_AUTO)
+        return layout == RV_LAYOUT_SPLIT;
+    const struct core_screen *parent = core_screens_of_controller(controller);
+    if (parent)
+        return parent->declaration && core_lists_kind(parent->declaration->kind) && parent->split;
+    return FIELD(controller, 0, void *) == (void *)SettingsMenuListController_vtable;
+}
+
+static int build(struct core_screen *s, int split)
+{
+    uint8_t bit = split ? CORE_BUILT_SPLIT : CORE_BUILT_FULL;
+    if (s->built & bit)
         return 1;
+    int built = 0;
     switch (s->declaration->kind) {
     case RV_SCREEN_LIST:
     case RV_SCREEN_CHOICE:
     case RV_SCREEN_MULTI_CHOICE:
     case RV_SCREEN_RUNTIME_LIST:
-        s->built = core_clone_list(s);
+        built = core_clone_list(s, split);
         break;
     case RV_SCREEN_TEXT:
-        s->built = core_clone_text(s);
+        built = core_clone_text(s);
         break;
     case RV_SCREEN_SLIDER:
-        s->built = core_clone_slider(s);
+        built = core_clone_slider(s);
         break;
     case RV_SCREEN_CANVAS:
-        s->built = core_clone_canvas(s);
+        built = core_clone_canvas(s);
         break;
     default:
         break;
     }
-    return s->built;
+    if (built)
+        s->built |= bit;
+    return built;
 }
 
 int core_screens_push(struct core_screen *s, void *controller)
 {
     uint8_t kind = s->declaration->kind;
     int input = kind == RV_SCREEN_SLIDER || kind == RV_SCREEN_CANVAS;
+    int split = core_lists_kind(kind) && split_from(s, controller);
     if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
     core_loader_screen_pushed(s->declaration->name);
-    if (!build(s))
+    s->split = (uint8_t)split;
+    if (!build(s, split))
         return 0;
-    void *created = UI_CreateScreenController(UI_GetControllerRegistry(), s->id, s->id + 1,
+    uint32_t screen = core_lists_kind(kind) ? core_lists_screen_id(s, split) : s->id;
+    void *created = UI_CreateScreenController(UI_GetControllerRegistry(), screen, screen + 1,
                                               Transition_ForegroundPush);
     if (!created)
         return 0;

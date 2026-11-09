@@ -135,7 +135,7 @@ static uint32_t indexed_property(uint32_t model, uint32_t type, uint32_t propert
 static uint32_t list_view(const struct core_screen *s)
 {
     static uint32_t notes_view;
-    if (s->declaration->layout == RV_LAYOUT_SPLIT)
+    if (s->split)
         return RES_SettingsList_View;
     const void *slyt = stock(Resource_SLyt, RES_Notes_List_Screen_Alt_Default);
     for (uint32_t l = 0; !notes_view && slyt && l < core_blocks_count(slyt); l++) {

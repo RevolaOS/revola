@@ -115,8 +115,11 @@ enum rv_screen_kind {
                                is label n (at most 32), Select flips it */
 };
 
-/* How a list screen (list, choice, multi-choice, runtime list) is laid out. */
+/* How a list screen (list, choice, multi-choice, runtime list) is laid out.
+ * Left at AUTO it follows the screen it opens from: split under Settings or a
+ * split list, full width elsewhere, as the stock menus do. */
 enum rv_layout {
+    RV_LAYOUT_AUTO,
     RV_LAYOUT_FULL,  /* the list over the whole screen */
     RV_LAYOUT_SPLIT, /* the list on the left, the Settings preview pane on the right */
 };
