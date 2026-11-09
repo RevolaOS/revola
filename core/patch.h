@@ -21,8 +21,6 @@ _Static_assert(sizeof(struct core_patch) == 84, "Patch metadata layout changed")
         __attribute__((used, section(".core.patch"), aligned(4))) = {                   \
             kind, address, expected, extra, value, symbol}
 
-#define PATCH_WORD(address, expected, value)                                           \
-    PATCH_RECORD(1, address, expected, 0, value, "")
 #define PATCH_POINTER(address, expected, symbol)                                       \
     PATCH_RECORD(2, address, expected, 0, 0, #symbol)
 #define PATCH_CALL_WORD(address, expected, symbol)                                     \

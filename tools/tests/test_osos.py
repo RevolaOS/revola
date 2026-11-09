@@ -106,12 +106,12 @@ class OsosTests(unittest.TestCase):
             )
 
     def test_rejects_overlap_and_invalid_write_ranges(self):
-        valid = word(Kind.WORD, osos.BASE, 0, value=42)
+        valid = word(Kind.POINTER, osos.BASE, 0, "table")
         for patches in (
             [valid, valid],
-            [word(Kind.WORD, osos.BASE - 4, 0)],
-            [word(Kind.WORD, osos.BASE + 256, 0)],
-            [word(Kind.WORD, osos.BASE + 1, 0)],
+            [word(Kind.POINTER, osos.BASE - 4, 0, "table")],
+            [word(Kind.POINTER, osos.BASE + 256, 0, "table")],
+            [word(Kind.POINTER, osos.BASE + 1, 0, "table")],
         ):
             with self.subTest(patches=patches), self.assertRaises(ValueError):
                 self.build(patches)

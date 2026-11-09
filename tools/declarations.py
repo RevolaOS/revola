@@ -11,7 +11,6 @@ RECORD = struct.Struct("<5I64s")
 
 
 class Kind(IntEnum):
-    WORD = 1
     POINTER = 2
     CALL = 3
     JUMP = 4
@@ -49,7 +48,7 @@ def parse(data):
         if b"\0" not in raw:
             raise ValueError("Unterminated patch symbol")
         symbol = raw.split(b"\0", 1)[0].decode("ascii")
-        if kind != Kind.WORD and not symbol:
+        if not symbol:
             raise ValueError("Patch is missing its target symbol")
         if kind == Kind.COPY:
             patches.append(Copy(symbol, expected, extra, address, value))
