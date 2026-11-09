@@ -12,10 +12,6 @@
 static void *context;
 static int32_t top, left;
 
-/* The draw mode the stock text views set before drawing a string; a fresh
- * context is in mode 0, which fills but draws no text. */
-#define DRAW_MODE_TEXT 0x21
-
 /* Stock colours of the list screens, as the emulator shows them; the highlight
  * is the middle of Apple's gradient. */
 static const rv_color roles[RV_COLOR_ROLE_COUNT] = {
@@ -70,7 +66,8 @@ static void text(int x, int y, uint8_t font, rv_color c, const char *utf8)
 {
     use_font(font);
     set_color(c);
-    GraphicsContext_SetDrawMode(context, DRAW_MODE_TEXT);
+    /* A fresh context is in mode 0, which fills but draws no text. */
+    GraphicsContext_SetDrawMode(context, GraphicsDrawMode_Text);
     GraphicsContext_SetTextPen(context, left + x, top + y + GraphicsContext_GetFontAscent(context));
     GraphicsContext_DrawUtf8(context, utf8);
 }
