@@ -1,10 +1,18 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
+#include "osos-2.0.5.h"
 #include "panic.h"
 #include <stddef.h>
 
 #define REG32(address) (*(volatile uint32_t *)(address))
 #define LCD_BASE 0x38300000u
+/* Display pipe: CONTROL bits 6, 5 and 4 enable layers 0 to 2, which it scans out
+ * over whatever the panel holds. Cleared before the panel is written directly. */
+#define DISP_CONTROL REG32(0x38900008u)
+#define DISP_LAYERS 0x70u
+/* An unknown C++ exception with less free heap than this is out of memory: the
+ * 70k-track library panics with 2,592 B free. */
+#define OUT_OF_MEMORY_BYTES 0x10000u
 #define LCD_CONFIG REG32(LCD_BASE)
 #define LCD_COMMAND REG32(LCD_BASE + 0x04)
 #define LCD_DATA REG32(LCD_BASE + 0x40)
@@ -25,6 +33,8 @@ typedef char frame_layout_check
 
 static uint16_t pixels[WIDTH];
 static unsigned scan_y;
+uint32_t core_panic_exception[2];
+uint32_t core_panic_extension;
 
 static void render_line(const struct panic_frame *frame);
 
@@ -75,6 +85,73 @@ static void text(unsigned x, unsigned y, unsigned scale, const char *value)
     }
 }
 
+static char *decimal(char *out, uint32_t value)
+{
+    char digits[10];
+    unsigned n = 0;
+    do {
+        digits[n++] = (char)('0' + value % 10);
+        value /= 10;
+    } while (value);
+    while (n)
+        *out++ = digits[--n];
+    *out = 0;
+    return out;
+}
+
+static char *copy(char *out, const char *text)
+{
+    while (*text)
+        *out++ = *text++;
+    *out = 0;
+    return out;
+}
+
+static char *hex(char *out, uint32_t value)
+{
+    for (unsigned digit = 0; digit < 8; digit++)
+        *out++ = "0123456789ABCDEF"[(value >> (28 - digit * 4)) & 15];
+    *out = 0;
+    return out;
+}
+
+/* Heap free and total bytes, the uncaught C++ exception kind when one reached
+ * Runtime_Abort, and the extension whose code was running. */
+static void heap_line(unsigned y)
+{
+    char line[64];
+    char *out = line;
+    if (core_panic_exception[0]) {
+        out = copy(out, "EXC ");
+        out = decimal(out, core_panic_exception[0] - 1);
+        out = copy(out, " ");
+    }
+    uint32_t heap = (uint32_t)MainHeap;
+    if (heap < DRAM_BASE || heap >= DRAM_END) {
+        copy(out, "HEAP UNAVAILABLE");
+    } else {
+        out = copy(out, "HEAP FREE ");
+        out = decimal(out, *(uint32_t *)(heap + MainHeap_free_bytes));
+        out = copy(out, " OF ");
+        out = decimal(out, *(uint32_t *)(heap + MainHeap_total_bytes));
+    }
+    if (core_panic_extension) {
+        out = copy(out, " EXT ");
+        hex(out, core_panic_extension);
+    }
+    text(12, y, 1, line);
+}
+
+static int out_of_memory(void)
+{
+    uint32_t kind = core_panic_exception[0];
+    uint32_t heap = (uint32_t)MainHeap;
+    if (kind == 1 + 2)
+        return 1;
+    return kind == 1 + 3 && heap >= DRAM_BASE && heap < DRAM_END &&
+           *(uint32_t *)(heap + MainHeap_free_bytes) < OUT_OF_MEMORY_BYTES;
+}
+
 static void field(unsigned x, unsigned y, unsigned scale, const char *label,
                   uint32_t value)
 {
@@ -86,9 +163,7 @@ static void field(unsigned x, unsigned y, unsigned scale, const char *label,
     }
     while (i < 5)
         line[i++] = ' ';
-    for (unsigned digit = 0; digit < 8; digit++)
-        line[i++] = "0123456789ABCDEF"[(value >> (28 - digit * 4)) & 15];
-    line[i] = 0;
+    hex(line + i, value);
     text(x, y, scale, line);
 }
 
@@ -165,7 +240,9 @@ static int show_pixels(const struct panic_frame *frame)
     unsigned panel = (REG32(0x3cf000c4) >> 4) & 3;
     uint32_t timing = LCD_CONFIG & 0x80000007;
 
-    /* Stop Apple's frame engine before taking over the command interface. */
+    /* Stop Apple's frame engine and layer scan-out before taking over the
+     * command interface. TODO: confirm the layer disable on hardware. */
+    DISP_CONTROL &= ~DISP_LAYERS;
     REG32(LCD_BASE + 0x70) = 0;
     if (!stop_lcd_dma() || !wait_bits(LCD_BASE + 0x8c, 3, 0))
         return 0;
@@ -208,9 +285,10 @@ static void register_field(unsigned x, unsigned y, unsigned index, uint32_t valu
 
 static void software_details(const struct panic_frame *frame)
 {
-    field(12, 56, 2, "LR", frame->exception_lr);
-    field(12, 80, 1, "SP", frame->sp);
-    field(166, 80, 1, "CPSR", frame->cpsr);
+    field(12, 52, 2, "LR", frame->exception_lr);
+    field(12, 72, 1, "SP", frame->sp);
+    field(166, 72, 1, "CPSR", frame->cpsr);
+    heap_line(84);
     text(12, 96, 1, "REGISTERS");
     text(166, 96, 1, "STACK");
     if (frame->valid) {
@@ -257,7 +335,7 @@ static void render_line(const struct panic_frame *frame)
         pc -= 4;
         break;
     case 8:
-        reason = "SOFTWARE ABORT";
+        reason = out_of_memory() ? "OUT OF MEMORY" : "SOFTWARE ABORT";
         break;
     }
     text(12, 10, 2, "OS PANIC");
@@ -280,6 +358,7 @@ static void render_line(const struct panic_frame *frame)
     }
     field(12, 134, 1, "CPSR", frame->cpsr);
     field(166, 134, 1, "SPSR", frame->spsr);
+    heap_line(146);
     if (frame->valid) {
         for (unsigned i = 0; i < 13; i++)
             register_field(i < 7 ? 12 : 166, 158 + (i % 7) * 9, i, frame->registers[i]);

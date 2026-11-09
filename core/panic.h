@@ -37,5 +37,10 @@ struct panic_frame {
 };
 
 void core_panic_screen(const struct panic_frame *frame) __attribute__((noreturn));
+/* Uncaught C++ exception that reached Runtime_Abort: {kind + 1, what}, zero when
+ * none. Kinds: 0 exception, 1 unexpected, 2 bad_alloc, 3 unknown. */
+extern uint32_t core_panic_exception[2];
+/* Extension whose code the core is running, or 0; printed by the panic screen. */
+extern uint32_t core_panic_extension;
 #endif
 #endif
