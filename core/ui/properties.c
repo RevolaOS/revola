@@ -13,6 +13,7 @@
 #include "ui/indexed.h"
 #include "ui/lists.h"
 #include "ui/menus.h"
+#include "ui/panes.h"
 #include "ui/resources.h"
 #include "ui/screens.h"
 #include "ui/toggles.h"
@@ -85,7 +86,7 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
         return 1;
     }
     if (!s && !row)
-        return core_next_call(next, model, type, id, out);
+        return core_panes_property(type, id, out) ? 1 : core_next_call(next, model, type, id, out);
     if (s && s->declaration->kind == RV_SCREEN_SLIDER && id >= CORE_SCREEN_ROWS(s))
         return core_slider_property(s, type, id, out) ? 1 : core_next_call(next, model, type, id, out);
     if (s && core_indexed_property(s, type, id, out))
@@ -135,6 +136,8 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     uint32_t item = parse_handler(name), found;
     if (!item)
         return 0;
+    if (core_menus_pane(item, argument))
+        return 1;
     struct core_screen *s = core_screens_of_id(item);
     struct rv_extension_record *owner = s ? s->owner : NULL;
     const struct rv_row *row = s ? screen_row(s, item, &found) : core_menus_row(item, &owner, &found);

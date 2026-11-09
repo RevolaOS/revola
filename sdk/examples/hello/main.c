@@ -164,11 +164,37 @@ static const struct rv_screen screens[] = {
      {.choice = {SETTING_TOPPINGS, 0, toppings, 4}}},
 };
 
+/* The Settings pane icon: a 48 x 48 indexed BMap of a red disc, palette
+ * entries B, G, R, A. Built when the module loads. */
+#define ICON_SIZE 48
+static uint32_t icon[(BMap_payload + 4 + 3 * 4 + ICON_SIZE * ICON_SIZE + 3) / 4];
+
+static void build_icon(void)
+{
+    static const uint8_t palette[3][4] = {{0, 0, 0, 0}, {0, 0, 255, 255}, {255, 255, 255, 255}};
+    uint8_t *b = (uint8_t *)icon, *pixels = b + BMap_payload + 4 + sizeof palette;
+    *(uint16_t *)(b + BMap_format) = BMapFormat_Indexed8;
+    *(uint16_t *)(b + BMap_stride) = ICON_SIZE;
+    *(uint16_t *)(b + BMap_depth) = 8;
+    int32_t *bounds = (int32_t *)(b + BMap_bounds);
+    bounds[2] = bounds[3] = ICON_SIZE;
+    *(uint32_t *)(b + BMap_payload_bytes) = 4 + sizeof palette + ICON_SIZE * ICON_SIZE;
+    *(uint32_t *)(b + BMap_payload) = 3;
+    for (unsigned i = 0; i < sizeof palette; i++)
+        b[BMap_payload + 4 + i] = palette[i / 4][i % 4];
+    for (int y = 0; y < ICON_SIZE; y++)
+        for (int x = 0; x < ICON_SIZE; x++) {
+            int dx = 2 * x + 1 - ICON_SIZE, dy = 2 * y + 1 - ICON_SIZE;
+            pixels[y * ICON_SIZE + x] = dx * dx + dy * dy < ICON_SIZE * ICON_SIZE ? 1 : 0;
+        }
+}
+
 #define PUSH_ROW {"Hello", RV_ROW_PUSH, 0, 0, "hello.menu", 0, 0}
 #define WAVE_ROW {"Wave", RV_ROW_ACTION, 0, 0, 0, wave, 0}
 
 static const struct rv_entry entries[] = {
-    {RV_ROOT_SETTINGS, 1, {0}, 0, RV_RES_SettingsMenu_Legal_Item, PUSH_ROW, "Fixture extension", 0},
+    {RV_ROOT_SETTINGS, 1, {0}, 0, RV_RES_SettingsMenu_Legal_Item, PUSH_ROW, "Fixture extension",
+     icon},
     {RV_ROOT_MAIN, 1, {0}, 0, RV_RES_MainMenu_Extras_Item, PUSH_ROW, 0, 0},
     {RV_ROOT_MUSIC, 1, {0}, 0, 0, PUSH_ROW, 0, 0},
     {RV_ROOT_EXTRAS, 1, {0}, 0, 0, PUSH_ROW, 0, 0},
@@ -191,6 +217,7 @@ const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle
 {
     api = core;
     self = handle;
+    build_icon();
     record(0x01);
     return &extension;
 }

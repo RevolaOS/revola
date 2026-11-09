@@ -21,6 +21,11 @@ const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **ow
 uint32_t core_menus_count(uint8_t root);
 const char *core_menus_label(uint8_t root, uint32_t n, int *visible, uint32_t *after);
 void core_menus_toggle(uint8_t root, uint32_t n);
+/* The live entry of the row with this item id, or NULL. */
+const struct rv_entry *core_menus_entry(uint32_t item);
+/* 1 when `id` is a Settings row's pane handler id; shows that row in the pane
+ * unless `argument` is the support query. */
+int core_menus_pane(uint32_t id, uint32_t argument);
 /* 1 when `id` is the item or source id of a row, live or stale. */
 int core_menus_owns(uint32_t id);
 

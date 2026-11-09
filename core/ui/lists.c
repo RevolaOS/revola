@@ -11,6 +11,7 @@
 #include "ui/lists.h"
 #include "osos-2.0.5.h"
 #include "ui/clones.h"
+#include "ui/panes.h"
 #include "ui/resources.h"
 #include "ui/screens.h"
 #include <stddef.h>
@@ -51,68 +52,18 @@ static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_
     }
 }
 
-/* The VLyt the stock split layout gives its preview pane. */
-static uint32_t stock_pane_layout(void)
-{
-    uint32_t bytes;
-    const void *slyt = stock(Resource_SLyt, RES_Settings_MainMenu_Layout, &bytes);
-    for (uint32_t l = 0; slyt && l < core_blocks_count(slyt); l++) {
-        struct core_block list, instance;
-        core_block_at(slyt, l, &list);
-        const void *ssin = stock(Resource_SSin, core_word_at(list.data, 0), &bytes);
-        for (uint32_t i = 0; ssin && core_block_at(ssin, i, &instance); i++)
-            if (core_word_at(instance.data, SsinInstance_template) == RES_SettingsPreview_Template)
-                return core_word_at(instance.data, SsinInstance_substitute);
-    }
-    return 0;
-}
-
-/* The pane's VLyt with the caption bound to the screen title and every other
- * view hidden. Every pane view is bound: template views keep what the last
- * screen applied. TODO: a pane icon and caption per screen. */
-static int write_pane(struct core_writer *w, const void *vlyt, uint32_t title)
-{
-    uint32_t views = core_blocks_count(vlyt);
-    core_write_word(w, views);
-    for (uint32_t v = 0; v < views; v++) {
-        struct core_block view, option;
-        core_block_at(vlyt, v, &view);
-        uint32_t begin = core_write_block_begin(w, view.kind);
-        core_write_word(w, core_blocks_count(view.data));
-        for (uint32_t o = 0; core_block_at(view.data, o, &option); o++) {
-            uint32_t b = core_write_block_begin(w, option.kind);
-            int caption = view.kind == RES_SettingsPreview_Caption_Text;
-            if (option.kind == Resource_SORC && caption)
-                core_write_word(w, title);
-            else if (option.kind == ViewOption_Visible && !caption)
-                core_write_bytes(w, "", 1);
-            else
-                core_write_bytes(w, option.data, option.bytes);
-            core_write_block_end(w, b);
-        }
-        core_write_block_end(w, begin);
-    }
-    return 1;
-}
-
 /* A split layout: the Settings > Main Menu layout with the title and the pane
- * rebound, and the list bound by the screen's VSlt (the stock split screens
- * bind their list there, not in the list instance). Takes one id from *next for
- * the pane. */
+ * rebound (the caption shows the title, the other pane views are hidden), and
+ * the list bound by the screen's VSlt (the stock split screens bind their list
+ * there, not in the list instance). Takes one id from *next for the pane.
+ * TODO: a pane icon and caption per screen. */
 static int clone_split(struct core_screen *s, uint32_t *next, uint8_t *scratch, uint32_t bytes)
 {
-    uint32_t pane_bytes, stock_pane = stock_pane_layout();
-    const void *pane = stock_pane ? stock(Resource_VLyt, stock_pane, &pane_bytes) : NULL;
-    if (!pane)
-        return 0;
     struct core_writer w = {scratch, 0};
-    uint32_t pane_id = (*next)++;
-    write_pane(&w, pane, s->id + 2);
-    ResourceBank_SetResource(bank, Resource_VLyt, pane_id, scratch, w.at);
-    uint32_t events_bytes;
-    const void *events = stock(Resource_TEVT, stock_pane, &events_bytes);
-    if (events)
-        ResourceBank_SetResource(bank, Resource_TEVT, pane_id, events, events_bytes);
+    uint32_t pane_id = (*next)++, stock_pane = core_panes_write(&w, s->id + 2, 0, 0);
+    if (!stock_pane)
+        return 0;
+    core_panes_store(pane_id, scratch, w.at, stock_pane);
     uint32_t vslt[5] = {1, 8, ViewBinding_ItemTable, RES_SettingsList_View, s->id + 3};
     ResourceBank_SetResource(bank, Resource_VSlt, s->id, vslt, sizeof vslt);
     struct layout_clone c = {RES_Settings_MainMenu_Layout, s->id + 1, RES_StatusBarWhite_Text,

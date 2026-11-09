@@ -9,6 +9,7 @@
  * the handler names resolve through core_screens_action. */
 
 #include "ui/menus.h"
+#include "ui/panes.h"
 #include "ui/clones.h"
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
@@ -140,7 +141,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
                 r = &rows[i];
         if (!r)
             return RV_NO_MEMORY;
-        uint32_t item = core_resource_take(key, 2);
+        /* Item, title source, and for a Settings row its pane handler. */
+        uint32_t item = core_resource_take(key, e->root == RV_ROOT_SETTINGS ? 3 : 2);
         if (!item)
             return core_resource_block_held(key) ? RV_CONFLICT : RV_NO_MEMORY;
         r->owner = owner;
@@ -164,6 +166,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             continue;
         }
         r->after = e->after ? e->after : roots[e->root].anchor;
+        if (e->root == RV_ROOT_SETTINGS)
+            core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
         if (e->row.kind == RV_ROW_TOGGLE)
             core_set_source2(bank, item + 1, item, item + 1, SourceDestination_InlineValue);
@@ -235,6 +239,25 @@ void core_menus_toggle(uint8_t root, uint32_t n)
     apply_visibility(r);
 }
 
+const struct rv_entry *core_menus_entry(uint32_t item)
+{
+    for (uint32_t i = 0; i < MAX_ROWS; i++)
+        if (rows[i].entry && rows[i].item == item)
+            return rows[i].entry;
+    return NULL;
+}
+
+int core_menus_pane(uint32_t id, uint32_t argument)
+{
+    for (uint32_t i = 0; i < MAX_ROWS; i++)
+        if (rows[i].entry && rows[i].root == RV_ROOT_SETTINGS && rows[i].item + 2 == id) {
+            if (argument != ActionSupportQuery)
+                core_panes_show(rows[i].item);
+            return 1;
+        }
+    return 0;
+}
+
 int core_menus_owns(uint32_t id)
 {
     for (uint32_t i = 0; i < MAX_ROWS; i++)
@@ -303,6 +326,16 @@ static void write_bindings(struct core_writer *w, uint32_t screen_id)
             core_put_text(n, name + sizeof name, handler);
         }
         core_write_event(w, name, handler, NULL, NULL, 0);
+        count++;
+        if (r->root != RV_ROOT_SETTINGS)
+            continue;
+        /* The preview pane: the row's pane handler, then the shared layout. */
+        static const char *const layout[] = {core_panes_layout_name};
+        n = core_put_text(name, name + sizeof name, "list.pid.");
+        n = core_put_number(n, name + sizeof name, r->item);
+        core_put_text(n, name + sizeof name, ".delayedselected");
+        core_screens_handler_name(handler, r->item + 2);
+        core_write_event(w, name, handler, "navigator.SwitchLayout", layout, 1);
         count++;
     }
     if (w->out)

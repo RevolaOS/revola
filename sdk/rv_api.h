@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 3
+#define RV_API_MINOR 4
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* The loader's record of the extension; passed back to every call. */
@@ -184,9 +184,11 @@ struct rv_screen {
 
 /* A row the extension adds to a native menu (`root`, `container` NULL) or to a
  * container. `after` is an RV_RES_* row id of that menu, 0 for the end. Under
- * Settings the preview pane shows `caption` and `bitmap` while the row is
- * highlighted. Rows under Main and Music appear in Settings > Main Menu and
- * Music Menu, `visible` is their default there. */
+ * Settings the preview pane shows the label, `caption` as the line below and
+ * `bitmap` as the icon while the row is highlighted; `bitmap` is a BMap resource
+ * (BMap_* in the symbols header). Either may be NULL, and the pane then shows
+ * nothing in its place. Rows under Main and Music appear in Settings > Main
+ * Menu and Music Menu, `visible` is their default there. */
 struct rv_entry {
     uint8_t root;
     uint8_t visible;

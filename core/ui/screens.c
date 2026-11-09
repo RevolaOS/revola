@@ -12,6 +12,7 @@
 #include "ui/indexed.h"
 #include "ui/lists.h"
 #include "ui/menus.h"
+#include "ui/panes.h"
 #include "ui/properties.h"
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
@@ -239,6 +240,7 @@ void core_screens_init(void *bank)
 {
     core_properties_init();
     core_clones_init(bank);
+    core_panes_init(bank);
     core_lists_init(bank);
     core_toggles_init(bank);
     core_indexed_init(bank);
