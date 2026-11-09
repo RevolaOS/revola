@@ -21,7 +21,17 @@
 #define NATIVE_FLOOR (14u * MIB)
 #define FLASH_RESERVE (24u * MIB)
 #define FLASH_FLOOR (6u * MIB)
+/* The native media-player read-ahead: max(cache - PLAYER_RESERVE, PLAYER_MIN). */
+#define PLAYER_RESERVE (10u * MIB)
+#define PLAYER_MIN (6u * MIB)
+/* The eApp block manager's request for a game. */
+#define GAME_BLOCKS (8u * MIB)
+/* Read-ahead that still plays ALAC at 1 Mbps with seeking and skipping. */
+#define PLAYER_FLOOR (2u * MIB)
+/* Heap that growing the cache for a game leaves free for the game and the UI. */
+#define GROW_HEAP_MARGIN (1u * MIB)
 #define NOP 0xe1a00000u
+#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
 enum {
     ID_CONFIG = 0,
@@ -133,6 +143,30 @@ static const struct core_hook cache_budget_hooks[] = {
     {CORE_SITE_BlockCache_FloorSet_word, CORE_HOOK_REPLACE, 0, (void *)NOP},
 };
 
+/* The media player's read-ahead for a cache of cache_bytes. The native minimum
+ * shrinks only where a game would not fit beside it, which only the flash floor
+ * reaches: on a hard disk the cache is at least 14 MiB and the result is Apple's. */
+uint32_t core_media_read_ahead(uint32_t cache_bytes)
+{
+    uint32_t minimum = PLAYER_MIN;
+    if (cache_bytes < PLAYER_MIN + GAME_BLOCKS)
+        minimum = cache_bytes > PLAYER_FLOOR + GAME_BLOCKS ? cache_bytes - GAME_BLOCKS
+                                                           : PLAYER_FLOOR;
+    return cache_bytes > PLAYER_RESERVE + minimum ? cache_bytes - PLAYER_RESERVE : minimum;
+}
+
+/* Called with r0 = cache bytes - 10 MiB, as Apple computes it; may be negative. */
+static uint32_t read_ahead(uint32_t over_reserve, const struct core_next *next)
+{
+    (void)next;
+    return core_media_read_ahead(over_reserve + PLAYER_RESERVE);
+}
+
+static const struct core_hook read_ahead_hooks[] = {
+    {CORE_SITE_MediaPlayer_ReadAheadMinTest_word, CORE_HOOK_REPLACE, 0, read_ahead},
+    {CORE_SITE_MediaPlayer_ReadAheadMinSet_word, CORE_HOOK_REPLACE, 0, (void *)NOP},
+};
+
 static void bind_all(const struct core_hook *hooks, uint32_t count)
 {
     for (uint32_t i = 0; i < count; i++)
@@ -148,4 +182,6 @@ void core_memory_bind(void)
 {
     if (enabled(CORE_KEY_CACHE_BUDGET))
         bind_all(cache_budget_hooks, 4);
+    if (enabled(CORE_KEY_READAHEAD_FLOOR))
+        bind_all(read_ahead_hooks, 2);
 }

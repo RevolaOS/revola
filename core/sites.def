@@ -52,6 +52,13 @@ SITE(BlockCache_ReserveNative_word, SITE_BlockCache_ReserveNative_word, WORD, 0,
 SITE(BlockCache_FloorTest_word, SITE_BlockCache_FloorTest_word, WORD, 0, 0xe350060e, 0, 0, 0)
 SITE(BlockCache_FloorSet_word, SITE_BlockCache_FloorSet_word, WORD, 0, 0x33a0060e, 0, 0, 0)
 
+/* MediaPlayer_ReadAheadBytes: r0 = cache bytes - 10 MiB, then cmp/movlt against the
+ * 6 MiB minimum. The compare becomes a call returning the read-ahead, the movlt a nop. */
+SITE(MediaPlayer_ReadAheadMinTest_word, SITE_MediaPlayer_ReadAheadMinTest_word, CALL, 0,
+     0xe3500606, 0, 0, 1)
+SITE(MediaPlayer_ReadAheadMinSet_word, SITE_MediaPlayer_ReadAheadMinSet_word, WORD, 0,
+     0xb3a00606, 0, 0, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */
