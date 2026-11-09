@@ -30,7 +30,15 @@
 .balign 4
 core_stub_\name:
 .if \copy
-    mov r(\argc - 1), r\copy
+.if \argc == 1
+    mov r0, r\copy
+.elseif \argc == 2
+    mov r1, r\copy
+.elseif \argc == 3
+    mov r2, r\copy
+.else
+    mov r3, r\copy
+.endif
 .endif
 .if \argc < 4
     ldr r\argc, =core_root_\name
