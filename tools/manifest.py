@@ -22,7 +22,7 @@ manifest.toml:
     [[module]]
     name = "editor"
     trigger = "screen"           # loaded while one of its screens is on the stack
-    screens = ["hello.editor"]
+    screens = ["editor"]     # names from the extension's screen declarations
 
     [[site]]                     # a raw hook site, bound as RV_RAW_SITE(0)
     name = "coverflow_clear"     # a label for the site

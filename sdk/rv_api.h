@@ -147,9 +147,10 @@ struct rv_input {
     int16_t delta; /* wheel steps, signed */
 };
 
-/* A screen the core registers for the extension. `name` is "<id>.<screen>",
- * the name a module's manifest trigger and RV_ROW_PUSH use. Labels, text and
- * bitmaps are read from the module while the screen is open; nothing is copied. */
+/* A screen the core registers for the extension. `name` is what RV_ROW_PUSH,
+ * ui_push and a module's manifest trigger call it, local to the extension.
+ * Labels, text and bitmaps are read from the module while the screen is open;
+ * nothing is copied. */
 struct rv_screen {
     const char *name;
     const char *title;

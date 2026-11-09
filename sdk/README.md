@@ -4,7 +4,8 @@ Headers, linker script, tools and Make include for building extensions against o
 
 | File | Contents |
 |---|---|
-| `rv_api.h` | the `rv_api` table the core passes to a module's entry, the descriptor it returns, hook, setting and container declarations; `RV_API_MAJOR`/`RV_API_MINOR` |
+| `rv_api.h` | the `rv_api` table the core passes to a module's entry, the descriptor it returns, hook, setting, screen, row and entry declarations; `RV_API_MAJOR`/`RV_API_MINOR` |
+| `rv_ui.h` | one-line declarations of rows, screens, entries and settings over those structs (`RV_PUSH`, `RV_LIST`, `RV_ENTRY`, `RV_SETTING_CHOICE`) |
 | `rv_sites.h` | `RV_SITE_*` ids of every hook site in this core, generated from the core's site table |
 | `rv_menus.h` | the stock rows of the Main, Music, Extras and Settings menus (`RV_SETTINGS_LEGAL`), generated from the symbols header; what an entry anchors on |
 | `rv_firmware.h`, `rv_firmware.mk` | `RV_FIRMWARE_ID` of the Apple firmware the symbols describe; the loader refuses a module built for another |

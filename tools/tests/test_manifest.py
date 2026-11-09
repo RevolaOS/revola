@@ -17,7 +17,7 @@ DOCUMENT = {
     "enabled": False,
     "module": [
         {"name": "main", "trigger": "always"},
-        {"name": "editor", "trigger": "screen", "screens": ["hello.editor", "x"]},
+        {"name": "editor", "trigger": "screen", "screens": ["editor", "x"]},
         {"name": "dsp", "trigger": "manual"},
     ],
 }
@@ -55,8 +55,8 @@ class ManifestTests(unittest.TestCase):
             (strings(data, table, name), strings(data, table, file), trigger, screens),
             ("editor", "editor.rvx", 1, 2),
         )
-        self.assertEqual(strings(data, table, first), "hello.editor")
-        after = first + len("hello.editor") + 1
+        self.assertEqual(strings(data, table, first), "editor")
+        after = first + len("editor") + 1
         self.assertEqual(strings(data, table, after), "x")
         self.assertEqual(modules[0][2:4], (0, 0))
         self.assertEqual(modules[2][2:4], (2, 0))

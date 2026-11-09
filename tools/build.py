@@ -111,7 +111,7 @@ def build_apple(config, out, inputs, recipe_only=False, nor=None):
         assemble(config, files, out / "cfw-loader.bin", inputs, nor=nor)
 
 
-SDK_FILES = ("rv_api.h", "rvx.lds", "rv.mk", "README.md")
+SDK_FILES = ("rv_api.h", "rv_ui.h", "rvx.lds", "rv.mk", "README.md")
 
 
 def stage_sdk(config, directory):

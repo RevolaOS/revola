@@ -2,14 +2,15 @@
 
 /* Loader and UI test fixture: two filters on the Settings property site, its
  * settings, and a Settings row that opens a list with a text page, a toggle, an
- * action, a slider, a canvas, a choice, a multi-choice and a runtime list. Each hook call
- * appends an event to a log the emulator reads through the exported symbol in
- * the module's data. */
+ * action, a slider, a canvas, a choice, a multi-choice and a runtime list. Each
+ * hook call appends an event to a log the emulator reads through the exported
+ * symbol in the module's data. */
 
 #include "osos-2.0.5.h"
 #include "rv_api.h"
 #include "rv_menus.h"
 #include "rv_sites.h"
+#include "rv_ui.h"
 
 #define SETTING_CALLS 1
 #define SETTING_BEEP 2
@@ -68,11 +69,11 @@ static const char *const toppings[] = {"Cheese", "Olives", "Basil", "Chili"};
 /* Level and Toppings open the screens the core makes from their style; Colour
  * keeps a declared choice screen so both paths are exercised. */
 static const struct rv_setting settings[] = {
-    {SETTING_CALLS, RV_SETTING_INT, RV_STYLE_NONE, 0, 0, 1000000, "Property calls", 0, 0},
-    {SETTING_BEEP, RV_SETTING_BOOL, RV_STYLE_NONE, 0, 0, 1, "Beep", 0, 0},
-    {SETTING_LEVEL, RV_SETTING_INT, RV_STYLE_SLIDER, 2, 0, 4, "Level", levels, 5},
-    {SETTING_COLOUR, RV_SETTING_INT, RV_STYLE_NONE, 0, 0, 3, "Colour", 0, 0},
-    {SETTING_TOPPINGS, RV_SETTING_INT, RV_STYLE_MULTI, 1, 0, 15, "Toppings", toppings, 4},
+    RV_SETTING_NUMBER(SETTING_CALLS, "Property calls", 0, 0, 1000000),
+    RV_SETTING_FLAG(SETTING_BEEP, "Beep", 0),
+    RV_SETTING_SLIDER(SETTING_LEVEL, "Level", 2, levels),
+    RV_SETTING_NUMBER(SETTING_COLOUR, "Colour", 0, 0, 3),
+    RV_SETTING_MULTI(SETTING_TOPPINGS, "Toppings", 1, toppings),
 };
 
 static void wave(void)
@@ -93,11 +94,11 @@ static uint8_t box_colour;
 static void sketch_draw(void *context, const int32_t *bounds)
 {
     static const uint8_t white[4] = {255, 255, 255, 255};
-    static const uint8_t colours[2][4] = {{0, 102, 204, 255}, {204, 51, 0, 255}};
+    static const uint8_t box_colours[2][4] = {{0, 102, 204, 255}, {204, 51, 0, 255}};
     int32_t box[4] = {bounds[0] + 40, bounds[1] + box_left, bounds[0] + 100, bounds[1] + box_left + 60};
     GraphicsContext_SetColor(context, white);
     GraphicsContext_FillRect(context, bounds);
-    GraphicsContext_SetColor(context, colours[box_colour]);
+    GraphicsContext_SetColor(context, box_colours[box_colour]);
     GraphicsContext_FillRect(context, box);
 }
 
@@ -124,7 +125,7 @@ static const char *const planets[][2] = {
 
 static uint32_t planet_count(void)
 {
-    return sizeof planets / sizeof planets[0];
+    return RV_COUNT(planets);
 }
 
 static const char *planet_row(uint32_t index, const char **detail)
@@ -140,25 +141,24 @@ static int planet_select(uint32_t index)
 }
 
 static const struct rv_row rows[] = {
-    {"About", RV_ROW_PUSH, 0, 0, "hello.about", 0, 0},
-    {"Beep", RV_ROW_SETTING, 0, SETTING_BEEP, 0, 0, 0},
-    {"Wave", RV_ROW_ACTION, 0, 0, 0, wave, 0},
-    {"Wave again", RV_ROW_ACTION, 0, 0, 0, wave, 0},
-    {"Level", RV_ROW_SETTING, 0, SETTING_LEVEL, 0, 0, 0},
-    {"Sketch", RV_ROW_PUSH, 0, 0, "hello.sketch", 0, 0},
-    {"Colour", RV_ROW_PUSH, 0, 0, "hello.colour", 0, 0},
-    {"Planets", RV_ROW_PUSH, 0, 0, "hello.planets", 0, 0},
-    {"Toppings", RV_ROW_SETTING, 0, SETTING_TOPPINGS, 0, 0, 0},
+    RV_PUSH("About", "about"),
+    RV_SETTING("Beep", SETTING_BEEP),
+    RV_ACTION("Wave", wave),
+    RV_ACTION("Wave again", wave),
+    RV_SETTING("Level", SETTING_LEVEL),
+    RV_PUSH("Sketch", "sketch"),
+    RV_PUSH("Colour", "colour"),
+    RV_PUSH("Planets", "planets"),
+    RV_SETTING("Toppings", SETTING_TOPPINGS),
 };
 
 static const struct rv_screen screens[] = {
-    {"hello.menu", "Hello", RV_SCREEN_LIST, RV_LAYOUT_AUTO, {0}, {.list = {rows, 9}}},
-    {"hello.about", "About Hello", RV_SCREEN_TEXT, 0, {0}, {.text = {about, 2}}},
-    {"hello.sketch", "Sketch", RV_SCREEN_CANVAS, 0, {0}, {.canvas = {sketch_draw, sketch_input}}},
-    {"hello.colour", "Colour", RV_SCREEN_CHOICE, RV_LAYOUT_FULL, {0},
-     {.choice = {SETTING_COLOUR, 0, colours, 4}}},
-    {"hello.planets", "Planets", RV_SCREEN_RUNTIME_LIST, RV_LAYOUT_SPLIT, {0},
-     {.runtime = {planet_count, planet_row, planet_select, 1}}},
+    RV_LIST("menu", "Hello", rows),
+    RV_TEXT("about", "About Hello", about),
+    RV_CANVAS("sketch", "Sketch", sketch_draw, sketch_input),
+    RV_CHOICE("colour", "Colour", SETTING_COLOUR, colours, .layout = RV_LAYOUT_FULL),
+    RV_RUNTIME_LIST("planets", "Planets", planet_count, planet_row, planet_select,
+                    .layout = RV_LAYOUT_SPLIT, .runtime.stacked = 1),
 };
 
 /* The Settings pane icon: a 48 x 48 indexed BMap of a red disc, palette
@@ -186,18 +186,16 @@ static void build_icon(void)
         }
 }
 
-#define PUSH_ROW {"Hello", RV_ROW_PUSH, 0, 0, "hello.menu", 0, 0}
-#define WAVE_ROW {"Wave", RV_ROW_ACTION, 0, 0, 0, wave, 0}
-
 static const struct rv_entry entries[] = {
-    {"settings", 1, {0}, RV_SETTINGS_LEGAL, PUSH_ROW, "Fixture extension", icon},
-    {"main", 1, {0}, RV_MAIN_EXTRAS, PUSH_ROW, 0, 0},
-    {"music", 1, {0}, 0, PUSH_ROW, 0, 0},
-    {"extras", 1, {0}, 0, PUSH_ROW, 0, 0},
-    {"nowplaying", 1, {0}, 0, WAVE_ROW, 0, 0},
-    {"song", 1, {0}, 0, WAVE_ROW, 0, 0},
-    {"album", 1, {0}, 0, WAVE_ROW, 0, 0},
-    {"artist", 1, {0}, 0, WAVE_ROW, 0, 0},
+    RV_ENTRY("settings", RV_SETTINGS_LEGAL, RV_PUSH("Hello", "menu"),
+             .caption = "Fixture extension", .bitmap = icon),
+    RV_ENTRY("main", RV_MAIN_EXTRAS, RV_PUSH("Hello", "menu")),
+    RV_ENTRY("music", 0, RV_PUSH("Hello", "menu")),
+    RV_ENTRY("extras", 0, RV_PUSH("Hello", "menu")),
+    RV_ENTRY("nowplaying", 0, RV_ACTION("Wave", wave)),
+    RV_ENTRY("song", 0, RV_ACTION("Wave", wave)),
+    RV_ENTRY("album", 0, RV_ACTION("Wave", wave)),
+    RV_ENTRY("artist", 0, RV_ACTION("Wave", wave)),
 };
 
 static void unload(void)
@@ -206,7 +204,8 @@ static void unload(void)
 }
 
 static const struct rv_extension extension = {
-    sizeof extension, hooks, 2, settings, 5, 0, 0, unload, screens, 5, entries, 8,
+    .size = sizeof extension, RV_HOOKS(hooks),     RV_SETTINGS(settings),
+    RV_SCREENS(screens),      RV_ENTRIES(entries), .unload = unload,
 };
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)
