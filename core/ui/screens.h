@@ -30,6 +30,8 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
 void core_screens_release(struct rv_extension_record *owner);
 /* The screen named `name` of `owner`, or NULL. */
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name);
+/* The screen whose ids include `id`, or NULL. */
+struct core_screen *core_screens_of_id(uint32_t id);
 /* The open screen of a controller the runtime pushed, or NULL. */
 struct core_screen *core_screens_of_controller(void *controller);
 /* The most recently pushed open screen of a kind, or NULL. */

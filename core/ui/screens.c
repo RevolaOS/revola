@@ -12,6 +12,8 @@
 #include "ui/screens.h"
 #include "ui/canvas.h"
 #include "ui/clones.h"
+#include "ui/indexed.h"
+#include "ui/lists.h"
 #include "ui/menus.h"
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
@@ -97,7 +99,7 @@ struct core_screen *core_screens_find(struct rv_extension_record *owner, const c
     return NULL;
 }
 
-static struct core_screen *screen_of_id(uint32_t id)
+struct core_screen *core_screens_of_id(uint32_t id)
 {
     for (uint32_t i = 0; i < MAX_SCREENS; i++) {
         struct core_screen *s = &core_screens[i];
@@ -179,6 +181,9 @@ static int build(struct core_screen *s)
         return 1;
     switch (s->declaration->kind) {
     case RV_SCREEN_LIST:
+    case RV_SCREEN_CHOICE:
+    case RV_SCREEN_MULTI_CHOICE:
+    case RV_SCREEN_RUNTIME_LIST:
         s->built = core_clone_list(s);
         break;
     case RV_SCREEN_TEXT:
@@ -200,7 +205,7 @@ int core_screens_push(struct core_screen *s, void *controller)
 {
     uint8_t kind = s->declaration->kind;
     int input = kind == RV_SCREEN_SLIDER || kind == RV_SCREEN_CANVAS;
-    if (open_count == MAX_OPEN || (input && !core_canvas_prepare()))
+    if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
     core_loader_screen_pushed(s->declaration->name);
     if (!build(s))
@@ -211,6 +216,7 @@ int core_screens_push(struct core_screen *s, void *controller)
         return 0;
     if (input)
         core_canvas_attach(created);
+    core_indexed_attach(s, created);
     open[open_count].controller = created;
     open[open_count].screen = s;
     open_count++;
@@ -273,7 +279,7 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
     settings_model = (void *)model;
     if (id >> 24 != CORE_RESOURCE_PREFIX)
         return core_next_call(next, model, type, id, out);
-    struct core_screen *s = screen_of_id(id);
+    struct core_screen *s = core_screens_of_id(id);
     struct rv_extension_record *owner = s ? s->owner : NULL;
     uint32_t item = 0;
     const struct rv_row *row = s ? screen_row(s, id, &item) : core_menus_row(id, &owner, &item);
@@ -281,6 +287,8 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
         return core_next_call(next, model, type, id, out);
     if (s && s->declaration->kind == RV_SCREEN_SLIDER && id >= CORE_SCREEN_ROWS(s))
         return core_slider_property(s, type, id, out) ? 1 : core_next_call(next, model, type, id, out);
+    if (s && core_indexed_property(s, type, id, out))
+        return 1;
     /* The last model-backed row of a list sets the list's row count: one row per
      * title property, so the list shows every row. */
     if (type == Property_Count) {
@@ -326,13 +334,19 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     uint32_t item = parse_handler(name), found;
     if (!item)
         return 0;
-    struct core_screen *s = screen_of_id(item);
+    struct core_screen *s = core_screens_of_id(item);
     struct rv_extension_record *owner = s ? s->owner : NULL;
     const struct rv_row *row = s ? screen_row(s, item, &found) : core_menus_row(item, &owner, &found);
-    if (!row)
+    uint8_t kind = s ? s->declaration->kind : RV_SCREEN_LIST;
+    int indexed = core_lists_indexed(kind);
+    if (!row && !indexed)
         return 0;
     if (argument == ActionSupportQuery)
         return 1;
+    if (indexed) {
+        core_indexed_chosen(s);
+        return 1;
+    }
     struct core_screen *target;
     switch (row->kind) {
     case RV_ROW_PUSH:
@@ -377,6 +391,8 @@ static const struct core_hook hooks[] = {
 void core_screens_init(void *bank)
 {
     core_clones_init(bank);
+    core_lists_init(bank);
+    core_indexed_init(bank);
     core_canvas_init();
     core_templates_init(bank);
     for (uint32_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++)

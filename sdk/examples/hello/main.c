@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Loader and UI test fixture: two filters on the Settings property site, one
- * setting, and a Settings row that opens a list with a text page, a toggle, an
- * action, a slider and a canvas. Each hook call appends an event to a log the emulator reads
- * through the exported symbol in the module's data. */
+/* Loader and UI test fixture: two filters on the Settings property site, its
+ * settings, and a Settings row that opens a list with a text page, a toggle, an
+ * action, a slider, a canvas, a choice, a multi-choice and a runtime list. Each hook call
+ * appends an event to a log the emulator reads through the exported symbol in
+ * the module's data. */
 
 #include "osos-2.0.5.h"
 #include "rv_api.h"
@@ -13,6 +14,8 @@
 #define SETTING_CALLS 1
 #define SETTING_BEEP 2
 #define SETTING_LEVEL 3
+#define SETTING_COLOUR 4
+#define SETTING_TOPPINGS 5
 
 struct hello_log {
     uint32_t magic; /* 'HELO' */
@@ -62,6 +65,8 @@ static const struct rv_setting settings[] = {
     {SETTING_CALLS, RV_SETTING_INT, 0, 0, 0, 1000000, "Property calls"},
     {SETTING_BEEP, RV_SETTING_BOOL, 0, 0, 0, 1, "Beep"},
     {SETTING_LEVEL, RV_SETTING_INT, 0, 0, 0, 4, "Level"},
+    {SETTING_COLOUR, RV_SETTING_INT, 0, 0, 0, 3, "Colour"},
+    {SETTING_TOPPINGS, RV_SETTING_INT, 0, 0, 0, 15, "Toppings"},
 };
 
 static int wave(void *controller)
@@ -108,6 +113,32 @@ static int sketch_input(const struct rv_input *input)
     return 1;
 }
 
+static const char *const colours[] = {"Blue", "Red", "Green", "Grey"};
+static const char *const toppings[] = {"Cheese", "Olives", "Basil", "Chili"};
+
+/* Planets: a runtime list; choosing logs 0xd0 | index << 8, the last row pops. */
+static const char *const planets[][2] = {
+    {"Mercury", "0.4 AU"}, {"Venus", "0.7 AU"}, {"Earth", "1 AU"}, {"Mars", "1.5 AU"},
+    {"Jupiter", "5.2 AU"}, {"Saturn", "9.5 AU"},
+};
+
+static uint32_t planet_count(void)
+{
+    return sizeof planets / sizeof planets[0];
+}
+
+static const char *planet_row(uint32_t index, const char **detail)
+{
+    *detail = planets[index][1];
+    return planets[index][0];
+}
+
+static int planet_select(uint32_t index)
+{
+    record(0xd0 | index << 8);
+    return index + 1 == planet_count();
+}
+
 static const struct rv_row rows[] = {
     {"About", RV_ROW_PUSH, 0, 0, "hello.about", 0, 0},
     {"Beep", RV_ROW_TOGGLE, 0, SETTING_BEEP, 0, 0, 0},
@@ -115,13 +146,22 @@ static const struct rv_row rows[] = {
     {"Wave again", RV_ROW_ACTION, 0, 0, 0, wave, 0},
     {"Level", RV_ROW_PUSH, 0, 0, "hello.level", 0, 0},
     {"Sketch", RV_ROW_PUSH, 0, 0, "hello.sketch", 0, 0},
+    {"Colour", RV_ROW_PUSH, 0, 0, "hello.colour", 0, 0},
+    {"Planets", RV_ROW_PUSH, 0, 0, "hello.planets", 0, 0},
+    {"Toppings", RV_ROW_PUSH, 0, 0, "hello.toppings", 0, 0},
 };
 
 static const struct rv_screen screens[] = {
-    {"hello.menu", "Hello", RV_SCREEN_LIST, {0}, {.list = {rows, 6}}},
-    {"hello.about", "About Hello", RV_SCREEN_TEXT, {0}, {.text = {about, 2}}},
-    {"hello.level", "Level", RV_SCREEN_SLIDER, {0}, {.choice = {SETTING_LEVEL, 0, levels, 5}}},
-    {"hello.sketch", "Sketch", RV_SCREEN_CANVAS, {0}, {.canvas = {sketch_draw, sketch_input}}},
+    {"hello.menu", "Hello", RV_SCREEN_LIST, RV_LAYOUT_FULL, {0}, {.list = {rows, 9}}},
+    {"hello.about", "About Hello", RV_SCREEN_TEXT, 0, {0}, {.text = {about, 2}}},
+    {"hello.level", "Level", RV_SCREEN_SLIDER, 0, {0}, {.choice = {SETTING_LEVEL, 0, levels, 5}}},
+    {"hello.sketch", "Sketch", RV_SCREEN_CANVAS, 0, {0}, {.canvas = {sketch_draw, sketch_input}}},
+    {"hello.colour", "Colour", RV_SCREEN_CHOICE, RV_LAYOUT_FULL, {0},
+     {.choice = {SETTING_COLOUR, 0, colours, 4}}},
+    {"hello.planets", "Planets", RV_SCREEN_RUNTIME_LIST, RV_LAYOUT_SPLIT, {0},
+     {.runtime = {planet_count, planet_row, planet_select, 0}}},
+    {"hello.toppings", "Toppings", RV_SCREEN_MULTI_CHOICE, RV_LAYOUT_SPLIT, {0},
+     {.choice = {SETTING_TOPPINGS, 0, toppings, 4}}},
 };
 
 #define PUSH_ROW {"Hello", RV_ROW_PUSH, 0, 0, "hello.menu", 0, 0}
@@ -144,7 +184,7 @@ static void unload(void)
 }
 
 static const struct rv_extension extension = {
-    sizeof extension, hooks, 2, settings, 3, 0, 0, unload, screens, 4, entries, 8,
+    sizeof extension, hooks, 2, settings, 5, 0, 0, unload, screens, 7, entries, 8,
 };
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)

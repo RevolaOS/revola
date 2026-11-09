@@ -127,7 +127,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->after = e->after ? e->after : roots[e->root].anchor;
         /* The item id is the title property, the source id the value's. */
         if (e->row.kind == RV_ROW_TOGGLE)
-            core_set_source2(bank, item + 1, item, item + 1);
+            core_set_source2(bank, item + 1, item, item + 1, SourceDestination_InlineValue);
         else
             core_set_source(bank, item + 1, item, 1);
     }

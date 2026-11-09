@@ -11,7 +11,7 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 | `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), boot order (`init.c`), settings store (`settings.c`), grace timer (`timer.c`), panic screen (`panic.c`) |
 | `core/hooks/` | Hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`) |
 | `core/loader/` | Extension loader and lifecycle (`loader.c`, `containers.c`), file access |
-| `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), templates built at boot (`templates.c`), canvas view and slider input (`canvas.c`), menu rows (`menus.c`), resource helpers, About and Extensions rows |
+| `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), list screens full width or beside the Settings preview pane (`lists.c`) and their rows expanded by index (`indexed.c`), templates built at boot (`templates.c`), canvas view and slider input (`canvas.c`), controller vtable copies (`controllers.c`), menu rows (`menus.c`), resource helpers, About and Extensions rows |
 | `core/memory/` | Memory rules (`memory.c`, `artwork.c`, `trackcount.c`) |
 | `sdk/` | What extensions build against: `rv_api.h`, the module linker script, the Make include, two fixture extensions under `examples/` |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |

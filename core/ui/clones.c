@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* The resources behind a screen, cloned from stock ones on its first push. A
- * plain list is the Notes list layout over a Settings menu controller with an
- * ITEM table of Legal-row copies (Sound Check's for toggles); a text page is the
- * Legal screen over the core's text template; a slider or a canvas is the
- * Brightness screen over the core's slider or canvas template. Titles and
+/* The resources behind a screen, cloned from stock ones on its first push:
+ * layout and screen clones for every kind (lists.c builds the list kinds on
+ * them), a text page as the Legal screen over the core's text template, a
+ * slider or a canvas as the Brightness screen over the core's slider or canvas
+ * template. Titles and
  * paragraphs are Settings model properties the screen registry answers, so the
  * clones hold ids, never text. Everything stored through SetResource is copied
  * by Apple, so the buffers here are transient. */
@@ -16,10 +16,6 @@
 #include "ui/templates.h"
 #include "hooks/sites.h"
 #include <stddef.h>
-
-#define ROW_BYTES 0x98
-/* Transient buffer for one resource at a time; a list's ITEM table may need more. */
-#define SCRATCH_BYTES 1536
 
 static void *bank;
 
@@ -45,6 +41,11 @@ uint32_t core_clone_ids(const struct rv_screen *d)
     case RV_SCREEN_SLIDER:
         /* screen, layout, title, 5 for layout clones, the bar's and the value's source */
         return 10;
+    case RV_SCREEN_CHOICE:
+    case RV_SCREEN_MULTI_CHOICE:
+    case RV_SCREEN_RUNTIME_LIST:
+        /* screen, layout, title, items, 4 for layout clones, the row and its source */
+        return 10;
     default:
         return 8;
     }
@@ -55,27 +56,6 @@ static void put_word(uint8_t *at, uint32_t value)
     for (unsigned b = 0; b < 4; b++)
         at[b] = (uint8_t)(value >> (8 * b));
 }
-
-/* Sources for `count` consecutive views of a template, applied to the instance
- * that uses the template so the views are rebound on every display. */
-struct view_sources {
-    uint32_t view;   /* first view id */
-    uint32_t source; /* first source id */
-    uint32_t count;
-};
-
-/* A layout clone: the stock layout's instances with the title view's source,
- * the item table and one template replaced. */
-struct layout_clone {
-    uint32_t stock;
-    uint32_t layout;     /* id of the clone */
-    uint32_t title_view; /* status bar view whose source becomes `title` */
-    uint32_t title;
-    uint32_t items;      /* ITEM table for the list binding, 0 to keep */
-    uint32_t from, to;   /* template replaced, 0 for none */
-    uint32_t drop;       /* template whose instances are skipped, 0 for none */
-    const struct view_sources *extra; /* sources for the views of template `to` */
-};
 
 /* The VCvs of one instance with the title view's source and the item table
  * rebound and `extra` sources appended: a block per view holding option blocks,
@@ -129,7 +109,7 @@ static uint32_t rebind_views(struct core_writer *w, const void *vcvs, const stru
 /* Clones a stock layout: every SSin list and the VCvs of instances whose
  * bindings change. Uses ids from `next`. The clone is stored as it is built, so
  * the scratch holds one layout, one SSin and one VCvs. */
-static int clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scratch,
+int core_clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scratch,
                         uint32_t scratch_bytes)
 {
     uint32_t bytes, lists;
@@ -197,7 +177,7 @@ static int clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *s
 
 /* The screen's own resources: SCST from `controller_screen`, SLst from
  * `layouts_screen` with the first layout replaced, CEVT from `events`. */
-static int set_screen(uint32_t screen, uint32_t layout, uint32_t controller_screen,
+int core_clone_screen(uint32_t screen, uint32_t layout, uint32_t controller_screen,
                       uint32_t layouts_screen, const void *events, uint32_t event_bytes,
                       uint8_t *scratch, uint32_t scratch_bytes)
 {
@@ -218,24 +198,11 @@ static int set_screen(uint32_t screen, uint32_t layout, uint32_t controller_scre
 }
 
 /* Menu pops the screen, holding it returns to the main menu. */
-static void write_layout_events(struct core_writer *w)
+void core_clone_layout_events(struct core_writer *w)
 {
     core_write_word(w, 2);
     core_write_event(w, "button.menu.up", "", "navigator.PopTopScreen", NULL, 0);
     core_write_event(w, "button.menu.pressandhold", "", "navigator.PopToMainScreen", NULL, 0);
-}
-
-/* list.pid.<item>.chosen for every item, each naming its Rv handler. */
-static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_t count)
-{
-    core_write_word(w, count);
-    for (uint32_t i = 0; i < count; i++) {
-        char name[40], handler[11], *n = core_put_text(name, name + sizeof name, "list.pid.");
-        n = core_put_number(n, name + sizeof name, first_item + 2 * i);
-        core_put_text(n, name + sizeof name, ".chosen");
-        core_screens_handler_name(handler, first_item + 2 * i);
-        core_write_event(w, name, handler, NULL, NULL, 0);
-    }
 }
 
 void core_clone_read_events(void *layout, const void *stream_bytes, uint32_t bytes)
@@ -248,70 +215,6 @@ void core_clone_read_events(void *layout, const void *stream_bytes, uint32_t byt
     StringInputStream_Destroy(stream, StringInputStream_DestroyComplete, 0);
 }
 
-/* Ids of a list: id screen, +1 layout, +2 title, +3 items, +4.. layout clones,
- * then per row the item id and its source. */
-static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_bytes)
-{
-    const struct rv_screen *d = s->declaration;
-    uint32_t next = s->id + 4, rows = CORE_SCREEN_ROWS(s);
-    core_set_source(bank, s->id + 2, s->id + 2, 1);
-
-    uint32_t table_bytes;
-    const void *table = stock(Resource_ITEM, RES_SettingsMenu_Items, &table_bytes);
-    uint32_t row_bytes, toggle_bytes;
-    const uint8_t *plain = table ? core_block_with_word(table, MenuRow_id, RES_SettingsMenu_Legal_Item, &row_bytes) : NULL;
-    const uint8_t *toggle = table ? core_block_with_word(table, MenuRow_id, RES_SettingsMenu_SoundCheck_Item, &toggle_bytes) : NULL;
-    if (!plain || !toggle || row_bytes != ROW_BYTES || toggle_bytes != ROW_BYTES)
-        return 0;
-    struct core_writer w = {scratch, 0};
-    core_write_word(&w, d->list.count);
-    for (uint32_t i = 0; i < d->list.count; i++) {
-        uint32_t item = rows + 2 * i, source = item + 1;
-        int is_toggle = d->list.rows[i].kind == RV_ROW_TOGGLE;
-        uint32_t words[4] = {MenuRow_id, item, MenuRow_title, source};
-        uint32_t begin = core_write_block_begin(&w, 0);
-        uint32_t at = w.at;
-        core_write_copy(&w, is_toggle ? toggle : plain, ROW_BYTES, words, 2);
-        scratch[at + MenuRow_title_from_model] = 1;
-        core_write_block_end(&w, begin);
-        /* The item id is the title property, the source id the value's. */
-        if (is_toggle)
-            core_set_source2(bank, source, item, source);
-        else
-            core_set_source(bank, source, item, 1);
-    }
-    set(Resource_ITEM, s->id + 3, scratch, w.at);
-    struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, s->id + 1, RES_StatusBarWhite_Text,
-                             s->id + 2, s->id + 3, 0, 0, 0, NULL};
-    if (!clone_layout(&c, &next, scratch, scratch_bytes) || next > rows)
-        return 0;
-    w.at = 0;
-    write_layout_events(&w);
-    set(Resource_SEVT, s->id + 1, scratch, w.at);
-    w.at = 0;
-    write_row_events(&w, rows, d->list.count);
-    return set_screen(s->id, s->id + 1, RES_SettingsMenu_Main_Screen, RES_Notes_List_Screen_Alt, scratch,
-                      w.at, scratch + w.at, scratch_bytes - w.at);
-}
-
-int core_clone_list(struct core_screen *s)
-{
-    uint32_t count = s->declaration->list.count;
-    if (count > CORE_MAX_LIST_ROWS)
-        return 0;
-    /* The ITEM table, the row events and the SLst copy each fit SCRATCH_BYTES
-     * or the table's own size, whichever is larger. */
-    uint32_t bytes = 4 + count * (8 + ROW_BYTES);
-    if (bytes < SCRATCH_BYTES)
-        bytes = SCRATCH_BYTES;
-    uint8_t *scratch = Heap_AllocateZeroed(bytes);
-    if (!scratch)
-        return 0;
-    int built = clone_list(s, scratch, bytes);
-    Heap_Free(scratch);
-    return built;
-}
-
 /* Ids of a text page: id screen, +1 layout, +2 title, +3.. layout clones, +8..
  * one source per paragraph, bound to the text template's views by the layout. */
 int core_clone_text(struct core_screen *s)
@@ -319,7 +222,7 @@ int core_clone_text(struct core_screen *s)
     uint32_t next = s->id + 3, rows = CORE_SCREEN_ROWS(s);
     if (!core_template_text) /* a VCvs block naming a view that does not exist panics */
         return 0;
-    uint8_t *scratch = Heap_AllocateZeroed(SCRATCH_BYTES);
+    uint8_t *scratch = Heap_AllocateZeroed(CORE_CLONE_SCRATCH_BYTES);
     if (!scratch)
         return 0;
     struct view_sources paragraphs = {core_template_text + 1, rows, s->ids - 8};
@@ -330,11 +233,11 @@ int core_clone_text(struct core_screen *s)
     struct layout_clone c = {RES_Settings_Legal_Layout, s->id + 1, RES_StatusBarWhite_Text,
                              s->id + 2, 0, RES_Settings_Legal_Template, core_template_text, 0,
                              &paragraphs};
-    int built = clone_layout(&c, &next, scratch, SCRATCH_BYTES) && next <= rows;
+    int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= rows;
     if (built) {
         set(Resource_SEVT, s->id + 1, &none, 4);
-        built = set_screen(s->id, s->id + 1, RES_Settings_Legal_Screen, RES_Settings_Legal_Screen,
-                           &none, 4, scratch, SCRATCH_BYTES);
+        built = core_clone_screen(s->id, s->id + 1, RES_Settings_Legal_Screen,
+                                  RES_Settings_Legal_Screen, &none, 4, scratch, CORE_CLONE_SCRATCH_BYTES);
     }
     Heap_Free(scratch);
     return built;
@@ -351,19 +254,19 @@ static int clone_brightness(struct core_screen *s, uint32_t template, const stru
     uint32_t next = s->id + 3;
     if (!template)
         return 0;
-    uint8_t *scratch = Heap_AllocateZeroed(SCRATCH_BYTES);
+    uint8_t *scratch = Heap_AllocateZeroed(CORE_CLONE_SCRATCH_BYTES);
     if (!scratch)
         return 0;
     core_set_source(bank, s->id + 2, s->id + 2, 1);
     struct layout_clone c = {RES_Settings_Brightness_Screen_Default, s->id + 1,
                              RES_StatusBar_Title_Text, s->id + 2, 0,
                              RES_Settings_Brightness_Template, template, drop, views};
-    int built = clone_layout(&c, &next, scratch, SCRATCH_BYTES) && next <= CORE_SCREEN_ROWS(s);
+    int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= CORE_SCREEN_ROWS(s);
     if (built) {
         uint32_t none = 0;
         set(Resource_SEVT, s->id + 1, events, event_bytes);
-        built = set_screen(s->id, s->id + 1, RES_Settings_Legal_Screen, RES_Settings_Brightness_Screen,
-                           &none, 4, scratch, SCRATCH_BYTES);
+        built = core_clone_screen(s->id, s->id + 1, RES_Settings_Legal_Screen,
+                                  RES_Settings_Brightness_Screen, &none, 4, scratch, CORE_CLONE_SCRATCH_BYTES);
     }
     Heap_Free(scratch);
     return built;

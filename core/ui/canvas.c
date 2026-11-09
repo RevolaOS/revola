@@ -3,17 +3,16 @@
 /* Canvas and slider screens. The canvas template holds one view of the core's
  * type: its vtable is a copy of View_vtable whose draw calls the top canvas
  * screen's callback with a graphics context bound to the view. Canvas and slider
- * controllers are plain resource screens given a copy of their vtable whose
- * event slot sees wheel and key events first; what it leaves goes to Apple's
- * slot, which runs the layout's event bindings. The copy is made on the first
- * push of either kind, so it costs nothing until an extension opens one. */
+ * controllers are plain resource screens whose vtable copy (controllers.c)
+ * sees wheel and key events first; what it leaves goes to Apple's slot, which
+ * runs the layout's event bindings. */
 
 #include "ui/canvas.h"
+#include "ui/controllers.h"
 #include "osos-2.0.5.h"
 #include "ui/screens.h"
 #include "ui/templates.h"
 #include "settings.h"
-#include "hooks/sites.h"
 #include <stddef.h>
 
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
@@ -28,7 +27,7 @@ static void *view_vtable[(CxxVtable_prefix_bytes + View_vtable_bytes) / 4];
  * canvas view; this is the one last drawn, the one on screen. */
 static void *canvas_view;
 static void **controller_vtable;
-static int (*handle_event)(void *controller, void *event);
+static core_event_handler handle_event;
 static uint32_t wheel[WheelAccumulator_bytes / 4];
 
 /* View */
@@ -175,35 +174,17 @@ static int event(void *controller, void *event)
     return handle_event(controller, event);
 }
 
-/* The vtable of the plain resource screen the clones name, with the event slot
- * replaced; slots the dispatcher patches point at their stubs, so the
- * deactivate filter still sees these controllers. */
+/* The vtable of the plain resource screen the clones name. */
 int core_canvas_prepare(void)
 {
-    if (controller_vtable)
-        return 1;
-    uint32_t words = (CxxVtable_prefix_bytes + ScreenController_vtable_bytes) / 4;
-    void **copy = Heap_AllocateZeroed(words * 4);
-    if (!copy)
-        return 0;
-    const uint8_t *from = (const uint8_t *)ScreenController_vtable - CxxVtable_prefix_bytes;
-    for (uint32_t i = 0; i < words; i++)
-        copy[i] = ((void *const *)from)[i];
-    for (uint32_t site = 0; site < CORE_SITE_COUNT; site++) {
-        uint32_t slot = (core_sites[site].address - (uint32_t)from) / 4;
-        if (core_sites[site].kind == CORE_SITE_VTABLE && slot < words)
-            copy[slot] = (void *)core_site_stubs[site];
-    }
-    uint32_t slot = PREFIX_WORDS + ScreenController_event_method / 4;
-    handle_event = (int (*)(void *, void *))copy[slot];
-    copy[slot] = (void *)event;
-    controller_vtable = copy;
-    return 1;
+    if (!controller_vtable)
+        controller_vtable = core_controller_vtable(ScreenController_vtable, event, &handle_event);
+    return controller_vtable != NULL;
 }
 
 void core_canvas_attach(void *controller)
 {
-    FIELD(controller, 0, void **) = controller_vtable + PREFIX_WORDS;
+    core_controller_attach(controller, controller_vtable);
     WheelAccumulator_Init(wheel, WHEEL_THRESHOLD, WHEEL_ACCELERATE, WHEEL_INTERVAL);
 }
 

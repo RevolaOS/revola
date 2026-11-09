@@ -44,7 +44,9 @@ void core_write_event(struct core_writer *w, const char *name, const char *handl
 /* A property source: the title (destination 1) or inline value (10) of a row or
  * view comes from Settings model property `property`, which the core answers. */
 void core_set_source(void *bank, uint32_t id, uint32_t property, uint32_t destination);
-void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t value);
+/* A title source with a second binding: `second` for `destination`. */
+void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t second,
+                      uint32_t destination);
 
 /* Resource ids: 256 per extension from its owner hash, below the core's block
  * and Apple's. Ids are taken for the whole boot; a block stays with the owner

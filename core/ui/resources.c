@@ -130,10 +130,11 @@ void core_set_source(void *bank, uint32_t id, uint32_t property, uint32_t destin
     ResourceBank_SetResource(bank, Resource_SORC, id, source, sizeof source);
 }
 
-void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t value)
+void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t second,
+                      uint32_t destination)
 {
-    uint32_t source[11] = {2, 12, Resource_SORC, Service_Settings, title, 1,
-                           12, Resource_SORC, Service_Settings, value, 10};
+    uint32_t source[11] = {2, 12, Resource_SORC, Service_Settings, title, SourceDestination_Title,
+                           12, Resource_SORC, Service_Settings, second, destination};
     ResourceBank_SetResource(bank, Resource_SORC, id, source, sizeof source);
 }
 

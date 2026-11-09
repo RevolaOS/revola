@@ -37,6 +37,12 @@ SITE(ResourceBlockList_AppendBorrowedBlock_call, SITE_ResourceBlockList_AppendBo
 SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsModel_GetProperty,
      ADDR_SettingsModel_GetProperty, 0, 1, 4, 0)
 
+/* Settings model indexed property lookup: (model, type, property, index, out), out on
+ * the stack. Handlers answer their own property ids and pass the rest on. */
+SITE(Settings_IndexedProperty_slot, SITE_Settings_IndexedProperty_slot, VTABLE,
+     ADDR_SettingsModel_GetIndexedProperty, ADDR_SettingsModel_GetIndexedProperty, 0, 1,
+     4 | STACK(1), 0)
+
 /* Settings controller action dispatch: (controller, action, argument); handlers
  * compare the action string and pass the rest on. */
 SITE(Settings_Action_slot, SITE_Settings_Action_slot, VTABLE, ADDR_Settings_HandleAction,

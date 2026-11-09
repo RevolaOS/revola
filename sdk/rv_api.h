@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 1
+#define RV_API_MINOR 2
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* The loader's record of the extension; passed back to every call. */
@@ -121,6 +121,14 @@ enum rv_screen_kind {
     RV_SCREEN_TEXT,         /* the paragraphs of `text` */
     RV_SCREEN_CANVAS,       /* the extension draws and reads input */
     RV_SCREEN_RUNTIME_LIST, /* rows from callbacks, for data known only at run time */
+    RV_SCREEN_MULTI_CHOICE, /* a checkmark per label; bit n of the int setting `choice.key`
+                               is label n (at most 32), Select flips it */
+};
+
+/* How a list screen (list, choice, multi-choice, runtime list) is laid out. */
+enum rv_layout {
+    RV_LAYOUT_FULL,  /* the list over the whole screen */
+    RV_LAYOUT_SPLIT, /* the list on the left, the Settings preview pane on the right */
 };
 
 enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
@@ -139,7 +147,8 @@ struct rv_screen {
     const char *name;
     const char *title;
     uint8_t kind;
-    uint8_t reserved[3];
+    uint8_t layout; /* rv_layout, list kinds only */
+    uint8_t reserved[2];
     union {
         struct {
             const struct rv_row *rows;
