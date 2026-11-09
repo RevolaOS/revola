@@ -66,9 +66,12 @@ def assemble(config, files, out, inputs, nor=None):
         image.replace(out)
 
 
-def build_osos(config, out, inputs, recipe_only=False, selftest=False):
+def build_osos(config, out, inputs, version, recipe_only=False, selftest=False):
     print("Building core recipe...", flush=True)
     fingerprint = firmware.load()["inputs"]["osos.bin"]
+    defines = ['-DCORE_VERSION="' + version + '"']
+    if selftest:
+        defines.append("-DCORE_SELFTEST")
     image = None
     if not recipe_only:
         image = (inputs / "osos.bin").read_bytes()
@@ -81,7 +84,7 @@ def build_osos(config, out, inputs, recipe_only=False, selftest=False):
         config.prefix,
         config.jobs,
         image,
-        ["-DCORE_SELFTEST"] if selftest else [],
+        defines,
     )
     files = recipe.save(out, "osos")
     if not recipe_only:
@@ -219,9 +222,14 @@ def main():
         parser.error(str(error))
     config = BuildConfig(ROOT / ".build", prefix, args.jobs, args.assembler)
     if args.target in ("all", "osos", "osos-recipe"):
-        identity(ROOT, args.tag)
+        version = identity(ROOT, args.tag)["version"]
         build_osos(
-            config, out, args.inputs, args.target == "osos-recipe", args.selftest
+            config,
+            out,
+            args.inputs,
+            version,
+            args.target == "osos-recipe",
+            args.selftest,
         )
     if args.target in ("all", "loader", "loader-recipe"):
         build_apple(config, out, args.inputs, args.target == "loader-recipe", args.nor)

@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "sites.h"
 
+void core_about_init(void *bank);
 void core_selftest_boot(void);
 void core_selftest_preferences(void);
 
@@ -34,6 +35,7 @@ PATCH_ARM void core_boot(void *bank)
     core_sites_init();
     core_hook_bind(&preferences_hook);
     core_settings_bind();
+    core_about_init(bank);
 #ifdef CORE_SELFTEST
     core_selftest_boot();
 #endif

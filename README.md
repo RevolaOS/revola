@@ -8,7 +8,7 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), panic screen |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), memory rules (`memory.c`), About rows (`about.c`), panic screen |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
 | `tools/` | Recipe builder, build and release scripts, tests |
@@ -46,6 +46,10 @@ The install-time recipe keeps only what must hold before the core runs: the heap
 `/Revola/settings.a` and `settings.b` hold the same record stream: a header `{magic RVST, version, length, generation, FNV-1a of the records}` and records `{owner hash32, key16, type8, size8, data}` padded to a word. The owner is the FNV-1a hash of the extension id (`core` for the core), so there is no key registry. At boot the newer valid file wins; a flush writes the other file with the generation advanced, so an interrupted write never destroys the last good copy. The buffer is sized from the file and regrown through Apple's allocator. Unknown records survive a rewrite. Values are at most 255 bytes.
 
 The store is loaded in `core_preferences_init`, the first point where the disk is readable; the installer creates `/Revola/`. Flush points: before light sleep (both `System_Sleep` calls), after Apple's own save-all (USB disk mode entry among its callers), and `core_settings_flush` on request. Reset All Settings empties the store. TODO: a flush a few seconds after a change while the disk is already powered (`Disk_GetPowerState`) needs a UI timer; the period units of `UI_InitializeEventTimer` are not measured yet.
+
+## About rows
+
+Settings ends with four rows after Legal: the RevolaOS version, the core's resident bytes, and the heap's used and free bytes. They are copies of the Legal row made while Apple builds the list, with titles bound to Settings model properties the core answers, so the numbers are current each time Settings opens. The rows have no action. TODO: a text page with more detail is part of the UI runtime (milestone 7).
 
 ## Memory rules
 
