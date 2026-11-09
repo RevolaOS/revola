@@ -38,6 +38,9 @@ struct core_screen *core_screens_of_controller(void *controller);
 struct core_screen *core_screens_top(uint8_t kind);
 /* Opens a screen on top of `controller`'s screen; loads its module first. */
 int core_screens_push(struct core_screen *screen, void *controller);
+/* The controller whose row, choice or input callback is running; NULL outside
+ * one. What api->ui_push pushes above. */
+extern void *core_screens_caller;
 /* Pops the top screen. */
 void core_screens_pop(void);
 /* Redraws an open canvas. */

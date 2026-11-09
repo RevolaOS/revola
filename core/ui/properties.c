@@ -147,8 +147,10 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
         return 0;
     if (argument == ActionSupportQuery)
         return 1;
+    core_screens_caller = controller;
     if (indexed) {
         core_indexed_chosen(s);
+        core_screens_caller = NULL;
         return 1;
     }
     struct core_screen *target;
@@ -169,11 +171,12 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     }
     case RV_ROW_ACTION:
         if (row->action)
-            row->action(controller);
+            row->action();
         break;
     default:
         break;
     }
+    core_screens_caller = NULL;
     return 1;
 }
 

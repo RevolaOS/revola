@@ -91,16 +91,14 @@ enum rv_row_kind {
                       Settings */
 };
 
-/* One row of a list screen or an entry in a menu. `action` receives the
- * Apple controller the row was chosen on; context menu rows get the list or Now
- * Playing controller. */
+/* One row of a list screen or an entry in a menu. */
 struct rv_row {
     const char *label;
     uint8_t kind;
     uint8_t reserved;
     uint16_t key;
     const char *screen;
-    int (*action)(void *controller);
+    void (*action)(void);
     uint32_t stock;
 };
 
@@ -241,11 +239,12 @@ struct rv_api {
     /* Kept for the emulator; nothing on the device shows it. */
     void (*log)(rv_handle self, const char *text);
 
-    /* Screens by name. push opens one above the screen of `controller`, the
-     * one an action received (its module loads first); pop closes the top
-     * screen; refresh redraws rows whose text changed; invalidate redraws an
+    /* Screens by name. push opens one above the screen whose row, choice or
+     * input callback is running (the screen's module loads first; RV_NOT_FOUND
+     * for an unknown name, RV_BAD_ARGUMENT outside a callback); pop closes the
+     * top screen; refresh redraws rows whose text changed; invalidate redraws an
      * open canvas. */
-    int (*ui_push)(rv_handle self, const char *screen, void *controller);
+    int (*ui_push)(rv_handle self, const char *screen);
     void (*ui_pop)(rv_handle self);
     void (*ui_refresh)(rv_handle self, const char *screen);
     void (*ui_invalidate)(rv_handle self);

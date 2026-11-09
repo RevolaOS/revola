@@ -26,6 +26,7 @@
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
 struct core_screen core_screens[MAX_SCREENS];
+void *core_screens_caller;
 
 static int same(const char *a, const char *b)
 {

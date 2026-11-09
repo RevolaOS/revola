@@ -169,9 +169,10 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
 static int event(void *controller, void *event)
 {
     struct core_screen *s = core_screens_of_controller(controller);
-    if (s && s->declaration && input(s, FIELD(event, InputEvent_kind, uint32_t), event))
-        return 1;
-    return handle_event(controller, event);
+    core_screens_caller = controller;
+    int consumed = s && s->declaration && input(s, FIELD(event, InputEvent_kind, uint32_t), event);
+    core_screens_caller = NULL;
+    return consumed ? 1 : handle_event(controller, event);
 }
 
 /* The vtable of the plain resource screen the clones name. */

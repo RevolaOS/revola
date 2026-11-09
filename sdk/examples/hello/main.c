@@ -69,10 +69,9 @@ static const struct rv_setting settings[] = {
     {SETTING_TOPPINGS, RV_SETTING_INT, 0, 0, 0, 15, "Toppings"},
 };
 
-static int wave(void *controller)
+static void wave(void)
 {
-    record(0xaa | ((uint32_t)controller & 0xffffff00));
-    return 1;
+    record(0xaa);
 }
 
 static const char *const about[] = {

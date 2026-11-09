@@ -470,13 +470,15 @@ static void api_container_release(rv_handle self, const struct rv_container *con
         core_containers_release(record, container);
 }
 
-static int api_ui_push(rv_handle self, const char *screen, void *controller)
+static int api_ui_push(rv_handle self, const char *screen)
 {
     struct rv_extension_record *record = valid_handle(self);
     struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
-    if (!s || !controller)
+    if (!record || !core_screens_caller)
         return RV_BAD_ARGUMENT;
-    return core_screens_push(s, controller) ? RV_OK : RV_NO_MEMORY;
+    if (!s)
+        return RV_NOT_FOUND;
+    return core_screens_push(s, core_screens_caller) ? RV_OK : RV_NO_MEMORY;
 }
 
 static void api_ui_pop(rv_handle self)
