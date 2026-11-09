@@ -5,7 +5,6 @@
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import tarfile
@@ -13,6 +12,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import sdklock
 import setup
 import sites
 from recipes.companion import build_recipe as build_companion_recipe
@@ -114,13 +114,6 @@ def build_apple(config, out, inputs, recipe_only=False, nor=None):
 SDK_FILES = ("rv_api.h", "rvx.lds", "rv.mk", "README.md")
 
 
-def api_version():
-    text = (ROOT / "sdk/rv_api.h").read_text()
-    major = re.search(r"#define RV_API_MAJOR (\d+)", text).group(1)
-    minor = re.search(r"#define RV_API_MINOR (\d+)", text).group(1)
-    return f"{major}.{minor}"
-
-
 def stage_sdk(config, directory):
     """The SDK tree: committed headers, the generated site and firmware ids, the
     symbols of the pinned OSOS and the two tools, each self-contained."""
@@ -144,7 +137,7 @@ def stage_sdk(config, directory):
     )
     (directory / "rv_firmware.mk").write_text(
         "# SPDX-License-Identifier: GPL-3.0-only\n"
-        f"RV_API := {api_version()}\n"
+        f"RV_API := {sdklock.api_version()}\n"
         f"RV_FIRMWARE_ID := {build_id:#010x}\n"
         "RV_FIRMWARE_LD := osos-2.0.5.ld\n"
     )
@@ -290,6 +283,7 @@ def main():
     args = parser.parse_args()
     try:
         target = firmware.load()
+        sdklock.check()
     except (OSError, ValueError) as error:
         parser.error(str(error))
     if args.target in ("all", "loader") and args.nor is None:
