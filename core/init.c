@@ -2,14 +2,17 @@
 
 /* Boot sequence. core_boot runs from the install-time call when Apple initialises
  * resource overrides, in the UI task after the other tasks were started and before
- * the data volume is readable: it writes the entry sites and binds the core's handlers. core_preferences_init runs when Apple loads its
- * preferences file, the first point where the disk can be read. */
+ * the data volume is readable: it writes the entry sites and binds the core's
+ * handlers. core_preferences_init runs when Apple loads its preferences file, the
+ * first point where the disk can be read: the store, the memory rules, the grace
+ * timer and the extensions follow in that order. */
 
 #include "memory.h"
 #include "osos-2.0.5.h"
 #include "patch.h"
 #include "settings.h"
 #include "sites.h"
+#include "timer.h"
 
 void core_about_init(void *bank);
 void core_artwork_bind(void);
@@ -22,6 +25,7 @@ static uint32_t core_preferences_init(void *preferences, const struct core_next 
     core_settings_load();
     core_memory_bind();
     core_artwork_bind();
+    core_timer_init();
 #ifdef CORE_SELFTEST
     core_selftest_preferences();
 #endif

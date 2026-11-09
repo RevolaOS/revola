@@ -10,6 +10,7 @@
  * records {owner, key, type, size, data} padded to a word. Unknown records are
  * carried through a rewrite. Adapted from RepriseOS payload/store.c (d3d7b4d). */
 
+#include "file.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
 #include "sites.h"
@@ -17,10 +18,8 @@
 
 #define MAGIC 0x54535652u /* RVST */
 #define VERSION 1
-#define FORK_DATA 0x64617461u /* 'data' */
-#define MODE_READ 1
-#define MODE_WRITE 2
 #define MIN_CAPACITY 256
+#define FLUSH_DELAY_TICKS 3 /* one-second grace ticks */
 
 struct header {
     uint32_t magic;
@@ -37,11 +36,6 @@ struct record {
     uint8_t size;
 };
 
-struct path {
-    uint16_t volume;
-    char text[258];
-};
-
 static const char *const files[2] = {"/Revola/settings.a", "/Revola/settings.b"};
 
 static uint8_t *store; /* header followed by records */
@@ -49,6 +43,7 @@ static uint32_t capacity;
 static uint32_t generation;
 static uint8_t current; /* file index the store was loaded from or last written to */
 static uint8_t dirty;
+static uint8_t dirty_ticks; /* grace ticks since the store became dirty */
 
 #ifdef CORE_SELFTEST
 /* Per file: open result, read result, bytes got, header validity, body validity. */
@@ -161,42 +156,28 @@ static int valid(const uint8_t *data, uint32_t length)
     return at == length;
 }
 
-static void set_path(struct path *path, const char *text)
-{
-    path->volume = 0;
-    uint32_t i = 0;
-    for (; text[i] && i < sizeof path->text - 1; i++)
-        path->text[i] = text[i];
-    path->text[i] = 0;
-}
-
 static int read_file(uint8_t index, uint8_t *buffer, uint32_t bytes, uint32_t *got)
 {
-    struct path path;
     void *handle;
-    set_path(&path, files[index]);
-    int opened = File_OpenLegacyPath(&path, FORK_DATA, MODE_READ, &handle);
+    int opened = core_file_open(files[index], CORE_FILE_READ, &handle);
     DEBUG(open, index, opened);
-    if (opened)
+    if (!opened)
         return 0;
-    int result = File_ReadLegacyHandle(handle, buffer, bytes, 0, got);
+    int result = core_file_read(handle, buffer, bytes, got);
     DEBUG(read, index, result);
     DEBUG(got, index, *got);
-    File_CloseLegacyHandle(handle);
-    return result == 0;
+    core_file_close(handle);
+    return result;
 }
 
 static int write_file(const char *name, const uint8_t *buffer, uint32_t bytes)
 {
-    struct path path;
     void *handle;
-    uint32_t written = 0;
-    set_path(&path, name);
-    if (File_OpenLegacyPath(&path, FORK_DATA, MODE_WRITE, &handle))
+    if (!core_file_open(name, CORE_FILE_WRITE, &handle))
         return 0;
-    int result = File_WriteLegacyHandle(handle, buffer, bytes, 1, &written);
-    File_CloseLegacyHandle(handle);
-    return result == 0 && written == bytes;
+    int result = core_file_write(handle, buffer, bytes);
+    core_file_close(handle);
+    return result;
 }
 
 /* Loads one copy into `store` when it is newer than what is loaded. */
@@ -260,6 +241,13 @@ uint32_t core_settings_get(uint32_t owner, uint16_t key, void *out, uint32_t out
     return bytes;
 }
 
+static void mark_dirty(void)
+{
+    if (!dirty)
+        dirty_ticks = 0;
+    dirty = 1;
+}
+
 static void remove_at(uint32_t at)
 {
     const struct record *record = (const struct record *)(store + at);
@@ -267,7 +255,7 @@ static void remove_at(uint32_t at)
     uint32_t end = header()->length;
     move_down(store + at, store + at + bytes, end - at - bytes);
     header()->length = end - bytes;
-    dirty = 1;
+    mark_dirty();
 }
 
 int core_settings_set(uint32_t owner, uint16_t key, uint8_t type, const void *data,
@@ -284,7 +272,7 @@ int core_settings_set(uint32_t owner, uint16_t key, uint8_t type, const void *da
             for (uint32_t i = 0; i < size; i++) {
                 if (old[i] != in[i]) {
                     old[i] = in[i];
-                    dirty = 1;
+                    mark_dirty();
                 }
             }
             return 0;
@@ -304,7 +292,7 @@ int core_settings_set(uint32_t owner, uint16_t key, uint8_t type, const void *da
     for (uint32_t i = size; i < padded(size); i++)
         out[i] = 0;
     header()->length += bytes;
-    dirty = 1;
+    mark_dirty();
     return 0;
 }
 
@@ -348,6 +336,19 @@ int core_settings_set_int(uint32_t owner, uint16_t key, int32_t value)
     return core_settings_set(owner, key, CORE_SETTING_INT, &value, sizeof value);
 }
 
+/* A few seconds after the last change, while the disk is already powered, so a
+ * change never spins the disk up by itself and rarely waits for sleep. */
+void core_settings_tick(void)
+{
+    uint32_t powered = 0;
+    if (!dirty || dirty_ticks < FLUSH_DELAY_TICKS) {
+        dirty_ticks += dirty;
+        return;
+    }
+    if (Disk_GetPowerState(&powered) == 0 && powered)
+        core_settings_flush();
+}
+
 static uint32_t flush_then_sleep(uint32_t mode, const struct core_next *next)
 {
     core_settings_flush();
@@ -366,7 +367,7 @@ static uint32_t reset_all(uint32_t model, const struct core_next *next)
     uint32_t result = core_next_call(next, model, 0, 0, 0);
     if (store && header()->length > sizeof(struct header)) {
         header()->length = sizeof(struct header);
-        dirty = 1;
+        mark_dirty();
         core_settings_flush();
     }
     return result;

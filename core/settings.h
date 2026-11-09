@@ -24,6 +24,7 @@ enum core_setting_key {
     CORE_KEY_GAME_BLOCKS = 4,     /* bool: grow the cache for a game and shrink after */
     CORE_KEY_POSITION_SCAN = 5,   /* bool: find list positions by scanning, no address index */
     CORE_KEY_ARTWORK_SHARE = 6,   /* bool: share identical artwork chains, drop duplicate images */
+    CORE_KEY_CRASHED = 7,         /* int: owner of the extension the last crash disabled */
 };
 
 uint32_t core_settings_owner(const char *id);
@@ -35,6 +36,8 @@ int core_settings_set(uint32_t owner, uint16_t key, uint8_t type, const void *da
 void core_settings_reset_owner(uint32_t owner);
 /* Writes the store if it changed since the last write. */
 void core_settings_flush(void);
+/* Grace tick: writes a dirty store once the disk is powered anyway. */
+void core_settings_tick(void);
 /* Binds the flush points: before light sleep, after Apple's save-all, and the
  * wipe on Reset All Settings. */
 void core_settings_bind(void);
