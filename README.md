@@ -8,12 +8,11 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), memory rules (`memory.c`, `trackcount.c`), About rows (`about.c`), panic screen |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), grace timer (`timer.c`), extension loader (`loader.c`, `containers.c`), memory rules (`memory.c`, `trackcount.c`), About rows (`about.c`), panic screen |
+| `sdk/` | What extensions build against: `rv_api.h`, the module linker script, the Make include, two fixture extensions under `examples/` |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
-| `tools/` | Recipe builder, build and release scripts, tests |
-
-Directories for the SDK and extension loader are created when their code lands.
+| `tools/` | Recipe builder, `rvx-pack` (`rvx.py`), manifest compiler, build and release scripts, tests |
 
 ## Build
 
@@ -25,7 +24,7 @@ python3 tools/build.py loader-recipe
 cd tools && python3 -m unittest discover -s tests
 ```
 
-`osos` writes `build/osos.json`, `build/osos.data` and the assembled `build/osos-cfw.bin`; `osos-recipe` stops before assembly and needs no Apple inputs, so it skips the checks of the site table against the image. `--selftest` compiles the dispatcher self-test into the core (results in `core_selftest`, read with `ipodvm peek`). Boot the image in the emulator with `ipodvm launch --firmware build/osos-cfw.bin --disk <test disk>` from this directory.
+`osos` writes `build/osos.json`, `build/osos.data` and the assembled `build/osos-cfw.bin`; `osos-recipe` stops before assembly and needs no Apple inputs, so it skips the checks of the site table against the image. `--selftest` compiles the dispatcher and loader self-test into the core (results in `core_selftest`, read with `ipodvm peek`). `examples` builds the fixture extensions in `sdk/examples` against a staged SDK into `build/examples/<id>/`; `sdk` writes the SDK tarball. Boot the image in the emulator with `ipodvm launch --firmware build/osos-cfw.bin --disk <test disk>` from this directory; `ipodvm disk --copy` puts extension directories on a disk clone.
 
 The build prints the core's resident bytes; the link fails above `CORE_BYTES` (96 KiB) in `core/layout.h`.
 
@@ -35,7 +34,13 @@ Apple symbols: `firmware/osos-2.0.5.ld` is passed to the linker with `--just-sym
 
 Apple code runs from DRAM, so the core patches it at boot. `core/sites.def` lists every site the core can patch: address, kind (`CALL`, `VTABLE`, `ENTRY`, `ENTRY_NORETURN`, `WORD`, or `INSERT` for a call written over an ordinary instruction, where the stub preserves r0-r3 and r12), what an unbound site does, the Apple words expected there, whether several handlers may chain, and the argument count. Each site has one pointer slot and one stub in the core. Call and vtable sites are patched when the first handler binds and restored when the last unbinds; entry sites are written once by `core_boot` and fall through to a replay stub while unbound. `core_boot` runs inside Apple's UI task after the other tasks exist, so a two-word entry write is only safe for a function no started task can be executing at that moment; a site is declared `ENTRY` only with that argument. Every write runs with IRQ and FIQ masked and is followed by `core_cache_sync`.
 
-A handler receives the Apple arguments followed by `next` (in `r[argc]`, or as the first stack argument for four-argument sites, ahead of up to two arguments Apple itself passes on the stack). A `filter` continues with `core_next_call`; a `replace` handler is exclusive and a second claim is reported as a conflict. With one handler bound the slot holds the handler itself; with more it holds a chain entry that calls them in priority order. Handler lists are published with a single store and the retired list is freed at the next `core_grace_tick`. TODO: the grace tick is not yet driven by a UI idle site.
+A handler receives the Apple arguments followed by `next` (in `r[argc]`, or as the first stack argument for four-argument sites, ahead of up to two arguments Apple itself passes on the stack). A `filter` continues with `core_next_call`; a `replace` handler is exclusive and a second claim is reported as a conflict. With one handler bound the slot holds the handler itself; with more it holds a chain entry that calls them in priority order. Handler lists are published with a single store and the retired list is freed at the next grace tick.
+
+Extensions name a site by id, the FNV-1a hash of its `sites.def` row name; the build writes the table of ids next to the site table and the same values into the SDK's `rv_sites.h`, so a row may move without breaking built extensions.
+
+## Grace tick
+
+One native UI event timer (`core/timer.c`) fires every second on the UI task. The tick frees retired handler lists and extension images, unloads what was disabled, ages idle on-demand modules and writes a dirty settings store once the disk is powered anyway. The recipient is a core object whose vtable has only the event slot; the timer re-arms itself on every delivery.
 
 The build tool reads the table from the linked core, rejects entry sites whose displaced words use `pc`, are conditional, branch, or are the target of a branch at `entry+4`, checks every expected word against the pinned image when Apple inputs are present, and records the same expectations in the recipe for the installer.
 
@@ -45,7 +50,25 @@ The install-time recipe keeps only what must hold before the core runs: the heap
 
 `/Revola/settings.a` and `settings.b` hold the same record stream: a header `{magic RVST, version, length, generation, FNV-1a of the records}` and records `{owner hash32, key16, type8, size8, data}` padded to a word. The owner is the FNV-1a hash of the extension id (`core` for the core), so there is no key registry. At boot the newer valid file wins; a flush writes the other file with the generation advanced, so an interrupted write never destroys the last good copy. The buffer is sized from the file and regrown through Apple's allocator. Unknown records survive a rewrite. Values are at most 255 bytes.
 
-The store is loaded in `core_preferences_init`, the first point where the disk is readable; the installer creates `/Revola/`. Flush points: before light sleep (both `System_Sleep` calls), after Apple's own save-all (USB disk mode entry among its callers), and `core_settings_flush` on request. Reset All Settings empties the store. TODO: a flush a few seconds after a change while the disk is already powered (`Disk_GetPowerState`) needs a UI timer; the period units of `UI_InitializeEventTimer` are not measured yet.
+The store is loaded in `core_preferences_init`, the first point where the disk is readable; the installer creates `/Revola/`. Flush points: before light sleep (both `System_Sleep` calls), after Apple's own save-all (USB disk mode entry among its callers), three grace ticks after the last change if `Disk_GetPowerState` reports the disk powered, and `core_settings_flush` on request. Reset All Settings empties the store. Key 0 of every extension's owner is its enabled flag.
+
+## Extension loader
+
+An extension is a directory `/Revola/Extensions/<id>/` with `manifest.bin` (compiled from `manifest.toml` by `tools/manifest.py`) and one `.rvx` per module (`tools/rvx.py`, the `rvx-pack` of the SDK). The `.rvx` header names the format, the core API, the firmware build id and the module; the loader refuses any mismatch. The image is read into one block of the Apple heap, text, data and bss in a row; the relocation table is consumed through the stack in chunks, so a loaded module costs exactly text + data + bss plus an 8-byte owner header. Every block the loader or `api->alloc` hands out carries that header, which is what makes the resident and peak figures exact.
+
+`core_loader_boot` runs in `core_preferences_init` after the store loaded. It lists the directory once (at most 16 entries), reads each manifest, and keeps nothing for a disabled extension. For an enabled one it allocates a record holding the manifest and loads the main module: entry returns the descriptor, whose hooks are bound in order. A collision unbinds what was bound, drops the image and leaves the failure and the site id on the record for Settings > Extensions. The FAT directory name is only used to build paths; identity is the manifest id and its hash is the settings owner, because a short name may come back in upper case.
+
+Lifecycle: the main module stays loaded while the extension is enabled; a `manual` module loads and unloads through `api->module_load` and `module_unload`; a `screen` module loads when one of its declared screens is pushed (`core_loader_screen_pushed`) and unloads ten ticks after the last of them was popped. Disabling marks the record and the next tick unloads it; code and hook storage are retired and freed two ticks after unbind, when no task can still be inside them. Images are owned by the Apple heap, so a reload reuses the same addresses and the heap totals return to where they were (checked by the self-test).
+
+Failsafe: the panic screen writes the owner of the extension whose code was running (the explicit entry call, else the image holding the faulting address, link register or any saved word) to a word at the top of IRAM that the boot chain leaves alone, and the next boot disables that extension and records it for the Extensions screen. TODO: core-only boot with Previous held waits for a way to read the held buttons from the UI task; the hook is in place and reads nothing yet. TODO: a rescan after USB disk mode.
+
+## SDK
+
+`sdk/` is what extensions build against; `python3 tools/build.py sdk` stages it with the generated `rv_sites.h`, `rv_firmware.h`/`.mk`, the symbols header and linker script and the two tools, and writes `build/revola-sdk-<version>.tar.gz`. `sdk/README.md` describes the files. `sdk/api.lock` records the API version and the hash of every shipped file; the build and the `sdk` workflow fail when a file under `sdk/` changes at the same version, so an API change is always a visible version bump (`RV_API_MINOR` for additions, `RV_API_MAJOR` when an entry changes meaning), followed by `python3 tools/sdklock.py update`.
+
+## Menu containers
+
+An extension declares a submenu it wants to contribute to by id and parent (`struct rv_container`); the core deduplicates by id, keeps the first label, and refuses a second declaration with another parent. TODO: the row for a container is not materialised in the native menu yet (Settings > Extensions is the first user).
 
 ## About rows
 
