@@ -65,6 +65,12 @@ SITE(FixedPool_SlotRoundAdd_word, SITE_FixedPool_SlotRoundAdd_word, WORD, 0, 0xe
 SITE(FixedPool_SlotRoundMask_word, SITE_FixedPool_SlotRoundMask_word, WORD, 0, 0xe3c0000f, 0,
      0, 0)
 
+/* eApp block manager: acquire (message 0xeab0) and release (0xeab1) of a game's blocks. */
+SITE(EAppBlocks_Acquire_call, SITE_EAppBlocks_Acquire_call, CALL, ADDR_EAppBlocks_Acquire,
+     BL(SITE_EAppBlocks_Acquire_call, ADDR_EAppBlocks_Acquire), 0, 0, 1)
+SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlocks_Release,
+     BL(SITE_EAppBlocks_Release_call, ADDR_EAppBlocks_Release), 0, 0, 1)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */

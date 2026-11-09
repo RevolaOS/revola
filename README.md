@@ -54,8 +54,11 @@ Apple's global memory policy is adjusted at boot, each rule behind a core settin
 | Setting | Rule |
 |---|---|
 | `CORE_KEY_CACHE_BUDGET` | Size the block cache after the library import as max(heap total - import cost - reserve, floor): 14/14 MiB on a hard disk as Apple does, 24/6 MiB on flash, detected from the ATA IDENTIFY data. |
+| `CORE_KEY_READAHEAD_FLOOR` | Below a 14 MiB cache the media player's read-ahead minimum becomes max(cache - 8 MiB, 2 MiB) so a game's 8 MiB still fits beside it. |
+| `CORE_KEY_POOL_SLOTS` | Fixed-pool slots round to 8 bytes instead of 16 (ArtworkDB thumbnail records: 40 instead of 48). |
+| `CORE_KEY_GAME_BLOCKS` | When the eApp block manager asks for a game's blocks the cache first grows by what the other clients keep, leaving 1 MiB of heap; after the release the unassigned blocks above the import size go back to the heap. |
 
-TODO: media read-ahead floor, 8-byte pool slots, game block grow and shrink. The 32 KiB UI stack waits for stack-watermark evidence on the canvas and loader paths.
+The 32 KiB UI stack is not carried until stack-watermark evidence exists on the canvas and loader paths.
 
 ## What drives development
 

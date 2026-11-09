@@ -174,6 +174,98 @@ static const struct core_hook pool_hooks[] = {
     {CORE_SITE_FixedPool_SlotRoundMask_word, CORE_HOOK_REPLACE, 0, (void *)0xe3c00007u},
 };
 
+/* Blocks to add to a cache of total blocks so that request blocks fit beside the
+ * kept blocks of clients that do not share theirs, leaving GROW_HEAP_MARGIN of
+ * heap_free unused. */
+uint32_t core_block_cache_shortfall(uint32_t total, uint32_t kept, uint32_t request,
+                                    uint32_t heap_free, uint32_t block_bytes)
+{
+    if (!block_bytes || kept + request <= total)
+        return 0;
+    uint32_t wanted = kept + request - total;
+    uint32_t spare =
+        heap_free > GROW_HEAP_MARGIN ? (heap_free - GROW_HEAP_MARGIN) / block_bytes : 0;
+    return wanted < spare ? wanted : spare;
+}
+
+/* Client ring: each node {next, previous, client **}. Clients with a weight share
+ * their blocks with the rebalancer; the others keep max(held, desired). */
+static uint32_t kept_blocks(uint8_t *cache, uint8_t *skip)
+{
+    uint32_t block_bytes = FIELD(cache, BlockCache_block_bytes, uint32_t);
+    uint32_t kept = 0;
+    void **ring = FIELD(cache, BlockCache_clients, void **);
+    for (void **node = ring[0]; node != ring; node = node[0]) {
+        uint8_t *client = *(uint8_t **)node[2];
+        if (!client || client == skip || FIELD(client, BlockClient_weight, uint32_t))
+            continue;
+        uint32_t desired =
+            (FIELD(client, BlockClient_desired_bytes, uint32_t) + block_bytes - 1) / block_bytes;
+        uint32_t held = FIELD(client, BlockClient_block_count, uint32_t);
+        kept += held > desired ? held : desired;
+    }
+    return kept;
+}
+
+static int grown_for_game;
+
+/* Before Apple's acquire: grow the cache so the game's blocks fit beside what the
+ * other clients keep, as far as the heap allows. */
+static uint32_t game_blocks_acquire(uint32_t manager, const struct core_next *next)
+{
+    uint8_t *cache = BlockCache_Get();
+    uint32_t block_bytes = cache ? FIELD(cache, BlockCache_block_bytes, uint32_t) : 0;
+    if (block_bytes) {
+        uint8_t **client_slot = FIELD((uint8_t *)manager, EAppBlockManager_client, uint8_t **);
+        Mutex_Lock(cache + BlockCache_lock);
+        uint32_t total = FIELD(cache, BlockCache_total_blocks, uint32_t);
+        uint32_t kept = kept_blocks(cache, client_slot ? *client_slot : 0);
+        Mutex_Unlock(cache + BlockCache_lock);
+        uint32_t request = FIELD((uint8_t *)manager, EAppBlockManager_request_blocks, uint32_t);
+        uint32_t add = core_block_cache_shortfall(
+            total, kept, request, FIELD(MainHeap, MainHeap_free_bytes, uint32_t), block_bytes);
+        if (add) {
+            BlockCache_Grow((total + add) * block_bytes);
+            grown_for_game = 1;
+        }
+    }
+    return core_next_call(next, manager, 0, 0, 0);
+}
+
+/* After Apple's release: free unassigned blocks above the import size, as
+ * BlockCache_Trim does but without waiting for pending requests, which the
+ * rebalancer is still serving while the game's blocks come back. */
+static uint32_t game_blocks_release(uint32_t manager, const struct core_next *next)
+{
+    uint32_t result = core_next_call(next, manager, 0, 0, 0);
+    uint8_t *cache = BlockCache_Get();
+    uint32_t block_bytes = cache ? FIELD(cache, BlockCache_block_bytes, uint32_t) : 0;
+    if (!grown_for_game || !block_bytes)
+        return result;
+    grown_for_game = 0;
+    Mutex_Lock(cache + BlockCache_lock);
+    uint32_t keep = import_cache_bytes / block_bytes;
+    uint32_t total = FIELD(cache, BlockCache_total_blocks, uint32_t);
+    uint32_t extra = total > keep ? total - keep : 0;
+    uint32_t free_before = FIELD(cache, BlockCache_free_count, uint32_t);
+    if (extra > free_before)
+        extra = free_before;
+    void *list = cache + BlockCache_free_blocks;
+    void **node = FIELD(cache, BlockCache_free_blocks + 4, void **); /* list.first */
+    for (uint32_t i = 0; i < extra && (void *)node != list; i++)
+        BlockList_Erase((void **)&node, list, node);
+    FIELD(cache, BlockCache_total_blocks, uint32_t) -=
+        free_before - FIELD(cache, BlockCache_free_count, uint32_t);
+    BlockCache_PostRebalance(cache, 0);
+    Mutex_Unlock(cache + BlockCache_lock);
+    return result;
+}
+
+static const struct core_hook game_hooks[] = {
+    {CORE_SITE_EAppBlocks_Acquire_call, CORE_HOOK_FILTER, 0, game_blocks_acquire},
+    {CORE_SITE_EAppBlocks_Release_call, CORE_HOOK_FILTER, 0, game_blocks_release},
+};
+
 static void bind_all(const struct core_hook *hooks, uint32_t count)
 {
     for (uint32_t i = 0; i < count; i++)
@@ -193,4 +285,6 @@ void core_memory_bind(void)
         bind_all(read_ahead_hooks, 2);
     if (enabled(CORE_KEY_POOL_SLOTS))
         bind_all(pool_hooks, 2);
+    if (enabled(CORE_KEY_GAME_BLOCKS))
+        bind_all(game_hooks, 2);
 }
