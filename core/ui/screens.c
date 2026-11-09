@@ -125,14 +125,6 @@ static struct {
     struct core_screen *screen;
 } open[MAX_OPEN];
 
-/* Copies of Apple's controller vtables with deactivate replaced, so the runtime
- * sees a screen leave. The prefix before the address point is copied too. */
-#define VTABLE_WORDS ((CxxVtable_prefix_bytes + ScreenController_vtable_bytes) / 4)
-static void *list_vtable[VTABLE_WORDS];
-static void *plain_vtable[VTABLE_WORDS];
-static uint32_t (*list_deactivate)(void *, uint32_t);
-static uint32_t (*plain_deactivate)(void *, uint32_t);
-
 static void screen_left(void *controller)
 {
     for (uint32_t i = 0; i < MAX_OPEN; i++) {
@@ -147,38 +139,14 @@ static void screen_left(void *controller)
     }
 }
 
-static uint32_t deactivate_list(void *controller, uint32_t leaving)
+/* Every deactivate of the two controller classes passes here; only the
+ * runtime's controllers are in `open`. */
+static uint32_t deactivated(uint32_t controller, uint32_t leaving, const struct core_next *next)
 {
-    uint32_t result = list_deactivate(controller, leaving);
+    uint32_t result = core_next_call(next, controller, leaving, 0, 0);
     if (leaving)
-        screen_left(controller);
+        screen_left((void *)controller);
     return result;
-}
-
-static uint32_t deactivate_plain(void *controller, uint32_t leaving)
-{
-    uint32_t result = plain_deactivate(controller, leaving);
-    if (leaving)
-        screen_left(controller);
-    return result;
-}
-
-/* A slot the dispatcher patches in Apple's vtable points at the site's stub in
- * the copy, so handlers bound later still see it. */
-static void copy_vtable(void **copy, void *const *original, void *deactivate,
-                        uint32_t (**saved)(void *, uint32_t))
-{
-    const uint8_t *from = (const uint8_t *)original - CxxVtable_prefix_bytes;
-    for (uint32_t i = 0; i < VTABLE_WORDS; i++)
-        copy[i] = ((void *const *)from)[i];
-    for (uint32_t site = 0; site < CORE_SITE_COUNT; site++) {
-        uint32_t slot = (core_sites[site].address - (uint32_t)from) / 4;
-        if (core_sites[site].kind == CORE_SITE_VTABLE && slot < VTABLE_WORDS)
-            copy[slot] = (void *)core_site_stubs[site];
-    }
-    uint32_t slot = (CxxVtable_prefix_bytes + ScreenController_deactivate_method) / 4;
-    *saved = (uint32_t (*)(void *, uint32_t))copy[slot];
-    copy[slot] = deactivate;
 }
 
 static int build(struct core_screen *s)
@@ -212,8 +180,6 @@ int core_screens_push(struct core_screen *s, void *controller)
                                               Transition_ForegroundPush);
     if (!created)
         return 0;
-    void **copy = s->declaration->kind == RV_SCREEN_LIST ? list_vtable : plain_vtable;
-    FIELD(created, 0, void **) = copy + CxxVtable_prefix_bytes / 4;
     open[slot].controller = created;
     open[slot].screen = s;
     s->open++;
@@ -370,14 +336,13 @@ uint32_t core_screens_action_filter(uint32_t controller, uint32_t name, uint32_t
 static const struct core_hook hooks[] = {
     {CORE_SITE_Settings_Property_slot, CORE_HOOK_FILTER, 5, property},
     {CORE_SITE_Settings_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_ScreenController_Deactivate_slot, CORE_HOOK_FILTER, 0, deactivated},
+    {CORE_SITE_SettingsMenuListController_Deactivate_slot, CORE_HOOK_FILTER, 0, deactivated},
 };
 
 void core_screens_init(void *bank)
 {
     core_clones_init(bank);
-    copy_vtable(list_vtable, SettingsMenuListController_vtable, (void *)deactivate_list,
-                &list_deactivate);
-    copy_vtable(plain_vtable, ScreenController_vtable, (void *)deactivate_plain, &plain_deactivate);
     for (uint32_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++)
         core_hook_bind(&hooks[i]);
 }

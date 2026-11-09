@@ -87,6 +87,15 @@ CANCEL_APPEND(Artists)
 CANCEL_APPEND(Albums)
 #undef CANCEL_APPEND
 
+/* A controller is deactivated: (controller, leaving), leaving nonzero when it is
+ * popped. The plain resource screen class and the Settings list class; every
+ * controller of the class passes through, so handlers check the controller. */
+SITE(ScreenController_Deactivate_slot, SITE_ScreenController_Deactivate_slot, VTABLE,
+     ADDR_ResourceScreen_Deactivate, ADDR_ResourceScreen_Deactivate, 0, 1, 2, 0)
+SITE(SettingsMenuListController_Deactivate_slot, SITE_SettingsMenuListController_Deactivate_slot,
+     VTABLE, ADDR_SettingsMenuListController_Deactivate,
+     ADDR_SettingsMenuListController_Deactivate, 0, 1, 2, 0)
+
 /* UI start enumerates the View templates: (bank, id*, bytes*) through the ROM
  * index; a handler yields more when the original returns NULL. */
 SITE(ResourceBank_NextTemplate_call, SITE_ResourceBank_NextTemplate_call, CALL,

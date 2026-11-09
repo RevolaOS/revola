@@ -9,6 +9,7 @@
  * the list is built, and each row costs its 0x98 bytes plus the entry below. */
 
 #include "ui/about.h"
+#include "ui/clones.h"
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "rv_api.h"
@@ -224,12 +225,7 @@ static uint32_t layout_events(uint32_t layout, const struct core_next *next)
     for (uint32_t i = 1; i < row_count; i++)
         out = put_event(out, ITEM_ID(i), i);
     put_word(stream_bytes, row_count - 1);
-    uint32_t string[8], stream[31], allocator = 0;
-    CppString_InitBytes(string, stream_bytes, (uint32_t)(out - stream_bytes), &allocator);
-    StringInputStream_Init(stream, string, 0xc);
-    CppString_Destroy(string);
-    UIEventMap_ReadStream(stream, (uint8_t *)layout + Layout_events);
-    StringInputStream_Destroy(stream, 2, 0);
+    core_clone_read_events((void *)layout, stream_bytes, (uint32_t)(out - stream_bytes));
     return result;
 }
 

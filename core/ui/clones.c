@@ -18,8 +18,6 @@
 #define ROW_BYTES 0x98
 /* Transient buffer for one resource at a time; a list's ITEM table may need more. */
 #define SCRATCH_BYTES 1536
-/* Copied beside a VCvs when the stock instance has one. TODO: symbols header. */
-#define Resource_VCrv 0x56437276u
 
 static void *bank;
 
@@ -169,6 +167,7 @@ static int clone_layout(uint32_t stock_layout, uint32_t layout, uint32_t title, 
                     rebind_views(&w, vcvs, title, items, sources);
                     uint32_t id = (*next)++;
                     set(Resource_VCvs, id, out, w.at);
+                    /* The stock instance's frame, keyed by its VCvs id. */
                     uint32_t vcrv_bytes;
                     const void *vcrv = vcvs ? stock(Resource_VCrv, view_id, &vcrv_bytes) : NULL;
                     if (vcrv)
@@ -234,13 +233,12 @@ static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_
 
 void core_clone_read_events(void *layout, const void *stream_bytes, uint32_t bytes)
 {
-    /* TODO: CppString and StringInputStream sizes from the symbols header. */
-    uint32_t string[8], stream[31], allocator = 0;
+    uint32_t string[CppString_bytes / 4], stream[StringInputStream_bytes / 4], allocator = 0;
     CppString_InitBytes(string, stream_bytes, bytes, &allocator);
-    StringInputStream_Init(stream, string, 0xc);
+    StringInputStream_Init(stream, string, StringInputStream_ResourceMode);
     CppString_Destroy(string);
     UIEventMap_ReadStream(stream, (uint8_t *)layout + Layout_events);
-    StringInputStream_Destroy(stream, 2, 0);
+    StringInputStream_Destroy(stream, StringInputStream_DestroyComplete, 0);
 }
 
 /* Templates Apple enumerates once at UI start, so the core builds its own then:
