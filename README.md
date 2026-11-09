@@ -45,7 +45,7 @@ The install-time recipe keeps only what must hold before the core runs: the heap
 
 `/Revola/settings.a` and `settings.b` hold the same record stream: a header `{magic RVST, version, length, generation, FNV-1a of the records}` and records `{owner hash32, key16, type8, size8, data}` padded to a word. The owner is the FNV-1a hash of the extension id (`core` for the core), so there is no key registry. At boot the newer valid file wins; a flush writes the other file with the generation advanced, so an interrupted write never destroys the last good copy. The buffer is sized from the file and regrown through Apple's allocator. Unknown records survive a rewrite. Values are at most 255 bytes.
 
-The store is loaded in `core_preferences_init`, the first point where the disk is readable; the installer creates `/Revola/`. Flush points: `core_settings_flush` on request. TODO: flush on sleep, on USB disk mode entry and a few seconds after a change while the disk spins, once the reversing symbols for those sites exist.
+The store is loaded in `core_preferences_init`, the first point where the disk is readable; the installer creates `/Revola/`. Flush points: before light sleep (both `System_Sleep` calls), after Apple's own save-all (USB disk mode entry among its callers), and `core_settings_flush` on request. Reset All Settings empties the store. TODO: a flush a few seconds after a change while the disk is already powered (`Disk_GetPowerState`) needs a UI timer; the period units of `UI_InitializeEventTimer` are not measured yet.
 
 ## What drives development
 

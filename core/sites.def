@@ -29,6 +29,20 @@ SITE(ResourceBlockList_AppendBorrowedBlock_call, SITE_ResourceBlockList_AppendBo
 SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsModel_GetProperty,
      ADDR_SettingsModel_GetProperty, 0, 1, 4)
 
+/* Light sleep: the disk powers down inside, so stores are written on the way in. */
+SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_System_Sleep,
+     BL(SITE_Sleep_Idle_call, ADDR_System_Sleep), 0, 1, 1)
+SITE(Sleep_Request_call, SITE_Sleep_Request_call, CALL, ADDR_System_Sleep,
+     BL(SITE_Sleep_Request_call, ADDR_System_Sleep), 0, 1, 1)
+
+/* Apple's save-all (USB disk mode entry among its callers) writes its preferences. */
+SITE(Preferences_Flush_call, SITE_Preferences_Flush_call, CALL, ADDR_Preferences_Flush,
+     BL(SITE_Preferences_Flush_call, ADDR_Preferences_Flush), 0, 1, 1)
+
+/* Reset All Settings confirmed; Apple resets its preferences and menus. */
+SITE(Settings_ResetAll_call, SITE_Settings_ResetAll_call, CALL, ADDR_Settings_ResetAll,
+     BL(SITE_Settings_ResetAll_call, ADDR_Settings_ResetAll), 0, 1, 1)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */

@@ -124,7 +124,7 @@ void core_selftest_preferences(void)
     core_selftest.boots = core_settings_get_int(CORE_SETTINGS_OWNER_CORE, SETTING_BOOTS, 0);
     core_selftest.set_result =
         core_settings_set_int(CORE_SETTINGS_OWNER_CORE, SETTING_BOOTS, core_selftest.boots + 1);
-    core_settings_flush();
+    /* No explicit flush: the counter reaches disk only through a flush point. */
     core_selftest.bind_results[3] = core_hook_bind(&property_a);
     core_selftest.bind_results[4] = core_hook_bind(&property_b);
     core_selftest.bind_results[5] = core_hook_bind(&append_hook);

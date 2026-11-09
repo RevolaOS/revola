@@ -25,6 +25,9 @@ int core_settings_set(uint32_t owner, uint16_t key, uint8_t type, const void *da
 void core_settings_reset_owner(uint32_t owner);
 /* Writes the store if it changed since the last write. */
 void core_settings_flush(void);
+/* Binds the flush points: before light sleep, after Apple's save-all, and the
+ * wipe on Reset All Settings. */
+void core_settings_bind(void);
 
 int32_t core_settings_get_int(uint32_t owner, uint16_t key, int32_t fallback);
 int core_settings_set_int(uint32_t owner, uint16_t key, int32_t value);

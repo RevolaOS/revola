@@ -12,6 +12,7 @@
 
 #include "osos-2.0.5.h"
 #include "settings.h"
+#include "sites.h"
 #include <stddef.h>
 
 #define MAGIC 0x54535652u /* RVST */
@@ -345,4 +346,41 @@ int32_t core_settings_get_int(uint32_t owner, uint16_t key, int32_t fallback)
 int core_settings_set_int(uint32_t owner, uint16_t key, int32_t value)
 {
     return core_settings_set(owner, key, CORE_SETTING_INT, &value, sizeof value);
+}
+
+static uint32_t flush_then_sleep(uint32_t mode, const struct core_next *next)
+{
+    core_settings_flush();
+    return core_next_call(next, mode, 0, 0, 0);
+}
+
+static uint32_t save_all(uint32_t preferences, const struct core_next *next)
+{
+    uint32_t result = core_next_call(next, preferences, 0, 0, 0);
+    core_settings_flush();
+    return result;
+}
+
+static uint32_t reset_all(uint32_t model, const struct core_next *next)
+{
+    uint32_t result = core_next_call(next, model, 0, 0, 0);
+    if (store && header()->length > sizeof(struct header)) {
+        header()->length = sizeof(struct header);
+        dirty = 1;
+        core_settings_flush();
+    }
+    return result;
+}
+
+static const struct core_hook hooks[] = {
+    {CORE_SITE_Sleep_Idle_call, CORE_HOOK_FILTER, 0, flush_then_sleep},
+    {CORE_SITE_Sleep_Request_call, CORE_HOOK_FILTER, 0, flush_then_sleep},
+    {CORE_SITE_Preferences_Flush_call, CORE_HOOK_FILTER, 0, save_all},
+    {CORE_SITE_Settings_ResetAll_call, CORE_HOOK_FILTER, 0, reset_all},
+};
+
+void core_settings_bind(void)
+{
+    for (uint32_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++)
+        core_hook_bind(&hooks[i]);
 }

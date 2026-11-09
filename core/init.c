@@ -31,6 +31,7 @@ PATCH_ARM void core_boot(void *bank)
     ResourceBank_InitOverrides(bank);
     core_sites_init();
     core_hook_bind(&preferences_hook);
+    core_settings_bind();
 #ifdef CORE_SELFTEST
     core_selftest_boot();
 #endif
