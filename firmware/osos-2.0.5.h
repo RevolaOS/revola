@@ -131,6 +131,7 @@ int Disk_GetPowerState(uint32_t *out_powered);
 void ResourceBank_InitOverrides(void *bank);
 void ResourceBank_SetResource(void *bank, uint32_t type, uint32_t id, const void *data, uint32_t bytes);
 void *ResourceBank_GetResource(void *bank, uint32_t type, uint32_t id, uint32_t *out_bytes);
+const void *ResourceBank_FirstResource(void *bank, uint32_t type, uint32_t *id, uint32_t *bytes);
 const void *ResourceBank_NextResource(void *bank, uint32_t *id, uint32_t *bytes);
 uint32_t *ResourceNames_FindOrInsertSlot(void *map, const void *name);
 void ResourceBlockList_AppendBorrowedBlock(void *list, const void *data, uint32_t bytes, uint32_t metadata);
@@ -138,6 +139,7 @@ char *ResourceService_GetString(void *service, uint32_t id);
 void *ResourceService_GetBitmap(void *service, uint32_t id);
 void *UI_GetResourceBank(void);
 void *UI_GetResourceService(void);
+uint32_t ResourceName_GetId(void *name);
 void *Heap_AllocateZeroed(uint32_t byte_count);
 void Heap_Free(void *allocation);
 void *Runtime_OperatorNew(uint32_t byte_count);
@@ -160,6 +162,7 @@ int DirectoryIterator_Next(struct DirectoryIterator *iterator, struct NativePath
 void DirectoryIterator_Destroy(struct DirectoryIterator *iterator);
 struct NativePath *NativePath_InitEmpty(struct NativePath *path);
 struct NativePath *NativePath_Destroy(struct NativePath *path);
+void *Thread_GetCurrentRecord(void);
 int Settings_HandleAction(void *controller, const char *action, uint32_t argument);
 int SettingsModel_GetProperty(void *model, uint32_t type, uint32_t property, uintptr_t *out);
 int SettingsModel_GetIndexedProperty(void *model, uint32_t type, uint32_t property, uint32_t index, uintptr_t *out);
@@ -184,6 +187,9 @@ int SongText_CompareUtf16(void *collation, const uint16_t *left, uint32_t left_u
 int StringCache_ReadToken(void *cache, uint32_t token, void *destination, uint32_t *bytes, uint32_t maximum_bytes);
 int StringCache_ReleaseToken(void *cache, uint32_t token);
 int StringCache_GetTokenView(void *cache, uint32_t token, void **data, uint32_t *bytes);
+void MenuList_RebuildVisibleItems(void *menu_list, void *view, int refresh_subscriptions);
+int MenuList_QueryProperty(void *menu_list, uint32_t type, uint32_t property, uint32_t *out);
+void *ControllerRegistry_InvokeScreenFactory(void *registry, const char *class_name, const char *controller_name, uint32_t screen_id, uint32_t layout_id, uint32_t transition);
 void *UI_FindServiceById(uint32_t service_id);
 void *UI_GetRootView(void);
 void *UI_GetSelectionModel(void);
@@ -205,10 +211,12 @@ void *WheelAccumulator_Init(void *state, int threshold, uint8_t accelerate, uint
 int WheelAccumulator_ConsumeMotion(void *state, int motion, uint32_t speed);
 void WheelAccumulator_Reset(void *accumulator);
 void View_InitOptionsFromDescriptor(const void *descriptor, void *options);
+void View_ResolveBounds(void *view, int32_t *bounds);
 void *View_Construct(void *view, void *unused, void *parent, void *event_target, const void *options);
 void View_BindGraphicsContext(void *view, void *context);
 void View_GetLocalContentRect(void *view, int32_t *rect);
 void View_InvalidateRect(void *view, const int32_t *rect);
+void *TextView_CreateFromDescriptor(void *owner, void *parent, void *event_target, const void *descriptor);
 int MainMediaMenu_DispatchCommonAction(void *controller, const char *action, uint32_t argument);
 int NowPlaying_DispatchAction(void *controller, const char *action, uint32_t argument);
 int SongList_DispatchAction(void *controller, const char *action, uint32_t argument);
@@ -217,6 +225,17 @@ int Genius_DispatchAction(void *controller, const char *action, uint32_t argumen
 void UI_InitializeEventTimer(void *controller, void *timer, uint32_t period, void *event_queue);
 void Timer_Start(void *timer);
 void Timer_SetPeriod(void *timer, uint32_t milliseconds);
+int Controller_ExecuteNavigatorAction(void *controller, void *action, int action_context, uint8_t *stop_dispatch);
+void Navigator_PopTop(uint32_t flags);
+void Navigator_PopToMainScreen(void);
+void Navigator_PopToPixoMainScreen(void);
+int ExtrasMenu_DispatchAction(void *controller, const char *action, uint32_t argument);
+void *UI_ConstructScreenDefinition(void *definition, uint32_t screen_id, int load_layouts);
+void UI_LoadScreenLayouts(void *definition);
+void *ControllerLayoutCache_GetOrInsert(void *definition, uint32_t layout_id);
+void *View_FindViewById(void *view, uint32_t id);
+void *UI_FindTemplateView(void *owner, uint32_t template_id);
+void UI_DisplayPreparedLayout(void *manager, void *layout);
 
 extern const uint8_t EQ_Presets[];
 extern const uint32_t EQ_PresetIds[];
@@ -231,6 +250,11 @@ extern uint32_t MainMenuSettingsRows[];
 extern uint32_t MusicMenuSettingsRows[];
 extern void *const ScreenController_vtable[];
 extern void *const View_vtable[];
+extern void *const TemplateView_vtable[];
+extern void *const SettingsMenuListController_vtable[];
+extern void *const ExtrasMenuController_vtable[];
+extern void *const ArtistsController_vtable[];
+extern void *const AlbumsController_vtable[];
 #endif
 
 #define ADDR_ArtworkDatabase_Import 0x08059000
@@ -374,6 +398,7 @@ extern void *const View_vtable[];
 #define ADDR_ResourceBank_InitOverrides 0x08111f00
 #define ADDR_ResourceBank_SetResource 0x08111e20
 #define ADDR_ResourceBank_GetResource 0x08111d74
+#define ADDR_ResourceBank_FirstResource 0x081120f4
 #define ADDR_ResourceBank_NextResource 0x08112000
 #define ADDR_ResourceNames_FindOrInsertSlot 0x083d242c
 #define ADDR_ResourceBlockList_AppendBorrowedBlock 0x0817a7ec
@@ -384,6 +409,7 @@ extern void *const View_vtable[];
 #define ADDR_UI_GetResourceService 0x08268d34
 #define ADDR_UI_InitResourceProviders 0x081c7e68
 #define ADDR_UI_InitializeViewTemplates 0x081af5b4
+#define ADDR_ResourceName_GetId 0x08286e74
 #define ADDR_Heap_AllocateZeroed 0x0805232c
 #define ADDR_Heap_Free 0x080521c0
 #define ADDR_Runtime_OperatorNew 0x082a17e0
@@ -414,6 +440,8 @@ extern void *const View_vtable[];
 #define ADDR_DirectoryIterator_Destroy 0x081e5928
 #define ADDR_NativePath_InitEmpty 0x0826fcc4
 #define ADDR_NativePath_Destroy 0x0826fcf4
+#define ADDR_Thread_Create 0x0804b4f4
+#define ADDR_Thread_GetCurrentRecord 0x0804b744
 #define ADDR_Settings_HandleAction 0x0821daf4
 #define ADDR_Settings_CollectPropertyResources 0x08295174
 #define ADDR_SettingsModel_GetProperty 0x081e11f4
@@ -443,6 +471,9 @@ extern void *const View_vtable[];
 #define ADDR_StringCache_ReadToken 0x080a94ec
 #define ADDR_StringCache_ReleaseToken 0x080bb0c8
 #define ADDR_StringCache_GetTokenView 0x08093598
+#define ADDR_MenuList_RebuildVisibleItems 0x081946fc
+#define ADDR_MenuList_QueryProperty 0x08194c2c
+#define ADDR_ControllerRegistry_InvokeScreenFactory 0x081d5a40
 #define ADDR_UI_FindServiceById 0x081c7d44
 #define ADDR_UI_GetRootView 0x08113600
 #define ADDR_UI_GetSelectionModel 0x0817dde4
@@ -465,11 +496,13 @@ extern void *const View_vtable[];
 #define ADDR_WheelAccumulator_ConsumeMotion 0x081b0e4c
 #define ADDR_WheelAccumulator_Reset 0x081b0e7c
 #define ADDR_View_InitOptionsFromDescriptor 0x0829b090
+#define ADDR_View_ResolveBounds 0x08264f9c
 #define ADDR_View_Construct 0x08265bf8
 #define ADDR_View_BindGraphicsContext 0x08264bdc
 #define ADDR_View_GetLocalContentRect 0x08299014
 #define ADDR_View_InvalidateRect 0x082655a0
 #define ADDR_View_DrawBackgroundAndBorder 0x08263530
+#define ADDR_TextView_CreateFromDescriptor 0x0817b238
 #define ADDR_TextView_DrawTextWithColor 0x08287218
 #define ADDR_MarqueeTextView_Draw 0x081a8dc8
 #define ADDR_CoverFlowView_UpdateActiveState 0x0813818c
@@ -489,6 +522,21 @@ extern void *const View_vtable[];
 #define ADDR_UITask_Create 0x081391b8
 #define ADDR_UITask_Main 0x08139118
 #define ADDR_Timer_SetPeriod 0x0812195c
+#define ADDR_Controller_ExecuteNavigatorAction 0x08129998
+#define ADDR_Navigator_PopTop 0x082896b8
+#define ADDR_Navigator_PopToScreen 0x08289728
+#define ADDR_Navigator_PopToMainScreen 0x08289714
+#define ADDR_Navigator_PopToPixoMainScreen 0x08289768
+#define ADDR_ExtrasMenu_DispatchAction 0x0811a664
+#define ADDR_UI_ConstructScreenDefinition 0x0813ca44
+#define ADDR_UI_LoadScreenLayouts 0x0813c91c
+#define ADDR_ControllerLayoutCache_GetOrInsert 0x0813ca2c
+#define ADDR_UI_CreateTemplateFromResource 0x081df580
+#define ADDR_View_FindViewById 0x08292580
+#define ADDR_UI_FindTemplateView 0x081af514
+#define ADDR_UI_DisplayPreparedLayout 0x08174464
+#define ADDR_UI_ApplyInstanceResources 0x081781c0
+#define ADDR_View_ApplyPropertyBindings 0x08175b7c
 #define ADDR_EQ_Presets 0x089d4b58
 #define ADDR_EQ_PresetIds 0x083e4110
 #define ADDR_WheelState 0x089d2b8c
@@ -502,6 +550,11 @@ extern void *const View_vtable[];
 #define ADDR_MusicMenuSettingsRows 0x08a81898
 #define ADDR_ScreenController_vtable 0x0899d3fc
 #define ADDR_View_vtable 0x089ad8ec
+#define ADDR_TemplateView_vtable 0x08997824
+#define ADDR_SettingsMenuListController_vtable 0x089a3ae0
+#define ADDR_ExtrasMenuController_vtable 0x0899cb30
+#define ADDR_ArtistsController_vtable 0x089a40e4
+#define ADDR_AlbumsController_vtable 0x089a3514
 
 #define SITE_ArtworkDatabase_Import_call 0x0804d458
 #define SITE_ArtworkDatabase_ReadImageThumbs_call 0x08074f34
@@ -665,6 +718,9 @@ extern void *const View_vtable[];
 #define SITE_NestedPlaylists_DispatchAction_entry 0x0822ea1c
 #define SITE_Genius_DispatchAction_entry 0x0821c0e4
 #define SITE_UITask_StackShift_word 0x081391dc
+#define SITE_Extras_Action_slot 0x0899cc44
+#define SITE_Artists_Action_slot 0x089a41f8
+#define SITE_Albums_Action_slot 0x089a3628
 
 #define ArtworkDatabase_image_count 0x8
 #define ArtworkDatabase_first_image 0xc
@@ -687,6 +743,9 @@ extern void *const View_vtable[];
 #define ArtworkThumb_bytes 0x24
 #define WheelState_reported_buttons 0x18
 #define WheelState_buttons 0x20
+#define InputEvent_kind 0x4
+#define InputEvent_wheel_delta 0xc
+#define InputEvent_key 0x10
 #define ITunesReader_file 0x40000
 #define ITunesReader_owner 0x40004
 #define MediaBrowser_library 0xf64
@@ -773,6 +832,11 @@ extern void *const View_vtable[];
 #define Preferences_set_method 0xd4
 #define DirectoryIterator_bytes 0x44
 #define NativePath_bytes 0x8
+#define ThreadRecord_kernel_thread 0x0
+#define ThreadRecord_context 0x8
+#define ThreadRecord_name 0xc
+#define ThreadRecord_stack_base 0x40
+#define ThreadRecord_bytes 0x44
 #define MenuSettingsRow_item 0x0
 #define MenuSettingsRow_title 0x4
 #define MenuSettingsRow_layout_kind 0x8
@@ -780,15 +844,26 @@ extern void *const View_vtable[];
 #define MenuSettingsRow_visible 0x10
 #define MenuSettingsRow_bytes 0x14
 #define Model_notify_method 0x58
+#define ScreenController_push_method 0xd0
+#define ScreenController_pop_method 0xbc
+#define ScreenController_switch_layout_method 0x120
+#define ScreenController_action_method 0x114
+#define ScreenController_vtable_bytes 0x128
 #define ScreenController_screen 0xb4
 #define ScreenController_settings_model 0xb0
 #define ScreenController_event_method 0x30
 #define ScreenController_activate_method 0xec
 #define ScreenController_deactivate_method 0xf0
 #define Service_interface_method 0x14
+#define View_destroy_method 0x4
+#define View_bytes 0xa4
+#define View_options_bytes 0x5c
+#define View_vtable_bytes 0x114
 #define View_draw_method 0x74
 #define View_bounds 0x80
-#define View_graphics_options 0x4c
+#define View_id 0x4c
+#define View_find_view_method 0xe4
+#define View_linked_view_method 0xfc
 #define EventTimer_period 0x4
 #define EventTimer_recipient 0x24
 #define EventTimer_event_queue 0x28
@@ -809,6 +884,43 @@ extern void *const View_vtable[];
 #define Layout_screen 0x58
 #define LayoutInstance_id 0x8
 #define LayoutScreen_id 0x4
+#define ResourceScreenController_screen_definition 0xb0
+#define ResourceScreenController_bytes 0xec
+#define SettingsMenuListController_screen_definition 0xc0
+#define SettingsMenuListController_bytes 0xfc
+#define ScreenDefinition_layout 0x30
+#define ScreenDefinition_transition 0x36
+#define ScreenDefinition_screen 0x4
+#define ScreenDefinition_layout_cache 0xc
+#define SsinInstance_view_bindings 0x0
+#define SsinInstance_template 0x4
+#define SsinInstance_substitute 0x8
+#define SsinInstance_flags 0x10
+#define ViewDescriptor_frame 0x0
+#define ViewDescriptor_top_offset 0xc
+#define ViewDescriptor_anchor 0x10
+#define ViewDescriptor_anchor_mode 0x14
+#define ViewDescriptor_id 0x30
+#define ViewDescriptor_type 0x4c
+#define ViewDescriptor_options_bytes 0x5c
+#define TextViewDescriptor_source 0x64
+#define TextViewDescriptor_font 0x68
+#define TextViewDescriptor_color 0x70
+#define ItemTableBinding_item_table 0x4
+#define ViewLayout_title 0x24
+#define SourceBinding_service 0x0
+#define SourceBinding_property 0x4
+#define SourceBinding_destination 0x8
+#define SelectionModel_current_index_method 0x168
+#define ControlRange_value 0x0
+#define ControlRange_minimum 0x4
+#define ControlRange_maximum 0x8
+#define ControlRange_bytes 0xc
+#define ContextMenuItem_item 0x0
+#define ContextMenuItem_action 0x4
+#define ContextMenuItem_flags 0x8
+#define ContextMenuItem_bytes 0xc
+#define MediaListController_show_context_menu_method 0x148
 
 #define DRAM_BASE 0x8000000
 #define DRAM_END 0xc000000
@@ -821,6 +933,14 @@ extern void *const View_vtable[];
 #define WheelButton_Previous 0x4
 #define WheelButton_Play 0x8
 #define WheelButton_Menu 0x10
+#define InputEvent_ButtonDown 0x6
+#define InputEvent_ButtonUp 0xd
+#define InputEvent_Wheel 0x15
+#define UIKey_Play 0x10
+#define UIKey_Previous 0x59
+#define UIKey_Next 0x5a
+#define UIKey_Menu 0x6e
+#define UIKey_Center 0x6f
 #define AlbumArtist_order_mode 0x2d
 #define Resource_BMap 0x424d6170
 #define Resource_Draw 0x44726177
@@ -829,8 +949,22 @@ extern void *const View_vtable[];
 #define Resource_TEVT 0x54455654
 #define Resource_SEVT 0x53455654
 #define Resource_CEVT 0x43455654
+#define Resource_SCST 0x53435354
+#define Resource_SLst 0x534c7374
+#define Resource_SLyt 0x534c7974
+#define Resource_SSin 0x5353696e
+#define Resource_VCvs 0x56437673
+#define Resource_VLyt 0x564c7974
+#define Resource_View 0x56696577
+#define Resource_TMLT 0x544d4c54
+#define Resource_String 0x53747220
+#define Resource_VSlt 0x56536c74
 #define MainMenuSettings_row_count 0x22
 #define MusicMenuSettings_row_count 0xd
+#define AnchorMode_Top 0x1
+#define AnchorMode_Left 0x2
+#define AnchorMode_Bottom 0x3
+#define AnchorMode_Right 0x4
 #define Property_String 0x53747220
 #define Property_Count 0x564d6178
 #define Notify_None 0x4e6f6e65
@@ -840,6 +974,18 @@ extern void *const View_vtable[];
 #define ActionSupportQuery 0xdeadbeef
 #define Event_Timer 0xf
 #define EventPayload_Timer 0xd00
+#define Transition_Standard 0x0
+#define Transition_ForegroundPush 0x2
+#define Transition_ScreenPush 0x3
+#define CxxVtable_prefix_bytes 0x8
+#define ViewBinding_ItemTable 0x3f1
+#define Service_String 0x80
+#define SourceDestination_Title 0x1
+#define Property_Control 0x436e746c
+#define SourceDestination_InlineValue 0xa
+#define ViewType_Progress 0x70676f67
+#define ViewType_Text 0x74657874
+#define UITask_stack_bytes 0x20000
 
 #define RES_Settings_Off_String 0x0dad0bda
 #define RES_Settings_On_String 0x0dad0bdb
@@ -864,6 +1010,18 @@ extern void *const View_vtable[];
 #define RES_Settings_MainMenu_Layout 0x0dad0c92
 #define RES_Settings_Legal_Screen 0x0dad0cb3
 #define RES_Settings_Legal_Layout 0x0dad0cb4
+#define RES_Settings_EQ_Items 0x00000047
+#define RES_Settings_Brightness_Screen 0x0dad0c98
+#define RES_Settings_Brightness_Screen_Default 0x0dad0c99
+#define RES_Settings_Brightness_Template 0x0dad0c5a
+#define RES_Settings_Brightness_Bar 0x0dad0c60
+#define RES_Settings_Brightness_Value_Text 0x0dad0c61
+#define RES_SettingsMenus_Brightness_Layout 0x0dad0c84
+#define RES_SettingsMenus_Legal_Layout 0x0dad0c8e
+#define RES_SettingsInfo_Template_Brightness_Layout 0x0dad0c39
+#define RES_SettingsInfo_Template_Legal_Layout 0x0dad0c40
+#define RES_Settings_Icon_View 0x0dad0c30
+#define RES_Settings_InfoDetail_View 0x0dad0c31
 #define RES_Menu_Checked_Bitmap 0x0dad0c08
 #define RES_Menu_Reset_Bitmap 0x0dad0125
 #define RES_CoverFlow_Backside_Border_Color 0x0dad05d8
@@ -872,3 +1030,76 @@ extern void *const View_vtable[];
 #define RES_NowPlaying_ChapterArt_BackgroundImage_View 0x0dad092d
 #define RES_RentalInfo_White_Background_View 0x0dad09ae
 #define RES_Search_Input_Text 0x0dad0ddc
+#define RES_Notes_List_Screen_Alt 0x0dad09fa
+#define RES_Notes_List_Screen_Alt_Default 0x0dad09fb
+#define RES_Settings_Legal_Template 0x0dad0041
+#define RES_StatusBarWhite_Template 0x0dad01a1
+#define RES_StatusBarWhite_Text 0x0dad01a6
+#define RES_MainMenu_Items 0x0000001a
+#define RES_MusicMenu_Items 0x0000001b
+#define RES_MainMenus_Main_Screen 0x0dad076e
+#define RES_MainMenus_Music_Screen 0x0dad07c8
+#define RES_ExtrasMenu_Screen 0x0dad01cc
+#define RES_ExtrasMenu_Layout 0x0dad01f0
+#define RES_MainMenu_Music_Item 0x0dad076f
+#define RES_MainMenu_CoverFlow_Item 0x0dad0770
+#define RES_MainMenu_GeniusMixes_Item 0x0dad0771
+#define RES_MainMenu_Playlists_Item 0x0dad0772
+#define RES_MainMenu_Artists_Item 0x0dad0773
+#define RES_MainMenu_Albums_Item 0x0dad0774
+#define RES_MainMenu_Compilations_Item 0x0dad0775
+#define RES_MainMenu_Songs_Item 0x0dad0776
+#define RES_MainMenu_Radio_Item 0x0dad0792
+#define RES_MainMenu_Genres_Item 0x0dad0777
+#define RES_MainMenu_Composers_Item 0x0dad0778
+#define RES_MainMenu_Audiobooks_Item 0x0dad0779
+#define RES_MainMenu_Search_Item 0x0dad077a
+#define RES_MainMenu_Photos_Item 0x0dad0781
+#define RES_MainMenu_Podcasts_Item 0x0dad0784
+#define RES_MainMenu_iTunesU_Item 0x0dad0785
+#define RES_MainMenu_Videos_Item 0x0dad077b
+#define RES_MainMenu_VideoPlaylists_Item 0x0dad077c
+#define RES_MainMenu_Movies_Item 0x0dad077d
+#define RES_MainMenu_TVShows_Item 0x0dad077e
+#define RES_MainMenu_MusicVideos_Item 0x0dad077f
+#define RES_MainMenu_Rentals_Item 0x0dad0780
+#define RES_MainMenu_Extras_Item 0x0dad0786
+#define RES_MainMenu_Clocks_Item 0x0dad0787
+#define RES_MainMenu_Alarms_Item 0x0dad0788
+#define RES_MainMenu_Calendars_Item 0x0dad0789
+#define RES_MainMenu_Contacts_Item 0x0dad078a
+#define RES_MainMenu_Games_Item 0x0dad078b
+#define RES_MainMenu_Notes_Item 0x0dad078c
+#define RES_MainMenu_ScreenLock_Item 0x0dad078d
+#define RES_MainMenu_Stopwatch_Item 0x0dad078e
+#define RES_MainMenu_ShuffleSongs_Item 0x0dad0794
+#define RES_MainMenu_Sleep_Item 0x0dad0796
+#define RES_MusicMenu_CoverFlow_Item 0x0dad07c9
+#define RES_MusicMenu_GeniusMixes_Item 0x0dad07ca
+#define RES_MusicMenu_Playlists_Item 0x0dad07cb
+#define RES_MusicMenu_Artists_Item 0x0dad07cc
+#define RES_MusicMenu_Albums_Item 0x0dad07cd
+#define RES_MusicMenu_Compilations_Item 0x0dad07ce
+#define RES_MusicMenu_Songs_Item 0x0dad07cf
+#define RES_MusicMenu_Radio_Item 0x0dad07d0
+#define RES_MusicMenu_Genres_Item 0x0dad07d1
+#define RES_MusicMenu_Composers_Item 0x0dad07d2
+#define RES_MusicMenu_Audiobooks_Item 0x0dad07d3
+#define RES_MusicMenu_Search_Item 0x0dad07d4
+#define RES_ExtrasMenu_Clocks_Item 0x0dad01cd
+#define RES_ExtrasMenu_Calendars_Item 0x0dad01ce
+#define RES_ExtrasMenu_Contacts_Item 0x0dad01cf
+#define RES_ExtrasMenu_Alarms_Item 0x0dad01d0
+#define RES_ExtrasMenu_Games_Item 0x0dad01d1
+#define RES_ExtrasMenu_Notes_Item 0x0dad01d2
+#define RES_ExtrasMenu_ScreenLock_Item 0x0dad01d3
+#define RES_ExtrasMenu_Stopwatch_Item 0x0dad01d4
+#define RES_MediaLists_Songs_Screen 0x0dad07e9
+#define RES_MediaLists_NestedPlaylists_Screen 0x0dad0808
+#define RES_MediaLists_Genius_Screen 0x0dad0844
+#define RES_MediaLists_GeniusPlaylist_Screen 0x0dad0848
+#define RES_MediaLists_Artists_Screen 0x0dad07f0
+#define RES_MediaLists_Artists_Screen_Default 0x0dad07f1
+#define RES_MediaLists_Albums_Screen 0x0dad07ed
+#define RES_NowPlaying_Screen 0x0dad096c
+#define RES_ExtrasMenu_Items 0x00000002
