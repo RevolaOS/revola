@@ -74,6 +74,11 @@ SITE(EAppBlocks_Acquire_call, SITE_EAppBlocks_Acquire_call, CALL, ADDR_EAppBlock
 SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlocks_Release,
      BL(SITE_EAppBlocks_Release_call, ADDR_EAppBlocks_Release), 0, 0, 1, 0)
 
+/* Position of an entry in a list order: (entry, order, reverse), position in r0 and
+ * the entry in r1. Nothing is inside it while core_boot runs during UI start-up. */
+SITE(MediaList_GetEntryOrderIndex_entry, SITE_MediaList_GetEntryOrderIndex_entry, ENTRY,
+     REPLAY(MediaList_GetEntryOrderIndex_entry), 0xe92d40f7, 0xe1b06000, 0, 3, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */

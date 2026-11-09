@@ -31,6 +31,7 @@
 /* Heap that growing the cache for a game leaves free for the game and the UI. */
 #define GROW_HEAP_MARGIN (1u * MIB)
 #define NOP 0xe1a00000u
+#define ORDER_LIMIT 0x30 /* order slots in a MediaList */
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
 enum {
@@ -285,6 +286,35 @@ static const struct core_hook game_hooks[] = {
     {CORE_SITE_EAppBlocks_Release_call, CORE_HOOK_FILTER, 0, game_blocks_release},
 };
 
+/* Replaces Apple's position lookup, which keeps an index of (entry, position) pairs
+ * sorted by address beside each order it is asked about: 8 bytes per entry, as large
+ * as a play-all queue, asked twice per track change. Scanning the order gives the
+ * same position. Returns the position (-1 if absent) in r0 and the entry in r1, as
+ * Apple's function does. RepriseOS perf/memory c6468c0. */
+static uint64_t entry_position(uint32_t entry, uint32_t order, uint32_t reverse_arg,
+                               const struct core_next *next)
+{
+    (void)next;
+    uint64_t result = (uint64_t)entry << 32;
+    uint8_t *list = entry ? FIELD((uint8_t *)entry, MediaEntry_list, uint8_t *) : 0;
+    if (!list || !FIELD((uint8_t *)entry, MediaEntry_parent, void *) || !order)
+        return result | UINT32_MAX;
+    uint8_t reverse = (uint8_t)reverse_arg;
+    MediaList_ResolveOrderMode((struct MediaList *)list, &order, &reverse);
+    if (!order || order > ORDER_LIMIT || MediaList_BuildOrderIndex((struct MediaList *)list, order))
+        return result | UINT32_MAX;
+    uint8_t *entries = FIELD(list, MediaList_order_index + order * 4, uint8_t *);
+    uint32_t count = FIELD(entries, MediaOrder_count, uint32_t);
+    uint32_t *items = (uint32_t *)(entries + MediaOrder_entries);
+    for (uint32_t i = 0; i < count; i++)
+        if (items[i] == entry)
+            return result | (reverse ? count - i - 1 : i);
+    return result | UINT32_MAX;
+}
+
+static const struct core_hook position_hook = {CORE_SITE_MediaList_GetEntryOrderIndex_entry,
+                                               CORE_HOOK_REPLACE, 0, entry_position};
+
 static void bind_all(const struct core_hook *hooks, uint32_t count)
 {
     for (uint32_t i = 0; i < count; i++)
@@ -306,4 +336,6 @@ void core_memory_bind(void)
         bind_all(pool_hooks, 2);
     if (enabled(CORE_KEY_GAME_BLOCKS))
         bind_all(game_hooks, 2);
+    if (enabled(CORE_KEY_POSITION_SCAN))
+        core_hook_bind(&position_hook);
 }
