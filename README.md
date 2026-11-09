@@ -11,9 +11,9 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 | `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), boot order (`init.c`), settings store (`settings.c`), grace timer (`timer.c`), panic screen (`panic.c`) |
 | `core/hooks/` | Hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`) |
 | `core/loader/` | Extension loader and lifecycle (`loader.c`, `containers.c`), file access |
-| `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), list screens full width or beside the Settings preview pane (`lists.c`) and their rows expanded by index (`indexed.c`), templates built at boot (`templates.c`), canvas view and slider input (`canvas.c`), controller vtable copies (`controllers.c`), menu rows (`menus.c`) and the Settings preview pane (`panes.c`), Main and Music Menu settings rows (`toggles.c`), Settings properties and actions (`properties.c`), resource helpers, About and Extensions rows |
+| `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), list screens full width or beside the Settings preview pane (`lists.c`) and their rows expanded by index (`indexed.c`), templates built at boot (`templates.c`), canvas view and slider input (`canvas.c`), the drawing table canvases draw with (`gfx.c`), controller vtable copies (`controllers.c`), menu rows (`menus.c`) and the Settings preview pane (`panes.c`), Main and Music Menu settings rows (`toggles.c`), Settings properties and actions (`properties.c`), resource helpers, About and Extensions rows |
 | `core/memory/` | Memory rules (`memory.c`, `artwork.c`, `trackcount.c`) |
-| `sdk/` | What extensions build against: `rv_api.h`, the module linker script, the Make include, two fixture extensions under `examples/` |
+| `sdk/` | What extensions build against: `rv_api.h` and the `rv_ui.h` declaration helpers, the module linker script, the Make include, the fixture extensions under `examples/` |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
 | `tools/` | Recipe builder, `rvx-pack` (`rvx.py`), manifest compiler, build and release scripts, tests |
@@ -70,7 +70,7 @@ Failsafe: the panic screen writes the owner of the extension whose code was runn
 
 ## SDK
 
-`sdk/` is what extensions build against; `python3 tools/build.py sdk` stages it with the generated `rv_sites.h`, `rv_firmware.h`/`.mk`, the symbols header and linker script and the two tools, and writes `build/revola-sdk-<version>.tar.gz`. `sdk/README.md` describes the files. `sdk/api.lock` records the API version and the hash of every shipped file; the build and the `sdk` workflow fail when a file under `sdk/` changes at the same version, so an API change is always a visible version bump (`RV_API_MINOR` for additions, `RV_API_MAJOR` when an entry changes meaning), followed by `python3 tools/sdklock.py update`.
+`sdk/` is what extensions build against; `python3 tools/build.py sdk` stages it with the generated `rv_sites.h`, `rv_menus.h` (the stock menu rows an entry can follow, from the symbols header's `RES_*Menu_*_Item` names), `rv_firmware.h`/`.mk`, the symbols header and linker script and the two tools, and writes `build/revola-sdk-<version>.tar.gz`. `sdk/README.md` describes the files. `sdk/api.lock` records the API version and the hash of every shipped file; the build and the `sdk` workflow fail when a file under `sdk/` changes at the same version, so an API change is always a visible version bump (`RV_API_MINOR` for additions, `RV_API_MAJOR` when an entry changes meaning), followed by `python3 tools/sdklock.py update`.
 
 ## Menu containers
 

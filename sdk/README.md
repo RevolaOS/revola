@@ -17,6 +17,22 @@ Headers, linker script, tools and Make include for building extensions against o
 
 A module exports `rvx_entry` (see `rv_entry_fn`). The main module returns a `struct rv_extension`; its hooks are bound in order and a conflict fails the load with the site named in Settings > Extensions. Install the output directory as `/Revola/Extensions/<id>/`.
 
+## Declaring UI
+
+An extension describes its UI; the core draws it as stock screens. The descriptor lists settings, screens and entries, each one line with `rv_ui.h`:
+
+| Declaration | What the user sees |
+|---|---|
+| `RV_SETTING_FLAG`, `RV_SETTING_CHOICE`, `RV_SETTING_SLIDER`, `RV_SETTING_MULTI` | a setting with its labels; an `RV_SETTING(label, key)` row shows its value and flips it or opens its screen |
+| `RV_LIST(name, title, rows)` of `RV_PUSH`, `RV_ACTION`, `RV_SETTING`, `RV_TOGGLE` rows | a menu, full width or beside the Settings preview pane as the screen it opens from decides (`.layout` overrides) |
+| `RV_CHOICE`, `RV_MULTI_CHOICE`, `RV_SLIDER` | a screen over a setting with a title of its own |
+| `RV_TEXT(name, title, paragraphs)` | a text page |
+| `RV_RUNTIME_LIST(name, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
+| `RV_CANVAS(name, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, colour roles themes can change) and reads wheel and key input |
+| `RV_ENTRY(menu, after, row)` | a row in `"main"`, `"music"`, `"extras"`, `"settings"`, a long-press menu (`"nowplaying"`, `"song"`, `"album"`, `"artist"`) or a container, after a stock row from `rv_menus.h`; under Settings `.caption` and `.bitmap` fill the preview pane |
+
+Screen names are local to the extension; `api->ui_push(self, name)` opens one from a row, choice or input callback. Labels, paragraphs and bitmaps are read from the module while a screen is open, never copied. Nothing about the firmware's own resources appears in a UI declaration; the symbols header is for hooks.
+
 For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
 
 Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library; only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.
