@@ -8,7 +8,7 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), memory rules (`memory.c`), About rows (`about.c`), panic screen |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), memory rules (`memory.c`, `trackcount.c`), About rows (`about.c`), panic screen |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
 | `tools/` | Recipe builder, build and release scripts, tests |
@@ -63,7 +63,7 @@ Apple's global memory policy is adjusted at boot, each rule behind a core settin
 | `CORE_KEY_GAME_BLOCKS` | When the eApp block manager asks for a game's blocks the cache first grows by what the other clients keep, leaving 1 MiB of heap; after the release the unassigned blocks above the import size go back to the heap. |
 | `CORE_KEY_POSITION_SCAN` | List positions come from scanning the order instead of Apple's address index beside it (8 bytes per entry of a play-all queue). |
 
-The cache budget also releases the four sorted orders the import builds and never reads (4 bytes per track each).
+The cache budget also releases the four sorted orders the import builds and never reads (4 bytes per track each). Two changes are not settings: the track count of media-list nodes is widened to 32 bits by sixty constant words in `core/trackcount.c`, written by the recipe, so libraries over 65,535 tracks import; and the core's own layout of that node (tracks at 0x2c as a word, groups at 0x1e) lives next to those words, while the symbols file keeps Apple's.
 
 The 32 KiB UI stack is not carried until stack-watermark evidence exists on the canvas and loader paths.
 
