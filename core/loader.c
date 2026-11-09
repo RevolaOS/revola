@@ -34,7 +34,6 @@
 #define IDLE_TICKS 10 /* grace ticks a screen module stays loaded with no screen open */
 #define RELOC_CHUNK 32
 #define PATH_MAX_BYTES 96
-#define BUTTON_PREVIOUS 0 /* TODO: held-button source (reversing round 4 item 4) */
 
 struct manifest_header {
     uint32_t magic;
@@ -612,9 +611,12 @@ static uint32_t scan(char names[][sizeof ((struct rv_extension_record *)0)->dire
     return count;
 }
 
+/* The wheel interrupt keeps the physical button mask current in WheelState;
+ * reading it touches no hardware. The left button is Previous whatever the
+ * orientation flag says, because the mask is the raw packet. */
 static uint32_t held_buttons(void)
 {
-    return 0; /* TODO: read the wheel driver's held-button state */
+    return *(volatile uint32_t *)((uint8_t *)&WheelState + WheelState_buttons);
 }
 
 void core_loader_boot(void)
@@ -626,7 +628,7 @@ void core_loader_boot(void)
         core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, (int32_t)crashed);
     }
     core_loader_crashed = (uint32_t)core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);
-    if (held_buttons() & BUTTON_PREVIOUS) {
+    if (held_buttons() & WheelButton_Previous) {
         core_loader_core_only = 1;
         return;
     }

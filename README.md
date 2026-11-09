@@ -60,7 +60,7 @@ An extension is a directory `/Revola/Extensions/<id>/` with `manifest.bin` (comp
 
 Lifecycle: the main module stays loaded while the extension is enabled; a `manual` module loads and unloads through `api->module_load` and `module_unload`; a `screen` module loads when one of its declared screens is pushed (`core_loader_screen_pushed`) and unloads ten ticks after the last of them was popped. Disabling marks the record and the next tick unloads it; code and hook storage are retired and freed two ticks after unbind, when no task can still be inside them. Images are owned by the Apple heap, so a reload reuses the same addresses and the heap totals return to where they were (checked by the self-test).
 
-Failsafe: the panic screen writes the owner of the extension whose code was running (the explicit entry call, else the image holding the faulting address, link register or any saved word) to a word at the top of IRAM that the boot chain leaves alone, and the next boot disables that extension and records it for the Extensions screen. TODO: core-only boot with Previous held waits for a way to read the held buttons from the UI task; the hook is in place and reads nothing yet. TODO: a rescan after USB disk mode.
+Failsafe: the panic screen writes the owner of the extension whose code was running (the explicit entry call, else the image holding the faulting address, link register or any saved word) to a word at the top of IRAM that the boot chain leaves alone, and the next boot disables that extension and records it for the Extensions screen. Holding Previous while RevolaOS boots starts core-only mode: the loader reads the wheel driver's button mask, which the wheel interrupt keeps current, and loads nothing. TODO: a rescan after USB disk mode.
 
 ## SDK
 
@@ -70,9 +70,9 @@ Failsafe: the panic screen writes the owner of the extension whose code was runn
 
 An extension declares a submenu it wants to contribute to by id and parent (`struct rv_container`); the core deduplicates by id, keeps the first label, and refuses a second declaration with another parent. TODO: the row for a container is not materialised in the native menu yet (Settings > Extensions is the first user).
 
-## About rows
+## About and Extensions rows
 
-Settings ends with four rows after Legal: the RevolaOS version, the core's resident bytes, and the heap's used and free bytes. They are copies of the Legal row made while Apple builds the list, with titles bound to Settings model properties the core answers, so the numbers are current each time Settings opens. The rows have no action. TODO: a text page with more detail is part of the UI runtime (milestone 7).
+Settings ends with four About rows after Legal (the RevolaOS version, the core's resident bytes, the heap's used and free bytes), then a meter row with the bytes extensions hold, then one row per installed extension with its state (On with its resident bytes, Off, Conflict, No memory, Failed, Off after crash). All are copies of the Legal row made while Apple builds the list, with titles bound to Settings model properties the core answers, so the text is current each time it is drawn. Selecting an extension row toggles it: the core adds a `list.pid.<row>.chosen` binding to the Settings screen's event table when Apple loads it, the binding names a handler the core's Settings action filter recognises, and the toggle notifies the model so the row and the meter redraw. The installed list is read from disk once, when Settings is first built, which happens at boot. TODO: a screen of its own with the detail page is part of the UI runtime.
 
 ## Memory rules
 

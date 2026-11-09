@@ -135,75 +135,93 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
     return core_next_call(next, model, type, id, out);
 }
 
-static int same(const char *a, const char *b)
+/* Row index from "RevolaExtension<n>", 0 for any other action name. A handler
+ * binding carries no argument of its own, so the row is in the name. */
+static uint32_t action_row(const char *name)
 {
-    while (*a && *a == *b)
-        a++, b++;
-    return *a == *b;
+    const char *prefix = ACTION;
+    while (*prefix && *name == *prefix)
+        name++, prefix++;
+    uint32_t row = 0;
+    if (*prefix || *name < '1' || *name > '9')
+        return 0;
+    while (*name >= '0' && *name <= '9')
+        row = row * 10 + (uint32_t)(*name++ - '0');
+    return *name ? 0 : row;
 }
 
-/* "RevolaExtension" with the row index as argument toggles that extension and
- * refreshes the row and the meter. */
+/* Toggles the row's extension and refreshes the row and the meter. */
 static uint32_t action(uint32_t controller, uint32_t name, uint32_t argument,
                        const struct core_next *next)
 {
-    if (!same((const char *)name, ACTION))
+    uint32_t row = action_row((const char *)name);
+    if (!row)
         return core_next_call(next, controller, name, argument, 0);
     if (argument == ActionSupportQuery)
         return 1;
-    if (argument == 0 || argument >= row_count)
+    if (row >= row_count)
         return 0;
-    const struct core_installed *entry = &installed[argument - 1];
+    const struct core_installed *entry = &installed[row - 1];
     struct rv_extension_record *record = core_loader_find(entry->owner);
     core_loader_set_enabled(entry->directory, !record || record->pending_unload);
     void *model = FIELD((void *)controller, ScreenController_settings_model, void *);
     void (*notify)(void *, uint32_t, uint32_t) =
         FIELD(FIELD(model, 0, void **), Model_notify_method, void *);
-    notify(model, Notify_All, PROPERTY_ID(argument));
+    notify(model, Notify_All, PROPERTY_ID(row));
     notify(model, Notify_All, PROPERTY_ID(METER));
     return 1;
 }
 
-#ifdef RES_Settings_Layout
 /* Serialised event bindings as UIEventMap_ReadStream reads them: u32 count, then
- * per event {str name, byte 1, str handler, u32 has_action = 0}; str is a u32
+ * per event {str name, the byte '1', str handler, u32 has_action = 0}; str is a u32
  * length and the bytes. list.pid.<item>.chosen names the row by id in decimal. */
+/* Words in the stream are not aligned; stored byte by byte. */
+static char *put_word(char *out, uint32_t value)
+{
+    for (unsigned i = 0; i < 4; i++)
+        *out++ = (char)(value >> (8 * i));
+    return out;
+}
+
 static char *put_string(char *out, const char *value)
 {
     uint32_t n = 0;
     while (value[n])
         n++;
-    *(uint32_t *)out = n;
-    out += 4;
+    out = put_word(out, n);
     while (*value)
         *out++ = *value++;
     return out;
 }
 
-static char *put_event(char *out, uint32_t item, const char *handler)
+static char *put_event(char *out, uint32_t item, uint32_t row)
 {
     char name[40], *n = put_text(name, name + sizeof name, "list.pid.");
     n = put_number(n, name + sizeof name, item);
     put_text(n, name + sizeof name, ".chosen");
     out = put_string(out, name);
-    *out++ = 1;
-    out = put_string(out, handler);
-    *(uint32_t *)out = 0;
-    return out + 4;
+    *out++ = '1';
+    n = put_text(name, name + sizeof name, ACTION);
+    put_number(n, name + sizeof name, row);
+    out = put_string(out, name);
+    return put_word(out, 0);
 }
 
 /* Adds the chosen bindings of the rows to the Settings page's event map after
- * Apple loaded its own. */
+ * Apple loaded its own. The stock rows' bindings live in the screen's CEVT, so
+ * the page is recognised by its screen id. */
 static uint32_t layout_events(uint32_t layout, const struct core_next *next)
 {
     uint32_t result = core_next_call(next, layout, 0, 0, 0);
-    if (FIELD((void *)layout, Layout_id, uint32_t) != RES_Settings_Layout || row_count < 2)
+    uint8_t *screen = FIELD((void *)layout, Layout_screen, uint8_t *);
+    if (!screen || FIELD(screen, LayoutScreen_id, uint32_t) != RES_SettingsMenu_Main_Screen ||
+        row_count < 2)
         return result;
     char stream_bytes[4 + (MAX_ROWS - 1) * 72];
     char *out = stream_bytes + 4;
     for (uint32_t i = 1; i < row_count; i++)
-        out = put_event(out, ITEM_ID(i), ACTION);
-    *(uint32_t *)stream_bytes = row_count - 1;
+        out = put_event(out, ITEM_ID(i), i);
+    put_word(stream_bytes, row_count - 1);
     uint32_t string[8], stream[31], allocator = 0;
     CppString_InitBytes(string, stream_bytes, (uint32_t)(out - stream_bytes), &allocator);
     StringInputStream_Init(stream, string, 0xc);
@@ -212,19 +230,14 @@ static uint32_t layout_events(uint32_t layout, const struct core_next *next)
     StringInputStream_Destroy(stream, 2, 0);
     return result;
 }
-#endif
 
 static const struct core_hook hooks[] = {
     {CORE_SITE_ResourceBlockList_AppendBorrowedBlock_call, CORE_HOOK_FILTER, 10, append_rows},
     {CORE_SITE_Settings_Property_slot, CORE_HOOK_FILTER, 10, property},
     {CORE_SITE_Settings_Action_slot, CORE_HOOK_FILTER, 0, action},
-#ifdef RES_Settings_Layout
     {CORE_SITE_UI_LoadLayoutEvents_call, CORE_HOOK_FILTER, 0, layout_events},
-#endif
 };
 
-/* TODO: the chosen bindings need the Settings page layout id (RES_Settings_Layout);
- * until the symbols file has it the rows show state but do not toggle. */
 void core_extensions_init(void *bank)
 {
     for (uint32_t i = 0; i < MAX_ROWS; i++) {
