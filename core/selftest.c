@@ -6,7 +6,9 @@
  * Two filters share Preferences_LoadFile_call (order after the core's own handler),
  * two share Settings_Property_slot (order, short-circuit, direct call after the first
  * unbind, restore after the last), one claims the call site AppendBorrowedBlock to show
- * patch and restore by peek, and an entry site proves the replay stub. */
+ * patch and restore by peek, and an entry site proves the replay stub. Raw sites:
+ * claim, refusals, patch and restore of GameManifest_Init_call, pool exhaustion
+ * and reuse after two grace ticks; the tint fixture holds two more raw sites. */
 
 #ifdef CORE_SELFTEST
 #include "loader/loader.h"
@@ -38,6 +40,13 @@ struct core_selftest {
     uint32_t heap_used[10];
     uint32_t hello_live, hello_failure, hello_hooks, hello_conflict;
     uint32_t loader_stage;
+    /* Raw sites, as core_raw_result: claim, second claim of the address, mismatch,
+     * core site overlap (then the overlapped index), entry kind; then the bind
+     * result, the claims that fit beside the retiring site and tint's two, the
+     * claim past them and the claim after two grace ticks. Words: original,
+     * bound, restored. */
+    uint32_t raw_results[10];
+    uint32_t raw_words[3];
 } core_selftest;
 
 enum { SETTING_BOOTS = 0x7e57 };
@@ -163,6 +172,55 @@ void core_selftest_tick(void)
     core_selftest.loader_stage++;
 }
 
+static uint32_t pass_through(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                             const struct core_next *next)
+{
+    return core_next_call(next, a, b, c, d);
+}
+
+static void raw_sites_test(void)
+{
+    uint32_t *results = core_selftest.raw_results;
+    uint32_t address = SITE_GameManifest_Init_call, other = SITE_MediaList_OnTheGoAdd_call;
+    uint32_t word = *(volatile uint32_t *)address, site, ignored, filled = 0;
+    uint32_t owner = core_settings_owner("selftest");
+    core_selftest.raw_words[0] = word;
+    results[0] = core_raw_claim(owner, address, CORE_SITE_CALL, word, 4, &site);
+    results[1] = core_raw_claim(owner + 1, address, CORE_SITE_CALL, word, 4, &ignored);
+    results[2] = core_raw_claim(owner, other, CORE_SITE_CALL, *(volatile uint32_t *)other ^ 1, 4,
+                                &ignored);
+    results[3] = core_raw_claim(owner, SITE_Preferences_LoadFile_call, CORE_SITE_CALL,
+                                *(volatile uint32_t *)SITE_Preferences_LoadFile_call, 1, &ignored);
+    results[4] = ignored;
+    results[5] = core_raw_claim(owner, other, CORE_SITE_ENTRY, *(volatile uint32_t *)other, 4,
+                                &ignored);
+    static struct core_hook hook = {0, CORE_HOOK_REPLACE, 0, pass_through};
+    hook.site = (uint8_t)site;
+    results[6] = core_hook_bind(&hook);
+    core_selftest.raw_words[1] = *(volatile uint32_t *)address;
+    core_raw_release(site); /* unbinds the hook */
+    core_selftest.raw_words[2] = *(volatile uint32_t *)address;
+
+    uint32_t claimed[CORE_RAW_SITES];
+    uint32_t base = OSOS_RUNTIME_BASE + 0x100;
+    for (uint32_t i = 0; i < CORE_RAW_SITES; i++, base += 0x100) {
+        uint32_t result = core_raw_claim(owner, base, CORE_SITE_WORD, *(volatile uint32_t *)base,
+                                         0, &claimed[filled]);
+        if (result != CORE_RAW_OK) {
+            results[8] = result;
+            break;
+        }
+        filled++;
+    }
+    results[7] = filled;
+    while (filled)
+        core_raw_release(claimed[--filled]);
+    core_grace_tick();
+    core_grace_tick();
+    results[9] = core_raw_claim(owner, address, CORE_SITE_CALL, word, 4, &site);
+    core_raw_release(site);
+}
+
 void core_selftest_preferences(void)
 {
     core_selftest.boots = core_settings_get_int(CORE_SETTINGS_OWNER_CORE, SETTING_BOOTS, 0);
@@ -173,5 +231,6 @@ void core_selftest_preferences(void)
     core_selftest.bind_results[4] = core_hook_bind(&property_b);
     core_selftest.bind_results[5] = core_hook_bind(&append_hook);
     core_selftest.bind_results[6] = core_hook_bind(&append_conflict);
+    raw_sites_test();
 }
 #endif

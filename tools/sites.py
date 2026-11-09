@@ -12,6 +12,7 @@ from symbols import require
 ROW = struct.Struct("<4I4B")
 CALL, VTABLE, ENTRY, ENTRY_NORETURN, WORD, INSERT = range(6)
 LDR_PC = 0xE51FF004
+RAW_SITE_IDS = 0xFFFFFF00  # RV_RAW_SITE(n) in rv_api.h
 PC = 15
 
 
@@ -192,6 +193,8 @@ def ids(row_names):
     values = [fnv1a(name) for name in row_names]
     if len(set(values)) != len(values):
         raise ValueError("site id collision in sites.def")
+    if any(value >= RAW_SITE_IDS for value in values):
+        raise ValueError("site id in the RV_RAW_SITE range; rename the row")
     return values
 
 

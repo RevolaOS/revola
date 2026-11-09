@@ -31,11 +31,12 @@ def strings(data, start, offset):
 class ManifestTests(unittest.TestCase):
     def test_header_modules_and_strings(self):
         data = manifest.compile_manifest(DOCUMENT)
-        magic, version, api, flags, count, bytes_, *texts = manifest.HEADER.unpack_from(
-            data
+        magic, version, api, flags, count, sites, bytes_, *texts = (
+            manifest.HEADER.unpack_from(data)
         )
         self.assertEqual(
-            (magic, version, api, flags, count), (0x464D5652, 1, 0x10002, 0, 3)
+            (magic, version, api, flags, count, sites),
+            (0x464D5652, 2, 0x10002, 0, 3, 0),
         )
         table = manifest.HEADER.size + count * manifest.MODULE.size
         self.assertEqual(len(data), table + bytes_)
@@ -63,6 +64,62 @@ class ManifestTests(unittest.TestCase):
     def test_enabled_flag(self):
         data = manifest.compile_manifest({**DOCUMENT, "enabled": True})
         self.assertEqual(struct.unpack_from("<I", data, 12)[0], 1)
+
+    def test_raw_sites(self):
+        site = {
+            "name": "clear",
+            "address": 0x08001000,
+            "kind": "call",
+            "expected": 0xEB000010,
+            "argc": 2,
+        }
+        word = {"name": "limit", "address": 0x08002000, "kind": "word", "expected": 7}
+        data = manifest.compile_manifest({**DOCUMENT, "site": [site, word]})
+        count, sites, bytes_ = manifest.HEADER.unpack_from(data)[4:7]
+        self.assertEqual(sites, 2)
+        start = manifest.HEADER.size + count * manifest.MODULE.size
+        table = start + sites * manifest.SITE.size
+        self.assertEqual(len(data), table + bytes_)
+        address, expected, kind, argc, name = manifest.SITE.unpack_from(data, start)
+        self.assertEqual((address, expected, kind, argc), (0x08001000, 0xEB000010, 0, 2))
+        self.assertEqual(strings(data, table, name), "clear")
+        self.assertEqual(
+            manifest.SITE.unpack_from(data, start + manifest.SITE.size)[:4],
+            (0x08002000, 7, 4, 0),
+        )
+
+    def test_rejects_invalid_sites(self):
+        site = {
+            "name": "clear",
+            "address": 0x08001000,
+            "kind": "call",
+            "expected": 0xEB000010,
+            "argc": 2,
+        }
+        cases = {
+            "entry kind": {"kind": "entry"},
+            "insert kind": {"kind": "insert"},
+            "chain": {"chain": 1},
+            "unaligned": {"address": 0x08001002},
+            "outside the image": {"address": 0x08B40000},
+            "call without BL": {"expected": 0xE1A00000},
+            "five arguments": {"argc": 5},
+            "word with arguments": {"kind": "word", "argc": 1},
+            "no name": {"name": ""},
+        }
+        for name, change in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.compile_manifest({**DOCUMENT, "site": [{**site, **change}]})
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest({**DOCUMENT, "site": [site, {**site, "name": "b"}]})
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest(
+                {
+                    **DOCUMENT,
+                    "site": [{**site, "name": f"s{i}", "address": 0x08001000 + 4 * i}
+                             for i in range(9)],
+                }
+            )
 
     def test_rejects_invalid_documents(self):
         main = DOCUMENT["module"][0]

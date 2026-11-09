@@ -35,6 +35,21 @@ enum core_site {
     CORE_SITE_COUNT
 };
 
+/* Sites an extension declares in its manifest for code no core row covers. They
+ * follow the core rows in site index order, are always exclusive, and only the
+ * kinds a single aligned store can patch are allowed: CALL, VTABLE and WORD. */
+#define CORE_RAW_SITES 8
+#define CORE_SITE_TOTAL (CORE_SITE_COUNT + CORE_RAW_SITES)
+_Static_assert(CORE_SITE_TOTAL <= 256, "site index is a byte");
+
+enum core_raw_result {
+    CORE_RAW_OK,
+    CORE_RAW_MISMATCH, /* the word at the address is not the declared one */
+    CORE_RAW_OVERLAP,  /* a core site or another raw site covers the address */
+    CORE_RAW_FULL,
+    CORE_RAW_BAD,      /* kind, argument count or address not allowed */
+};
+
 struct core_site_row {
     uint32_t address;
     uint32_t original;
@@ -68,6 +83,16 @@ extern uint32_t core_site_slots[CORE_SITE_COUNT];
 extern const uint32_t core_site_ids[CORE_SITE_COUNT];
 /* Each site's stub, 0 for word sites: what a patched site branches to. */
 extern const uint32_t core_site_stubs[CORE_SITE_COUNT];
+
+/* Claims a raw site for `owner`. On success *site is its index; on CORE_RAW_OVERLAP
+ * *site is the covering core site's index, or CORE_SITE_TOTAL for a raw one. */
+int core_raw_claim(uint32_t owner, uint32_t address, uint8_t kind, uint32_t expected,
+                   uint8_t argc, uint32_t *site);
+/* Unbinds anything left on the site and frees it two grace ticks later, when no
+ * task can still be inside its stub. */
+void core_raw_release(uint32_t site);
+/* Owner of the raw site whose stub contains `address`, 0 when none. */
+uint32_t core_raw_owner_of(uint32_t address);
 
 void core_sites_init(void);
 int core_hook_bind(const struct core_hook *hook);

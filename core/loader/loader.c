@@ -28,7 +28,7 @@
 #define ROOT "/Revola/Extensions"
 #define MANIFEST_FILE "manifest.bin"
 #define MANIFEST_MAGIC 0x464d5652u /* RVMF */
-#define MANIFEST_VERSION 1
+#define MANIFEST_VERSION 2
 #define MANIFEST_ENABLED 1
 #define MANIFEST_MAX 1024
 #define MAX_MODULES 15
@@ -43,6 +43,7 @@ struct manifest_header {
     uint32_t api;
     uint32_t flags;
     uint32_t module_count;
+    uint32_t site_count;
     uint32_t strings_bytes;
     uint16_t text[6]; /* id, name, description, version, author, license */
 };
@@ -53,6 +54,15 @@ struct manifest_module {
     uint8_t trigger; /* 0 always, 1 screen, 2 manual */
     uint8_t screen_count;
     uint16_t screens; /* first of screen_count consecutive strings */
+};
+
+/* A raw hook site; kind is a core_site_kind. */
+struct manifest_site {
+    uint32_t address;
+    uint32_t expected;
+    uint8_t kind;
+    uint8_t argc;
+    uint16_t name;
 };
 
 enum { TRIGGER_ALWAYS, TRIGGER_SCREEN, TRIGGER_MANUAL };
@@ -157,10 +167,24 @@ static const struct manifest_module *module_record(const struct rv_extension_rec
            index;
 }
 
+static const struct manifest_site *site_record(const struct rv_extension_record *record,
+                                               uint32_t index)
+{
+    const struct manifest_header *header = (const struct manifest_header *)record->manifest;
+    return (const struct manifest_site *)(record->manifest + sizeof *header +
+                                          header->module_count * sizeof(struct manifest_module)) +
+           index;
+}
+
+static uint32_t tables_bytes(const struct manifest_header *header)
+{
+    return sizeof *header + header->module_count * sizeof(struct manifest_module) +
+           header->site_count * sizeof(struct manifest_site);
+}
+
 static const char *strings(const uint8_t *buffer)
 {
-    const struct manifest_header *header = (const struct manifest_header *)buffer;
-    return (const char *)buffer + sizeof *header + header->module_count * sizeof(struct manifest_module);
+    return (const char *)buffer + tables_bytes((const struct manifest_header *)buffer);
 }
 
 static const char *text(const struct rv_extension_record *record, uint16_t offset)
@@ -173,9 +197,10 @@ static int manifest_valid(const uint8_t *buffer, uint32_t bytes)
     const struct manifest_header *header = (const struct manifest_header *)buffer;
     if (bytes < sizeof *header || header->magic != MANIFEST_MAGIC ||
         header->version != MANIFEST_VERSION || header->module_count < 1 ||
-        header->module_count > MAX_MODULES || (header->api >> 16) != RV_API_MAJOR)
+        header->module_count > MAX_MODULES || header->site_count > CORE_RAW_SITES ||
+        (header->api >> 16) != RV_API_MAJOR)
         return 0;
-    uint32_t table = sizeof *header + header->module_count * sizeof(struct manifest_module);
+    uint32_t table = tables_bytes(header);
     if (bytes != table + header->strings_bytes || !header->strings_bytes ||
         buffer[bytes - 1] != 0)
         return 0;
@@ -188,6 +213,10 @@ static int manifest_valid(const uint8_t *buffer, uint32_t bytes)
     for (uint32_t i = 0; i < header->module_count; i++)
         if (modules[i].name >= header->strings_bytes || modules[i].file >= header->strings_bytes ||
             modules[i].screens >= header->strings_bytes || modules[i].trigger > TRIGGER_MANUAL)
+            return 0;
+    const struct manifest_site *sites = (const struct manifest_site *)(modules + header->module_count);
+    for (uint32_t i = 0; i < header->site_count; i++)
+        if (sites[i].name >= header->strings_bytes)
             return 0;
     return buffer[table + header->text[0]] != 0; /* id present */
 }
@@ -225,6 +254,12 @@ static uint32_t read_manifest(const char *directory, uint8_t *buffer)
 
 /* rv_api */
 
+static void release_raw_sites(struct rv_extension_record *record)
+{
+    while (record->raw_count)
+        core_raw_release(record->raw_sites[--record->raw_count]);
+}
+
 static struct rv_extension_record *valid_handle(rv_handle self)
 {
     for (struct rv_extension_record *r = core_extensions; r; r = r->next)
@@ -233,12 +268,41 @@ static struct rv_extension_record *valid_handle(rv_handle self)
     return NULL;
 }
 
-static int site_index(uint32_t id)
+static int site_index(const struct rv_extension_record *record, uint32_t id)
 {
+    if ((id & ~0xffu) == RV_RAW_SITE(0))
+        return (id & 0xff) < record->raw_count ? record->raw_sites[id & 0xff] : -1;
     for (uint32_t i = 0; i < CORE_SITE_COUNT; i++)
         if (core_site_ids[i] == id)
             return (int)i;
     return -1;
+}
+
+/* Claims the manifest's raw sites in order; on failure releases what it claimed
+ * and leaves the reason and the site on the record. */
+static int claim_raw_sites(struct rv_extension_record *record)
+{
+    const struct manifest_header *header = (const struct manifest_header *)record->manifest;
+    for (uint32_t i = 0; i < header->site_count; i++) {
+        const struct manifest_site *site = site_record(record, i);
+        uint32_t index;
+        int claimed = core_raw_claim(record->owner, site->address, site->kind, site->expected,
+                                     site->argc, &index);
+        if (claimed == CORE_RAW_OK) {
+            record->raw_sites[record->raw_count++] = (uint8_t)index;
+            continue;
+        }
+        record->conflict_site = RV_RAW_SITE(i);
+        if (claimed == CORE_RAW_OVERLAP && index < CORE_SITE_COUNT)
+            record->conflict_site = core_site_ids[index];
+        record->failure = claimed == CORE_RAW_MISMATCH ? CORE_EXTENSION_SITE_MISMATCH
+                          : claimed == CORE_RAW_OVERLAP ? CORE_EXTENSION_CONFLICT
+                          : claimed == CORE_RAW_FULL    ? CORE_EXTENSION_NO_MEMORY
+                                                        : CORE_EXTENSION_BAD_MANIFEST;
+        release_raw_sites(record);
+        return 0;
+    }
+    return 1;
 }
 
 static int result_of(int core_result)
@@ -268,7 +332,7 @@ static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *
         return 0;
     }
     for (uint32_t i = 0; i < count; i++) {
-        int site = site_index(hooks[i].site);
+        int site = site_index(record, hooks[i].site);
         if (site < 0) {
             record->failure = CORE_EXTENSION_BAD_SITE;
             record->conflict_site = hooks[i].site;
@@ -297,7 +361,7 @@ static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *
 static int api_hook_bind(rv_handle self, const struct rv_hook *hook)
 {
     struct rv_extension_record *record = valid_handle(self);
-    int site = record ? site_index(hook->site) : -1;
+    int site = record ? site_index(record, hook->site) : -1;
     if (site < 0)
         return record ? RV_BAD_SITE : RV_BAD_ARGUMENT;
     struct core_hook *copy = allocate(record, sizeof *copy);
@@ -319,7 +383,7 @@ static int api_hook_bind(rv_handle self, const struct rv_hook *hook)
 static int api_hook_unbind(rv_handle self, const struct rv_hook *hook)
 {
     struct rv_extension_record *record = valid_handle(self);
-    int site = record ? site_index(hook->site) : -1;
+    int site = record ? site_index(record, hook->site) : -1;
     if (site < 0)
         return RV_BAD_ARGUMENT;
     /* The core's copy is found through the dispatcher by handler identity. */
@@ -508,6 +572,10 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             release(record, image);
         return 0;
     }
+    if (index == 0 && !claim_raw_sites(record)) {
+        release(record, image);
+        return 0;
+    }
     core_cache_sync(image, image + code_bytes);
     module->image = image;
     module->bytes = code_bytes + header.bss_bytes;
@@ -565,6 +633,8 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
         record->hooks_bound -= descriptor->hook_count;
         record->descriptor = NULL;
     }
+    if (index == 0)
+        release_raw_sites(record);
     retire(module->image);
     module->image = NULL;
     module->loaded = 0;
@@ -777,7 +847,7 @@ uint32_t core_loader_owner_of(uint32_t address)
             if (image && address - image < r->modules[i].bytes)
                 return r->owner;
         }
-    return 0;
+    return core_raw_owner_of(address);
 }
 
 struct rv_extension_record *core_loader_find(uint32_t owner)

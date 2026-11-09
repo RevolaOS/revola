@@ -15,4 +15,6 @@ Headers, linker script, tools and Make include for building extensions against o
 
 A module exports `rvx_entry` (see `rv_entry_fn`). The main module returns a `struct rv_extension`; its hooks are bound in order and a conflict fails the load with the site named in Settings > Extensions. Install the output directory as `/Revola/Extensions/<id>/`.
 
+For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
+
 Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library; only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.

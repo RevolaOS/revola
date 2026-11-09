@@ -68,6 +68,8 @@ static const char *state_text(uint32_t owner)
             return "No memory";
         case CORE_EXTENSION_ID_COLLISION:
             return "Id collision";
+        case CORE_EXTENSION_SITE_MISMATCH:
+            return "Site mismatch";
         default:
             return "Failed";
         }

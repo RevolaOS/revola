@@ -2,6 +2,7 @@
 
 #ifndef CORE_LOADER_H
 #define CORE_LOADER_H
+#include "hooks/sites.h"
 #include "osos-2.0.5.h"
 #include <stdint.h>
 
@@ -22,6 +23,7 @@ enum core_extension_failure {
     CORE_EXTENSION_BAD_SITE,    /* the module binds a site this core does not have */
     CORE_EXTENSION_NO_DESCRIPTOR,
     CORE_EXTENSION_ID_COLLISION, /* its resource id block is held by another extension */
+    CORE_EXTENSION_SITE_MISMATCH, /* a raw site's word differs; conflict_site names it */
 };
 
 /* One per enabled extension found at boot or enabled since, heap-allocated. */
@@ -35,6 +37,8 @@ struct rv_extension_record {
     uint8_t module_count;
     uint8_t pending_unload;
     uint32_t conflict_site; /* site id of the collided claim, 0 otherwise */
+    uint8_t raw_count;      /* raw sites claimed for the main module */
+    uint8_t raw_sites[CORE_RAW_SITES]; /* their site indices, RV_RAW_SITE(n) order */
     uint32_t live;          /* bytes owned now: images plus api->alloc blocks */
     uint32_t peak;
     uint32_t hooks_bound;
@@ -55,7 +59,8 @@ void core_loader_tick(void);
 /* Screen-trigger modules: called when a declared screen is pushed or popped. */
 void core_loader_screen_pushed(const char *screen);
 void core_loader_screen_popped(const char *screen);
-/* Owner of the extension whose image contains `address`, 0 when none. */
+/* Owner of the extension whose image or raw site stub contains `address`, 0
+ * when none. */
 uint32_t core_loader_owner_of(uint32_t address);
 /* Resident bytes of every loaded extension together. */
 uint32_t core_loader_total_bytes(void);

@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 4
+#define RV_API_MINOR 5
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* The loader's record of the extension; passed back to every call. */
@@ -36,8 +36,10 @@ enum rv_hook_mode {
 /* A handler receives the Apple arguments followed by `next` (in the register
  * after the last argument for sites with at most three register arguments, as
  * the first stack argument for four), then any arguments Apple passes on the
- * stack. Site ids are RV_SITE_* from rv_sites.h. The struct must live as long
- * as the binding. */
+ * stack. Site ids are RV_SITE_* from rv_sites.h, or RV_RAW_SITE(n) for the n-th
+ * [[site]] of the extension's manifest. The struct must live as long as the
+ * binding. */
+#define RV_RAW_SITE(index) (0xffffff00u | (index))
 struct rv_hook {
     uint32_t site;
     uint8_t mode;

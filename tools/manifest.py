@@ -24,6 +24,16 @@ manifest.toml:
     trigger = "screen"           # loaded while one of its screens is on the stack
     screens = ["hello.editor"]
 
+    [[site]]                     # a raw hook site, bound as RV_RAW_SITE(0)
+    name = "coverflow_clear"     # a label for the site
+    address = 0x08123456         # the word to patch, from the pinned firmware
+    kind = "call"                # call, vtable or word
+    expected = 0xEB001234        # the word there now; the core refuses a mismatch
+    argc = 2                     # register arguments, at most 4; 0 for word
+
+Raw sites are for code no core site covers yet; first-party extensions use core
+sites only.
+
 Ships in the SDK tarball, so it depends on nothing outside this file.
 """
 
@@ -35,10 +45,15 @@ import tomllib
 from pathlib import Path
 
 MAGIC = 0x464D5652  # RVMF
-VERSION = 1
+VERSION = 2
 FLAG_ENABLED = 1
-HEADER = struct.Struct("<6I6H")
+HEADER = struct.Struct("<7I6H")
 MODULE = struct.Struct("<HHBBH")
+SITE = struct.Struct("<IIBBH")
+SITE_KINDS = {"call": 0, "vtable": 1, "word": 4}  # enum core_site_kind
+MAX_SITES = 8
+RUNTIME_BASE = 0x08000000
+NATIVE_HEAP_BASE = 0x08B3B1B0  # OSOS 2.0.5; raw sites lie below it
 TRIGGERS = {"always": 0, "screen": 1, "manual": 2}
 TEXT_FIELDS = ("id", "name", "description", "version", "author", "license")
 ID_PATTERN = re.compile(r"[a-z][a-z0-9_-]{0,31}")
@@ -78,6 +93,32 @@ class Strings:
 def api_word(version):
     major, minor = (int(part) for part in str(version).split("."))
     return major << 16 | minor
+
+
+def compile_site(site, strings):
+    name = site.get("name", "")
+    kind = site.get("kind", "")
+    address = site.get("address")
+    expected = site.get("expected")
+    argc = site.get("argc", 0)
+    if not MODULE_PATTERN.fullmatch(name):
+        raise ValueError(f"bad site name {name!r}")
+    if kind not in SITE_KINDS:
+        raise ValueError(f"site {name}: kind is call, vtable or word, not {kind!r}")
+    if not isinstance(address, int) or address % 4 or not (
+        RUNTIME_BASE <= address < NATIVE_HEAP_BASE
+    ):
+        raise ValueError(f"site {name}: address must be a word inside the OSOS image")
+    if not isinstance(expected, int) or not 0 <= expected <= 0xFFFFFFFF:
+        raise ValueError(f"site {name}: expected must be a 32-bit word")
+    if kind == "call" and expected >> 24 != 0xEB:
+        raise ValueError(f"site {name}: a call site's expected word is a BL")
+    if not isinstance(argc, int) or not 0 <= argc <= 4 or (kind == "word" and argc):
+        raise ValueError(f"site {name}: argc is 0 to 4, and 0 for word")
+    for field in ("chain", "mode"):
+        if field in site:
+            raise ValueError(f"site {name}: raw sites are exclusive, {field} is not allowed")
+    return SITE.pack(address, expected, SITE_KINDS[kind], argc, strings.add(name))
 
 
 def compile_manifest(document):
@@ -125,16 +166,23 @@ def compile_manifest(document):
                 screens_offset,
             )
         )
+    sites = document.get("site", [])
+    if len(sites) > MAX_SITES:
+        raise ValueError(f"at most {MAX_SITES} sites")
+    if len({site.get("address") for site in sites}) != len(sites):
+        raise ValueError("two sites at one address")
+    site_records = [compile_site(site, strings) for site in sites]
     header = HEADER.pack(
         MAGIC,
         VERSION,
         api_word(document.get("api", "1.0")),
         FLAG_ENABLED if document.get("enabled", True) else 0,
         len(records),
+        len(site_records),
         len(strings.data),
         *texts,
     )
-    return header + b"".join(records) + bytes(strings.data)
+    return header + b"".join(records) + b"".join(site_records) + bytes(strings.data)
 
 
 def main():
@@ -145,6 +193,12 @@ def main():
     document = tomllib.loads(args.toml.read_text())
     if args.toml.resolve().parent.name not in ("", document.get("id")):
         print(f"warning: directory is not named {document.get('id')}", file=sys.stderr)
+    for site in document.get("site", []):
+        print(
+            f"warning: raw site {site.get('name')} at {site.get('address', 0):#x};"
+            " ask for a core site so others can share it",
+            file=sys.stderr,
+        )
     args.out.write_bytes(compile_manifest(document))
 
 
