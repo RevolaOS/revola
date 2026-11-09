@@ -122,7 +122,7 @@ core_root_\name:
 
 #define SITE(name, address, kind, original, word0, word1, chain, argc, copy)                    \
     site_stub name, kind, address, word0, word1, argc, copy
-#include "sites.def"
+#include "hooks/sites.def"
 #undef SITE
 
 /* Stub addresses by site index, zero for word sites. */
@@ -138,7 +138,7 @@ core_site_stubs:
 .endif
 .endm
 #define SITE(name, address, kind, original, word0, word1, chain, argc, copy) site_entry name, kind
-#include "sites.def"
+#include "hooks/sites.def"
 #undef SITE
 
 /* Site ids in table order: FNV-1a of the row name, written by the build. */

@@ -19,7 +19,7 @@
 
 #include "osos-2.0.5.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))

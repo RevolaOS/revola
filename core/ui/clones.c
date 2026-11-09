@@ -8,11 +8,11 @@
  * clones hold ids, never text. Everything stored through SetResource is copied
  * by Apple, so the buffers here are transient. */
 
-#include "clones.h"
+#include "ui/clones.h"
 #include "osos-2.0.5.h"
-#include "resources.h"
-#include "screens.h"
-#include "sites.h"
+#include "ui/resources.h"
+#include "ui/screens.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define ROW_BYTES 0x98

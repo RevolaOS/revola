@@ -7,14 +7,14 @@
  * first point where the disk can be read: the store, the memory rules, the grace
  * timer and the extensions follow in that order. */
 
-#include "loader.h"
-#include "menus.h"
-#include "memory.h"
+#include "loader/loader.h"
+#include "ui/menus.h"
+#include "memory/memory.h"
 #include "osos-2.0.5.h"
 #include "patch.h"
-#include "screens.h"
+#include "ui/screens.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include "timer.h"
 
 void core_about_init(void *bank);

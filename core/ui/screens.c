@@ -9,13 +9,13 @@
  * resolves them the same way. Clones survive the owner's unload (Apple keeps
  * pointers) and are reused when it loads again in the same boot. */
 
-#include "screens.h"
-#include "clones.h"
-#include "menus.h"
+#include "ui/screens.h"
+#include "ui/clones.h"
+#include "ui/menus.h"
 #include "osos-2.0.5.h"
-#include "resources.h"
+#include "ui/resources.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define MAX_SCREENS 16

@@ -6,7 +6,7 @@
  * container row is not yet materialised in the native menu (Settings > Extensions
  * is the first user). */
 
-#include "loader.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "rv_api.h"
 #include "settings.h"

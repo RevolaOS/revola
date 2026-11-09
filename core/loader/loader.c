@@ -13,16 +13,16 @@
  * once, and the block is freed two grace ticks later, when nothing can still be
  * inside it. */
 
-#include "file.h"
-#include "loader.h"
-#include "menus.h"
+#include "loader/file.h"
+#include "loader/loader.h"
+#include "ui/menus.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
 #include "rv_api.h"
-#include "rvx.h"
-#include "screens.h"
+#include "loader/rvx.h"
+#include "ui/screens.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define ROOT "/Revola/Extensions"

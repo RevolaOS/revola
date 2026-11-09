@@ -38,8 +38,8 @@ def arm_call(address, destination):
 
 def core_units(source, defines=()):
     return [
-        (path.name, list(defines))
-        for path in sorted(source.iterdir())
+        (str(path.relative_to(source)), list(defines))
+        for path in sorted(source.rglob("*"))
         if path.suffix in (".c", ".S") and not path.name.endswith(".lds.S")
     ]
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-#include "loader.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
 #include <stddef.h>

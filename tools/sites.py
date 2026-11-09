@@ -165,7 +165,7 @@ def fnv1a(text):
 def names(source, firmware, prefix, defines=()):
     """Row names of sites.def in table order, through the preprocessor so the
     same conditionals apply as in the core build."""
-    driver = '#define SITE(name, ...) @name\n#include "sites.def"\n'
+    driver = '#define SITE(name, ...) @name\n#include "hooks/sites.def"\n'
     output = subprocess.run(
         [
             prefix + "gcc",
@@ -204,7 +204,7 @@ def header(row_names):
     """rv_sites.h for the SDK."""
     lines = [
         "/* SPDX-License-Identifier: GPL-3.0-only */",
-        "/* Generated from core/sites.def: the ids extensions bind hooks by. */",
+        "/* Generated from core/hooks/sites.def: the ids extensions bind hooks by. */",
         "#pragma once",
         "",
     ]

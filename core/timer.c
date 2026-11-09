@@ -6,10 +6,10 @@
  * event. The core's recipient is a bare object whose vtable has only the event
  * slot. Each tick re-arms the timer (Timer_Start arms once). */
 
-#include "loader.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include "timer.h"
 
 #define TICK_MS 1000

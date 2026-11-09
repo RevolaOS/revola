@@ -10,10 +10,10 @@
  * records {owner, key, type, size, data} padded to a word. Unknown records are
  * carried through a rewrite. Adapted from RepriseOS payload/store.c (d3d7b4d). */
 
-#include "file.h"
+#include "loader/file.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define MAGIC 0x54535652u /* RVST */

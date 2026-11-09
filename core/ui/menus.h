@@ -2,7 +2,7 @@
 
 #ifndef CORE_MENUS_H
 #define CORE_MENUS_H
-#include "loader.h"
+#include "loader/loader.h"
 #include "rv_api.h"
 
 /* Registers the descriptor's entries as rows of the native menus. */

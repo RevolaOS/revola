@@ -7,9 +7,9 @@
  * on each request, so the numbers are current every time Settings opens. Apple keeps
  * pointers to the rows, so they live in core memory for good. */
 
-#include "about.h"
+#include "ui/about.h"
 #include "osos-2.0.5.h"
-#include "sites.h"
+#include "hooks/sites.h"
 
 #define ROWS CORE_ABOUT_ROWS
 #define ROW_BYTES 0x98

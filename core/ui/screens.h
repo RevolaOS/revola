@@ -2,9 +2,9 @@
 
 #ifndef CORE_SCREENS_H
 #define CORE_SCREENS_H
-#include "loader.h"
+#include "loader/loader.h"
 #include "rv_api.h"
-#include "sites.h"
+#include "hooks/sites.h"
 
 /* One registered screen: a declaration of its owner and the ids the clones use.
  * The owner is NULL for the core's own screens. A stale record outlives its

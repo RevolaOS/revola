@@ -3,8 +3,8 @@
 /* Reading and writing Apple UI resources: block lists, event streams, property
  * sources and the per-owner resource id blocks. */
 
-#include "resources.h"
-#include "loader.h"
+#include "ui/resources.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 
 uint32_t core_word_at(const void *data, uint32_t offset)

@@ -8,11 +8,11 @@
  * properties), so the list of installed extensions is read from disk once, when
  * the list is built, and each row costs its 0x98 bytes plus the entry below. */
 
-#include "about.h"
-#include "loader.h"
+#include "ui/about.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "rv_api.h"
-#include "sites.h"
+#include "hooks/sites.h"
 
 #define MAX_ROWS 16
 #define ROW_BYTES 0x98

@@ -30,7 +30,7 @@ enum core_hook_result {
 
 enum core_site {
 #define SITE(name, address, kind, original, word0, word1, chain, argc, copy) CORE_SITE_##name,
-#include "sites.def"
+#include "hooks/sites.def"
 #undef SITE
     CORE_SITE_COUNT
 };

@@ -8,13 +8,13 @@
  * chosen bindings are added to the screen's event table when Apple loads it, and
  * the handler names resolve through core_screens_action. */
 
-#include "menus.h"
-#include "clones.h"
+#include "ui/menus.h"
+#include "ui/clones.h"
 #include "osos-2.0.5.h"
-#include "resources.h"
-#include "screens.h"
+#include "ui/resources.h"
+#include "ui/screens.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define MAX_ROWS 16

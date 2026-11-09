@@ -7,7 +7,7 @@
  * a handler runs. */
 
 #include "osos-2.0.5.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include <stddef.h>
 
 #define BL(address, callee) (0xeb000000u | ((((callee) - (address) - 8u) >> 2) & 0xffffffu))
@@ -15,13 +15,13 @@
 
 #define SITE(name, address, kind, original, word0, word1, chain, argc, copy)                     \
     extern char core_replay_##name[];
-#include "sites.def"
+#include "hooks/sites.def"
 #undef SITE
 
 const struct core_site_row core_sites[CORE_SITE_COUNT] = {
 #define SITE(name, address, kind, original, word0, word1, chain, argc, copy)                     \
     {address, (uint32_t)(original), word0, word1, CORE_SITE_##kind, chain, argc, 0},
-#include "sites.def"
+#include "hooks/sites.def"
 #undef SITE
 };
 const uint32_t core_site_count = CORE_SITE_COUNT;

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-#include "file.h"
+#include "loader/file.h"
 #include "osos-2.0.5.h"
 
 #define FORK_DATA 0x64617461u /* 'data' */

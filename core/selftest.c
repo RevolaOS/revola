@@ -9,10 +9,10 @@
  * patch and restore by peek, and an entry site proves the replay stub. */
 
 #ifdef CORE_SELFTEST
-#include "loader.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 #include "timer.h"
 
 enum {

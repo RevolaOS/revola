@@ -8,7 +8,11 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), settings store (`settings.c`), grace timer (`timer.c`), extension loader (`loader.c`, `containers.c`), memory rules (`memory.c`, `trackcount.c`), About rows (`about.c`), panic screen |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), boot order (`init.c`), settings store (`settings.c`), grace timer (`timer.c`), panic screen (`panic.c`) |
+| `core/hooks/` | Hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`) |
+| `core/loader/` | Extension loader and lifecycle (`loader.c`, `containers.c`), file access |
+| `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), menu rows (`menus.c`), resource helpers, About and Extensions rows |
+| `core/memory/` | Memory rules (`memory.c`, `artwork.c`, `trackcount.c`) |
 | `sdk/` | What extensions build against: `rv_api.h`, the module linker script, the Make include, two fixture extensions under `examples/` |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
@@ -32,7 +36,7 @@ Apple symbols: `firmware/osos-2.0.5.ld` is passed to the linker with `--just-sym
 
 ## Hook sites
 
-Apple code runs from DRAM, so the core patches it at boot. `core/sites.def` lists every site the core can patch: address, kind (`CALL`, `VTABLE`, `ENTRY`, `ENTRY_NORETURN`, `WORD`, or `INSERT` for a call written over an ordinary instruction, where the stub preserves r0-r3 and r12), what an unbound site does, the Apple words expected there, whether several handlers may chain, and the argument count. Each site has one pointer slot and one stub in the core. Call and vtable sites are patched when the first handler binds and restored when the last unbinds; entry sites are written once by `core_boot` and fall through to a replay stub while unbound. `core_boot` runs inside Apple's UI task after the other tasks exist, so a two-word entry write is only safe for a function no started task can be executing at that moment; a site is declared `ENTRY` only with that argument. Every write runs with IRQ and FIQ masked and is followed by `core_cache_sync`.
+Apple code runs from DRAM, so the core patches it at boot. `core/hooks/sites.def` lists every site the core can patch: address, kind (`CALL`, `VTABLE`, `ENTRY`, `ENTRY_NORETURN`, `WORD`, or `INSERT` for a call written over an ordinary instruction, where the stub preserves r0-r3 and r12), what an unbound site does, the Apple words expected there, whether several handlers may chain, and the argument count. Each site has one pointer slot and one stub in the core. Call and vtable sites are patched when the first handler binds and restored when the last unbinds; entry sites are written once by `core_boot` and fall through to a replay stub while unbound. `core_boot` runs inside Apple's UI task after the other tasks exist, so a two-word entry write is only safe for a function no started task can be executing at that moment; a site is declared `ENTRY` only with that argument. Every write runs with IRQ and FIQ masked and is followed by `core_cache_sync`.
 
 A handler receives the Apple arguments followed by `next` (in `r[argc]`, or as the first stack argument for four-argument sites, ahead of up to two arguments Apple itself passes on the stack). A `filter` continues with `core_next_call`; a `replace` handler is exclusive and a second claim is reported as a conflict. With one handler bound the slot holds the handler itself; with more it holds a chain entry that calls them in priority order. Handler lists are published with a single store and the retired list is freed at the next grace tick.
 
@@ -76,7 +80,7 @@ Settings ends with four About rows after Legal (the RevolaOS version, the core's
 
 ## Memory rules
 
-Apple's global memory policy is adjusted at boot, each rule behind a core setting (default on) read from the store in `core_preferences_init`; `core/memory.c` carries the reasoning and the numbers. Ported from RepriseOS perf/memory.
+Apple's global memory policy is adjusted at boot, each rule behind a core setting (default on) read from the store in `core_preferences_init`; `core/memory/memory.c` carries the reasoning and the numbers. Ported from RepriseOS perf/memory.
 
 | Setting | Rule |
 |---|---|
@@ -85,9 +89,9 @@ Apple's global memory policy is adjusted at boot, each rule behind a core settin
 | `CORE_KEY_POOL_SLOTS` | Fixed-pool slots round to 8 bytes instead of 16 (ArtworkDB thumbnail records: 40 instead of 48). |
 | `CORE_KEY_GAME_BLOCKS` | When the eApp block manager asks for a game's blocks the cache first grows by what the other clients keep, leaving 1 MiB of heap; after the release the unassigned blocks above the import size go back to the heap. |
 | `CORE_KEY_POSITION_SCAN` | List positions come from scanning the order instead of Apple's address index beside it (8 bytes per entry of a play-all queue). |
-| `CORE_KEY_ARTWORK_SHARE` | While the ArtworkDB loads, an image whose thumbnail chain matches one already loaded shares that chain and its record goes back to the pool; tracks that named the dropped image get the first image's id (`core/artwork.c`). |
+| `CORE_KEY_ARTWORK_SHARE` | While the ArtworkDB loads, an image whose thumbnail chain matches one already loaded shares that chain and its record goes back to the pool; tracks that named the dropped image get the first image's id (`core/memory/artwork.c`). |
 
-The cache budget also releases the four sorted orders the import builds and never reads (4 bytes per track each). Two changes are not settings: the track count of media-list nodes is widened to 32 bits by sixty constant words in `core/trackcount.c`, written by the recipe, so libraries over 65,535 tracks import; and the core's own layout of that node (tracks at 0x2c as a word, groups at 0x1e) lives next to those words, while the symbols file keeps Apple's.
+The cache budget also releases the four sorted orders the import builds and never reads (4 bytes per track each). Two changes are not settings: the track count of media-list nodes is widened to 32 bits by sixty constant words in `core/memory/trackcount.c`, written by the recipe, so libraries over 65,535 tracks import; and the core's own layout of that node (tracks at 0x2c as a word, groups at 0x1e) lives next to those words, while the symbols file keeps Apple's.
 
 The 32 KiB UI stack is not carried until stack-watermark evidence exists on the canvas and loader paths.
 

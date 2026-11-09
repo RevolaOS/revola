@@ -11,10 +11,10 @@
  * free heap and a 6 MiB floor: 2 MiB of read-ahead, the UI's two blocks, Now
  * Playing art and four blocks for Cover Flow. */
 
-#include "memory.h"
+#include "memory/memory.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
-#include "sites.h"
+#include "hooks/sites.h"
 
 #define MIB (1024u * 1024u)
 #define NATIVE_RESERVE (14u * MIB)
