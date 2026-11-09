@@ -3,7 +3,8 @@
 /* The resources behind a screen, cloned from stock ones on its first push. A
  * plain list is the Notes list layout over a Settings menu controller with an
  * ITEM table of Legal-row copies (Sound Check's for toggles); a text page is the
- * Legal screen over a core-built template of paragraph views. Titles and
+ * Legal screen over the core's text template; a slider or a canvas is the
+ * Brightness screen over the core's slider or canvas template. Titles and
  * paragraphs are Settings model properties the screen registry answers, so the
  * clones hold ids, never text. Everything stored through SetResource is copied
  * by Apple, so the buffers here are transient. */
@@ -12,6 +13,7 @@
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
 #include "ui/screens.h"
+#include "ui/templates.h"
 #include "hooks/sites.h"
 #include <stddef.h>
 
@@ -40,22 +42,12 @@ uint32_t core_clone_ids(const struct rv_screen *d)
     case RV_SCREEN_TEXT:
         /* screen, layout, title, 5 for layout clones, one source per paragraph */
         return 8 + (d->text.count < CORE_MAX_PARAGRAPHS ? d->text.count : CORE_MAX_PARAGRAPHS);
+    case RV_SCREEN_SLIDER:
+        /* screen, layout, title, 5 for layout clones, the bar's and the value's source */
+        return 10;
     default:
         return 8;
     }
-}
-
-/* A copy of a stock resource with words changed; `words` are {offset, value}
- * pairs. Writes through `w`, so a NULL writer only measures. */
-static void copy_with(struct core_writer *w, const void *data, uint32_t bytes,
-                      const uint32_t *words, uint32_t count)
-{
-    uint32_t start = w->at;
-    core_write_bytes(w, data, bytes);
-    if (w->out)
-        for (uint32_t i = 0; i < count; i++)
-            for (unsigned b = 0; b < 4; b++)
-                w->out[start + words[2 * i] + b] = (uint8_t)(words[2 * i + 1] >> (8 * b));
 }
 
 static void put_word(uint8_t *at, uint32_t value)
@@ -72,12 +64,25 @@ struct view_sources {
     uint32_t count;
 };
 
+/* A layout clone: the stock layout's instances with the title view's source,
+ * the item table and one template replaced. */
+struct layout_clone {
+    uint32_t stock;
+    uint32_t layout;     /* id of the clone */
+    uint32_t title_view; /* status bar view whose source becomes `title` */
+    uint32_t title;
+    uint32_t items;      /* ITEM table for the list binding, 0 to keep */
+    uint32_t from, to;   /* template replaced, 0 for none */
+    uint32_t drop;       /* template whose instances are skipped, 0 for none */
+    const struct view_sources *extra; /* sources for the views of template `to` */
+};
+
 /* The VCvs of one instance with the title view's source and the item table
  * rebound and `extra` sources appended: a block per view holding option blocks,
  * or one ViewBinding_ItemTable block naming the ITEM table. `vcvs` may be NULL
  * when the instance has none. Returns the bytes written, 0 when nothing changed. */
-static uint32_t rebind_views(struct core_writer *w, const void *vcvs, uint32_t title,
-                             uint32_t items, const struct view_sources *extra)
+static uint32_t rebind_views(struct core_writer *w, const void *vcvs, const struct layout_clone *c,
+                             const struct view_sources *extra)
 {
     uint32_t start = w->at, changed = 0, count = vcvs ? core_blocks_count(vcvs) : 0;
     core_write_word(w, count + (extra ? extra->count : 0));
@@ -87,9 +92,9 @@ static uint32_t rebind_views(struct core_writer *w, const void *vcvs, uint32_t t
             break;
         uint32_t begin = core_write_block_begin(w, view.kind);
         if (view.kind == ViewBinding_ItemTable) {
-            uint32_t words[2] = {ItemTableBinding_item_table, items};
-            copy_with(w, view.data, view.bytes, words, items && view.bytes >= 8);
-            changed |= items != 0;
+            uint32_t words[2] = {ItemTableBinding_item_table, c->items};
+            core_write_copy(w, view.data, view.bytes, words, c->items && view.bytes >= 8);
+            changed |= c->items != 0;
             core_write_block_end(w, begin);
             continue;
         }
@@ -99,8 +104,8 @@ static uint32_t rebind_views(struct core_writer *w, const void *vcvs, uint32_t t
             if (!core_block_at(view.data, o, &option))
                 break;
             uint32_t b = core_write_block_begin(w, option.kind);
-            if (option.kind == Resource_SORC && view.kind == RES_StatusBarWhite_Text && title) {
-                core_write_word(w, title);
+            if (option.kind == Resource_SORC && view.kind == c->title_view && c->title) {
+                core_write_word(w, c->title);
                 changed = 1;
             } else {
                 core_write_bytes(w, option.data, option.bytes);
@@ -122,15 +127,13 @@ static uint32_t rebind_views(struct core_writer *w, const void *vcvs, uint32_t t
 }
 
 /* Clones a stock layout: every SSin list and the VCvs of instances whose
- * bindings change; template `from` is replaced by `to` (0 for none) and its
- * instance gets the `extra` sources. Uses ids from `next`. The clone is stored
- * as it is built, so the scratch holds one layout, one SSin and one VCvs. */
-static int clone_layout(uint32_t stock_layout, uint32_t layout, uint32_t title, uint32_t items,
-                        uint32_t from, uint32_t to, const struct view_sources *extra,
-                        uint32_t *next, uint8_t *scratch, uint32_t scratch_bytes)
+ * bindings change. Uses ids from `next`. The clone is stored as it is built, so
+ * the scratch holds one layout, one SSin and one VCvs. */
+static int clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scratch,
+                        uint32_t scratch_bytes)
 {
     uint32_t bytes, lists;
-    const void *slyt = stock(Resource_SLyt, stock_layout, &bytes);
+    const void *slyt = stock(Resource_SLyt, c->stock, &bytes);
     if (!slyt || bytes > scratch_bytes)
         return 0;
     uint8_t *layout_copy = scratch;
@@ -153,18 +156,22 @@ static int clone_layout(uint32_t stock_layout, uint32_t layout, uint32_t title, 
             if (!core_block_at(ssin_copy, n, &instance))
                 break;
             uint8_t *words = (uint8_t *)instance.data;
+            uint32_t template = core_word_at(words, SsinInstance_template);
+            if (c->drop && template == c->drop) {
+                put_word(words + SsinInstance_template, 0); /* skipped when displayed */
+                continue;
+            }
             uint32_t view_id = core_word_at(words, SsinInstance_view_bindings), vcvs_bytes;
             const void *vcvs = view_id ? stock(Resource_VCvs, view_id, &vcvs_bytes) : NULL;
-            const struct view_sources *sources =
-                from && core_word_at(words, SsinInstance_template) == from ? extra : NULL;
+            const struct view_sources *sources = c->from && template == c->from ? c->extra : NULL;
             if (vcvs || sources) {
                 struct core_writer measure = {NULL, 0};
-                if (rebind_views(&measure, vcvs, title, items, sources)) {
+                if (rebind_views(&measure, vcvs, c, sources)) {
                     uint8_t *out = scratch + bytes + ssin_bytes;
                     if (bytes + ssin_bytes + measure.at > scratch_bytes)
                         return 0;
                     struct core_writer w = {out, 0};
-                    rebind_views(&w, vcvs, title, items, sources);
+                    rebind_views(&w, vcvs, c, sources);
                     uint32_t id = (*next)++;
                     set(Resource_VCvs, id, out, w.at);
                     /* The stock instance's frame, keyed by its VCvs id. */
@@ -177,14 +184,14 @@ static int clone_layout(uint32_t stock_layout, uint32_t layout, uint32_t title, 
             }
             for (uint32_t offset = SsinInstance_template; offset <= SsinInstance_substitute;
                  offset += 4)
-                if (from && core_word_at(words, offset) == from)
-                    put_word(words + offset, to);
+                if (c->from && core_word_at(words, offset) == c->from)
+                    put_word(words + offset, c->to);
         }
         uint32_t list_id = (*next)++;
         set(Resource_SSin, list_id, ssin_copy, ssin_bytes);
         put_word((uint8_t *)list.data, list_id);
     }
-    set(Resource_SLyt, layout, layout_copy, bytes);
+    set(Resource_SLyt, c->layout, layout_copy, bytes);
     return 1;
 }
 
@@ -204,7 +211,7 @@ static int set_screen(uint32_t screen, uint32_t layout, uint32_t controller_scre
         return 0;
     struct core_writer w = {scratch, 0};
     uint32_t words[2] = {12, layout}; /* word 0 of the first block: count, bytes, kind before it */
-    copy_with(&w, slst, bytes, words, 1);
+    core_write_copy(&w, slst, bytes, words, 1);
     set(Resource_SLst, screen, scratch, bytes);
     set(Resource_CEVT, screen, events, event_bytes);
     return 1;
@@ -241,87 +248,6 @@ void core_clone_read_events(void *layout, const void *stream_bytes, uint32_t byt
     StringInputStream_Destroy(stream, StringInputStream_DestroyComplete, 0);
 }
 
-/* Templates Apple enumerates once at UI start, so the core builds its own then:
- * one text page of CORE_MAX_PARAGRAPHS paragraph views. Ids from the core's
- * block: the template, then one view id per paragraph, which is also the id of
- * the empty string source the view binds at boot; a text screen rebinds the
- * views to its own sources through its VCvs each time it is displayed. */
-static uint32_t text_template;
-static void *template_data;
-static uint32_t template_bytes;
-
-/* Views: the stock template's second block is a paragraph, its last the bottom
- * margin; each paragraph hangs below the one before. View offsets count from the
- * screen top, so the first paragraph starts below the 20 px title bar with the
- * stock page's 15 px top margin. */
-#define TEXT_TOP 35
-#define PARAGRAPH_GAP 12
-static void build_text_template(void)
-{
-    uint32_t bytes;
-    const void *views = stock(Resource_View, RES_Settings_Legal_Template, &bytes);
-    struct core_block paragraph, margin;
-    text_template = core_resource_take(0, 2 + CORE_MAX_PARAGRAPHS); /* + the margin view */
-    if (!text_template || !views || !core_block_at(views, 1, &paragraph) ||
-        !core_block_at(views, core_blocks_count(views) - 1, &margin))
-        return;
-    struct core_writer w = {NULL, 0};
-    for (int pass = 0; pass < 2; pass++) {
-        w.at = 0;
-        core_write_word(&w, CORE_MAX_PARAGRAPHS + 1);
-        uint32_t previous = 0;
-        for (uint32_t i = 0; i < CORE_MAX_PARAGRAPHS; i++) {
-            uint32_t id = text_template + 1 + i; /* view id and its property */
-            uint32_t words[10] = {ViewDescriptor_top_offset, previous ? PARAGRAPH_GAP : TEXT_TOP,
-                                  ViewDescriptor_anchor, previous,
-                                  ViewDescriptor_anchor_mode, previous ? AnchorMode_Bottom : 0,
-                                  ViewDescriptor_id, id, TextViewDescriptor_source, id};
-            uint32_t begin = core_write_block_begin(&w, paragraph.kind);
-            copy_with(&w, paragraph.data, paragraph.bytes, words, 5);
-            core_write_block_end(&w, begin);
-            /* Bound when the template is built at boot, before the Settings model
-             * exists, so the boot source is an empty string resource. */
-            if (pass) {
-                uint32_t source[6] = {1, 12, Resource_SORC, Service_String, id, SourceDestination_Title};
-                set(Resource_SORC, id, source, sizeof source);
-                set(Resource_String, id, "", 1);
-            }
-            previous = id;
-        }
-        uint32_t words[4] = {ViewDescriptor_anchor, previous, ViewDescriptor_id,
-                             text_template + 1 + CORE_MAX_PARAGRAPHS};
-        uint32_t begin = core_write_block_begin(&w, margin.kind);
-        copy_with(&w, margin.data, margin.bytes, words, 2);
-        core_write_block_end(&w, begin);
-        if (!pass) {
-            w.out = Heap_AllocateZeroed(w.at);
-            if (!w.out)
-                return;
-        }
-    }
-    template_data = w.out;
-    template_bytes = w.at;
-    /* The enumeration yields the views once; the child views are built from the
-     * resource looked up by id. */
-    set(Resource_View, text_template, w.out, w.at);
-    const void *tmlt = stock(Resource_TMLT, RES_Settings_Legal_Template, &bytes);
-    if (tmlt)
-        set(Resource_TMLT, text_template, tmlt, bytes);
-}
-
-/* Apple's template enumeration walks the ROM index only; the core's templates
- * follow it. Called again with the last id handed out, so the next one follows. */
-static uint32_t next_template(uint32_t resource_bank, uint32_t id, uint32_t bytes,
-                              const struct core_next *next)
-{
-    uint32_t result = core_next_call(next, resource_bank, id, bytes, 0);
-    if (result || !template_data || *(uint32_t *)id == text_template)
-        return result;
-    *(uint32_t *)id = text_template;
-    *(uint32_t *)bytes = template_bytes;
-    return (uint32_t)template_data;
-}
-
 /* Ids of a list: id screen, +1 layout, +2 title, +3 items, +4.. layout clones,
  * then per row the item id and its source. */
 static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_bytes)
@@ -345,7 +271,7 @@ static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_
         uint32_t words[4] = {MenuRow_id, item, MenuRow_title, source};
         uint32_t begin = core_write_block_begin(&w, 0);
         uint32_t at = w.at;
-        copy_with(&w, is_toggle ? toggle : plain, ROW_BYTES, words, 2);
+        core_write_copy(&w, is_toggle ? toggle : plain, ROW_BYTES, words, 2);
         scratch[at + MenuRow_title_from_model] = 1;
         core_write_block_end(&w, begin);
         /* The item id is the title property, the source id the value's. */
@@ -355,9 +281,9 @@ static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_
             core_set_source(bank, source, item, 1);
     }
     set(Resource_ITEM, s->id + 3, scratch, w.at);
-    if (!clone_layout(RES_Notes_List_Screen_Alt_Default, s->id + 1, s->id + 2, s->id + 3, 0, 0, NULL,
-                      &next, scratch, scratch_bytes) ||
-        next > rows)
+    struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, s->id + 1, RES_StatusBarWhite_Text,
+                             s->id + 2, s->id + 3, 0, 0, 0, NULL};
+    if (!clone_layout(&c, &next, scratch, scratch_bytes) || next > rows)
         return 0;
     w.at = 0;
     write_layout_events(&w);
@@ -391,20 +317,20 @@ int core_clone_list(struct core_screen *s)
 int core_clone_text(struct core_screen *s)
 {
     uint32_t next = s->id + 3, rows = CORE_SCREEN_ROWS(s);
-    if (!template_data) /* a VCvs block naming a view that does not exist panics */
+    if (!core_template_text) /* a VCvs block naming a view that does not exist panics */
         return 0;
     uint8_t *scratch = Heap_AllocateZeroed(SCRATCH_BYTES);
     if (!scratch)
         return 0;
-    struct view_sources paragraphs = {text_template + 1, rows, s->ids - 8};
+    struct view_sources paragraphs = {core_template_text + 1, rows, s->ids - 8};
     core_set_source(bank, s->id + 2, s->id + 2, 1);
     for (uint32_t i = 0; i < paragraphs.count; i++)
         core_set_source(bank, rows + i, rows + i, 1);
     uint32_t none = 0; /* the Legal controller handles Menu itself: no layout events */
-    int built = clone_layout(RES_Settings_Legal_Layout, s->id + 1, s->id + 2, 0,
-                             RES_Settings_Legal_Template, text_template, &paragraphs, &next,
-                             scratch, SCRATCH_BYTES) &&
-                next <= rows;
+    struct layout_clone c = {RES_Settings_Legal_Layout, s->id + 1, RES_StatusBarWhite_Text,
+                             s->id + 2, 0, RES_Settings_Legal_Template, core_template_text, 0,
+                             &paragraphs};
+    int built = clone_layout(&c, &next, scratch, SCRATCH_BYTES) && next <= rows;
     if (built) {
         set(Resource_SEVT, s->id + 1, &none, 4);
         built = set_screen(s->id, s->id + 1, RES_Settings_Legal_Screen, RES_Settings_Legal_Screen,
@@ -414,12 +340,56 @@ int core_clone_text(struct core_screen *s)
     return built;
 }
 
-static const struct core_hook next_template_hook = {CORE_SITE_ResourceBank_NextTemplate_call,
-                                                    CORE_HOOK_FILTER, 0, next_template};
+/* Ids of a slider or canvas: id screen, +1 layout, +2 title, +3.. layout clones,
+ * +8 the bar's source, +9 the value text's. Both are the Brightness layout over
+ * a plain resource screen controller, whose event slot canvas.c replaces; the
+ * full-screen background is kept under the slider and dropped under a canvas,
+ * which paints its whole area. */
+static int clone_brightness(struct core_screen *s, uint32_t template, const struct view_sources *views,
+                            uint32_t drop, const void *events, uint32_t event_bytes)
+{
+    uint32_t next = s->id + 3;
+    if (!template)
+        return 0;
+    uint8_t *scratch = Heap_AllocateZeroed(SCRATCH_BYTES);
+    if (!scratch)
+        return 0;
+    core_set_source(bank, s->id + 2, s->id + 2, 1);
+    struct layout_clone c = {RES_Settings_Brightness_Screen_Default, s->id + 1,
+                             RES_StatusBar_Title_Text, s->id + 2, 0,
+                             RES_Settings_Brightness_Template, template, drop, views};
+    int built = clone_layout(&c, &next, scratch, SCRATCH_BYTES) && next <= CORE_SCREEN_ROWS(s);
+    if (built) {
+        uint32_t none = 0;
+        set(Resource_SEVT, s->id + 1, events, event_bytes);
+        built = set_screen(s->id, s->id + 1, RES_Settings_Legal_Screen, RES_Settings_Brightness_Screen,
+                           &none, 4, scratch, SCRATCH_BYTES);
+    }
+    Heap_Free(scratch);
+    return built;
+}
+
+/* The stock layout's events: Select pops, as on the Brightness page. */
+int core_clone_slider(struct core_screen *s)
+{
+    uint32_t rows = CORE_SCREEN_ROWS(s), bytes;
+    const void *events = stock(Resource_SEVT, RES_Settings_Brightness_Screen_Default, &bytes);
+    struct view_sources views = {core_template_slider + 1, rows, 2};
+    if (!events)
+        return 0;
+    core_set_source(bank, rows, rows, 1);
+    core_set_source(bank, rows + 1, rows + 1, 1);
+    return clone_brightness(s, core_template_slider, &views, 0, events, bytes);
+}
+
+/* No layout events: every key reaches the extension first. */
+int core_clone_canvas(struct core_screen *s)
+{
+    uint32_t none = 0;
+    return clone_brightness(s, core_template_canvas, NULL, RES_FullScreenImage_Template, &none, 4);
+}
 
 void core_clones_init(void *resource_bank)
 {
     bank = resource_bank;
-    build_text_template();
-    core_hook_bind(&next_template_hook);
 }

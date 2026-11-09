@@ -20,7 +20,7 @@ struct core_screen {
     uint8_t built;
     uint8_t stale;
 };
-/* First row item id (list) or paragraph source id (text). */
+/* First row item id (list), paragraph source id (text) or bar source id (slider). */
 #define CORE_SCREEN_ROWS(s) ((s)->id + 8)
 
 /* Registers the descriptor's screens; RV_NO_MEMORY when the table or the
@@ -30,6 +30,10 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
 void core_screens_release(struct rv_extension_record *owner);
 /* The screen named `name` of `owner`, or NULL. */
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name);
+/* The open screen of a controller the runtime pushed, or NULL. */
+struct core_screen *core_screens_of_controller(void *controller);
+/* The most recently pushed open screen of a kind, or NULL. */
+struct core_screen *core_screens_top(uint8_t kind);
 /* Opens a screen on top of `controller`'s screen; loads its module first. */
 int core_screens_push(struct core_screen *screen, void *controller);
 /* Pops the top screen. */

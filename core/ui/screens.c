@@ -10,10 +10,12 @@
  * pointers) and are reused when it loads again in the same boot. */
 
 #include "ui/screens.h"
+#include "ui/canvas.h"
 #include "ui/clones.h"
 #include "ui/menus.h"
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
+#include "ui/templates.h"
 #include "settings.h"
 #include "hooks/sites.h"
 #include <stddef.h>
@@ -117,25 +119,47 @@ void core_screens_handler_name(char *out, uint32_t item)
 
 /* Navigation */
 
-/* Controllers the runtime pushed, so a deactivate finds its screen without
- * knowing the controller class. */
+/* Controllers the runtime pushed, in push order, so a deactivate finds its
+ * screen without knowing the controller class. */
 #define MAX_OPEN 8
 static struct {
     void *controller;
     struct core_screen *screen;
 } open[MAX_OPEN];
+static uint32_t open_count;
+
+struct core_screen *core_screens_of_controller(void *controller)
+{
+    for (uint32_t i = 0; i < open_count; i++)
+        if (open[i].controller == controller)
+            return open[i].screen;
+    return NULL;
+}
+
+struct core_screen *core_screens_top(uint8_t kind)
+{
+    for (uint32_t i = open_count; i-- > 0;) {
+        struct core_screen *s = open[i].screen;
+        if (s->declaration && s->declaration->kind == kind)
+            return s;
+    }
+    return NULL;
+}
 
 static void screen_left(void *controller)
 {
-    for (uint32_t i = 0; i < MAX_OPEN; i++) {
+    for (uint32_t i = 0; i < open_count; i++) {
         if (open[i].controller != controller)
             continue;
         struct core_screen *s = open[i].screen;
-        open[i].controller = NULL;
+        open_count--;
+        for (uint32_t j = i; j < open_count; j++)
+            open[j] = open[j + 1];
         if (s->open)
             s->open--;
         if (s->declaration)
             core_loader_screen_popped(s->declaration->name);
+        return;
     }
 }
 
@@ -160,6 +184,12 @@ static int build(struct core_screen *s)
     case RV_SCREEN_TEXT:
         s->built = core_clone_text(s);
         break;
+    case RV_SCREEN_SLIDER:
+        s->built = core_clone_slider(s);
+        break;
+    case RV_SCREEN_CANVAS:
+        s->built = core_clone_canvas(s);
+        break;
     default:
         break;
     }
@@ -168,10 +198,9 @@ static int build(struct core_screen *s)
 
 int core_screens_push(struct core_screen *s, void *controller)
 {
-    uint32_t slot = 0;
-    while (slot < MAX_OPEN && open[slot].controller)
-        slot++;
-    if (slot == MAX_OPEN)
+    uint8_t kind = s->declaration->kind;
+    int input = kind == RV_SCREEN_SLIDER || kind == RV_SCREEN_CANVAS;
+    if (open_count == MAX_OPEN || (input && !core_canvas_prepare()))
         return 0;
     core_loader_screen_pushed(s->declaration->name);
     if (!build(s))
@@ -180,8 +209,11 @@ int core_screens_push(struct core_screen *s, void *controller)
                                               Transition_ForegroundPush);
     if (!created)
         return 0;
-    open[slot].controller = created;
-    open[slot].screen = s;
+    if (input)
+        core_canvas_attach(created);
+    open[open_count].controller = created;
+    open[open_count].screen = s;
+    open_count++;
     s->open++;
     void (*push)(void *, void *) =
         FIELD(FIELD(controller, 0, void **), ScreenController_push_method, void *);
@@ -196,7 +228,7 @@ void core_screens_pop(void)
 
 void core_screens_invalidate(void)
 {
-    /* TODO: canvas redraw, with the canvas view. */
+    core_canvas_invalidate();
 }
 
 void core_screens_notify(uint32_t property)
@@ -247,6 +279,8 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
     const struct rv_row *row = s ? screen_row(s, id, &item) : core_menus_row(id, &owner, &item);
     if (!s && !row)
         return core_next_call(next, model, type, id, out);
+    if (s && s->declaration->kind == RV_SCREEN_SLIDER && id >= CORE_SCREEN_ROWS(s))
+        return core_slider_property(s, type, id, out) ? 1 : core_next_call(next, model, type, id, out);
     /* The last model-backed row of a list sets the list's row count: one row per
      * title property, so the list shows every row. */
     if (type == Property_Count) {
@@ -343,6 +377,8 @@ static const struct core_hook hooks[] = {
 void core_screens_init(void *bank)
 {
     core_clones_init(bank);
+    core_canvas_init();
+    core_templates_init(bank);
     for (uint32_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++)
         core_hook_bind(&hooks[i]);
 }

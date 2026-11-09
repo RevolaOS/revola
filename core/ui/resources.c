@@ -59,6 +59,17 @@ void core_write_bytes(struct core_writer *w, const void *data, uint32_t bytes)
     w->at += bytes;
 }
 
+void core_write_copy(struct core_writer *w, const void *data, uint32_t bytes,
+                     const uint32_t *words, uint32_t count)
+{
+    uint32_t start = w->at;
+    core_write_bytes(w, data, bytes);
+    if (w->out)
+        for (uint32_t i = 0; i < count; i++)
+            for (unsigned b = 0; b < 4; b++)
+                w->out[start + words[2 * i] + b] = (uint8_t)(words[2 * i + 1] >> (8 * b));
+}
+
 void core_write_word(struct core_writer *w, uint32_t value)
 {
     uint8_t bytes[4] = {(uint8_t)value, (uint8_t)(value >> 8), (uint8_t)(value >> 16),

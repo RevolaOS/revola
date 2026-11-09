@@ -30,6 +30,9 @@ struct core_writer {
 
 void core_write_bytes(struct core_writer *w, const void *data, uint32_t bytes);
 void core_write_word(struct core_writer *w, uint32_t value);
+/* A copy of `data` with words changed; `words` are {offset, value} pairs. */
+void core_write_copy(struct core_writer *w, const void *data, uint32_t bytes,
+                     const uint32_t *words, uint32_t count);
 void core_write_string(struct core_writer *w, const char *text);
 /* Starts a block; returns what core_write_block_end needs. */
 uint32_t core_write_block_begin(struct core_writer *w, uint32_t kind);

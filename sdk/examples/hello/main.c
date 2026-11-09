@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* Loader and UI test fixture: two filters on the Settings property site, one
- * setting, and a Settings row that opens a list with a text page, a toggle and
- * an action. Each hook call appends an event to a log the emulator reads
+ * setting, and a Settings row that opens a list with a text page, a toggle, an
+ * action, a slider and a canvas. Each hook call appends an event to a log the emulator reads
  * through the exported symbol in the module's data. */
 
 #include "osos-2.0.5.h"
@@ -12,6 +12,7 @@
 
 #define SETTING_CALLS 1
 #define SETTING_BEEP 2
+#define SETTING_LEVEL 3
 
 struct hello_log {
     uint32_t magic; /* 'HELO' */
@@ -60,6 +61,7 @@ static const struct rv_hook hooks[] = {
 static const struct rv_setting settings[] = {
     {SETTING_CALLS, RV_SETTING_INT, 0, 0, 0, 1000000, "Property calls"},
     {SETTING_BEEP, RV_SETTING_BOOL, 0, 0, 0, 1, "Beep"},
+    {SETTING_LEVEL, RV_SETTING_INT, 0, 0, 0, 4, "Level"},
 };
 
 static int wave(void *controller)
@@ -73,16 +75,53 @@ static const char *const about[] = {
     "It declares one screen of every kind so the emulator tests can open them.",
 };
 
+static const char *const levels[] = {"Off", "Low", "Medium", "High", "Full"};
+
+/* Sketch: a box the wheel moves and Select recolours; inputs are logged as
+ * 0xc0 | kind << 8 | key << 12. */
+static int32_t box_left = 20;
+static uint8_t box_colour;
+
+static void sketch_draw(void *context, const int32_t *bounds)
+{
+    static const uint8_t white[4] = {255, 255, 255, 255};
+    static const uint8_t colours[2][4] = {{0, 102, 204, 255}, {204, 51, 0, 255}};
+    int32_t box[4] = {bounds[0] + 40, bounds[1] + box_left, bounds[0] + 100, bounds[1] + box_left + 60};
+    GraphicsContext_SetColor(context, white);
+    GraphicsContext_FillRect(context, bounds);
+    GraphicsContext_SetColor(context, colours[box_colour]);
+    GraphicsContext_FillRect(context, box);
+}
+
+static int sketch_input(const struct rv_input *input)
+{
+    record(0xc0 | (uint32_t)input->kind << 8 | (uint32_t)input->key << 12);
+    if (input->kind == RV_INPUT_WHEEL) {
+        box_left += input->delta * 8;
+        box_left = box_left < 0 ? 0 : box_left > 240 ? 240 : box_left;
+    } else if (input->kind == RV_INPUT_PRESS && input->key == RV_KEY_CENTER) {
+        box_colour ^= 1;
+    } else {
+        return 0;
+    }
+    api->ui_invalidate(self);
+    return 1;
+}
+
 static const struct rv_row rows[] = {
     {"About", RV_ROW_PUSH, 0, 0, "hello.about", 0, 0},
     {"Beep", RV_ROW_TOGGLE, 0, SETTING_BEEP, 0, 0, 0},
     {"Wave", RV_ROW_ACTION, 0, 0, 0, wave, 0},
     {"Wave again", RV_ROW_ACTION, 0, 0, 0, wave, 0},
+    {"Level", RV_ROW_PUSH, 0, 0, "hello.level", 0, 0},
+    {"Sketch", RV_ROW_PUSH, 0, 0, "hello.sketch", 0, 0},
 };
 
 static const struct rv_screen screens[] = {
-    {"hello.menu", "Hello", RV_SCREEN_LIST, {0}, {.list = {rows, 4}}},
+    {"hello.menu", "Hello", RV_SCREEN_LIST, {0}, {.list = {rows, 6}}},
     {"hello.about", "About Hello", RV_SCREEN_TEXT, {0}, {.text = {about, 2}}},
+    {"hello.level", "Level", RV_SCREEN_SLIDER, {0}, {.choice = {SETTING_LEVEL, 0, levels, 5}}},
+    {"hello.sketch", "Sketch", RV_SCREEN_CANVAS, {0}, {.canvas = {sketch_draw, sketch_input}}},
 };
 
 #define PUSH_ROW {"Hello", RV_ROW_PUSH, 0, 0, "hello.menu", 0, 0}
@@ -105,7 +144,7 @@ static void unload(void)
 }
 
 static const struct rv_extension extension = {
-    sizeof extension, hooks, 2, settings, 2, 0, 0, unload, screens, 2, entries, 8,
+    sizeof extension, hooks, 2, settings, 3, 0, 0, unload, screens, 4, entries, 8,
 };
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)
