@@ -14,6 +14,7 @@
 #include "ui/lists.h"
 #include "ui/resources.h"
 #include "ui/screens.h"
+#include "ui/toggles.h"
 #include "settings.h"
 #include "hooks/sites.h"
 #include <stddef.h>
@@ -118,6 +119,10 @@ static uint32_t indexed_property(uint32_t model, uint32_t type, uint32_t propert
                                  const struct core_next *next, uint32_t out)
 {
     struct core_screen *s;
+    uint32_t result;
+    if (property >> 24 != CORE_RESOURCE_PREFIX &&
+        core_toggles_indexed(model, type, property, index, next, (uintptr_t *)out, &result))
+        return result;
     if (property >> 24 == CORE_RESOURCE_PREFIX && (s = core_screens_of_id(property)) &&
         core_lists_indexed(s->declaration->kind) && property - CORE_SCREEN_ROWS(s) < 2 &&
         row_answer(s, type, property, index, (uintptr_t *)out))

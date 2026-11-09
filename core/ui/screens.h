@@ -42,6 +42,8 @@ int core_screens_push(struct core_screen *screen, void *controller);
 void core_screens_pop(void);
 /* Redraws an open canvas. */
 void core_screens_invalidate(void);
+/* The Settings model, as last seen on the property slot. */
+void *core_screens_settings_model(void);
 /* Tells the Settings model a property's text changed, so its views redraw. */
 void core_screens_notify(uint32_t property);
 /* Redraws rows whose text may have changed. */

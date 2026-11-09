@@ -70,11 +70,48 @@ struct row {
      * the table, or the "Rv" handler name a context row's action points at. */
     void *data;
     uint8_t root;
+    uint8_t index; /* the entry's index in its descriptor, its visibility bit */
     uint8_t stale;
 };
 
 static struct row rows[MAX_ROWS];
 static void *bank;
+
+/* Main and Music rows can be hidden in Settings > Main Menu and Music Menu: bit
+ * n of the owner's RV_KEY_MENU_VISIBILITY record is entry n, and without a
+ * record an entry shows as its `visible` says. Other rows always show. */
+static int toggleable(const struct row *r)
+{
+    return r->root == RV_ROOT_MAIN || r->root == RV_ROOT_MUSIC;
+}
+
+static int shown(const struct row *r)
+{
+    uint32_t mask;
+    if (r->stale)
+        return 0;
+    if (!toggleable(r))
+        return 1;
+    if (core_settings_get(r->owner->owner, RV_KEY_MENU_VISIBILITY, &mask, 4) == 4)
+        return mask >> r->index & 1;
+    return r->entry->visible;
+}
+
+/* Apple's registry is built before the core runs and never sees the rows the
+ * core appends, so this does what MenuItem_SetVisible does: the row's own data
+ * carries the visibility, and an open list rebuilds on the item notification. */
+static void apply_visibility(struct row *r)
+{
+    uint8_t *visible = r->data && roots[r->root].table ? (uint8_t *)r->data + MenuRow_visible : NULL;
+    if (!visible || *visible == shown(r))
+        return;
+    *visible = (uint8_t)shown(r);
+    void *service = UI_GetResourceService();
+    void (*notify)(void *, uint32_t, uint32_t) =
+        *(void **)(*(uint8_t **)service + Model_notify_method);
+    notify(service, Property_ItemChanged, r->item);
+    notify(service, Notify_None, r->item);
+}
 
 int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
                         uint32_t count)
@@ -93,8 +130,9 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         if (r) {
             r->owner = owner;
             r->entry = e;
+            r->index = (uint8_t)n;
             r->stale = 0;
-            MenuItem_SetVisible(r->item, 1);
+            apply_visibility(r);
             continue;
         }
         for (uint32_t i = 0; i < MAX_ROWS && !r; i++)
@@ -110,6 +148,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->item = item;
         r->label = label;
         r->root = e->root;
+        r->index = (uint8_t)n;
         r->stale = 0;
         r->data = NULL;
         if (!roots[e->root].table) {
@@ -140,7 +179,7 @@ void core_menus_release(struct rv_extension_record *owner)
         if (rows[i].entry && rows[i].owner == owner) {
             rows[i].entry = NULL;
             rows[i].stale = 1;
-            MenuItem_SetVisible(rows[i].item, 0);
+            apply_visibility(&rows[i]);
         }
 }
 
@@ -154,6 +193,54 @@ const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **ow
             return &rows[i].entry->row;
         }
     return NULL;
+}
+
+/* The n-th live row of a root, or NULL. */
+static struct row *nth(uint8_t root, uint32_t n)
+{
+    for (uint32_t i = 0; i < MAX_ROWS; i++)
+        if (rows[i].entry && rows[i].root == root && n-- == 0)
+            return &rows[i];
+    return NULL;
+}
+
+uint32_t core_menus_count(uint8_t root)
+{
+    uint32_t count = 0;
+    while (nth(root, count))
+        count++;
+    return count;
+}
+
+const char *core_menus_label(uint8_t root, uint32_t n, int *visible, uint32_t *after)
+{
+    struct row *r = nth(root, n);
+    if (!r)
+        return NULL;
+    *visible = shown(r);
+    *after = r->after;
+    return r->entry->row.label;
+}
+
+void core_menus_toggle(uint8_t root, uint32_t n)
+{
+    struct row *r = nth(root, n);
+    if (!r)
+        return;
+    uint32_t mask = 0;
+    for (uint32_t i = 0; i < MAX_ROWS; i++)
+        if (rows[i].entry && rows[i].owner == r->owner && toggleable(&rows[i]))
+            mask |= (uint32_t)(shown(&rows[i]) ^ (&rows[i] == r)) << rows[i].index;
+    core_settings_set(r->owner->owner, RV_KEY_MENU_VISIBILITY, CORE_SETTING_INT, &mask, 4);
+    apply_visibility(r);
+}
+
+int core_menus_owns(uint32_t id)
+{
+    for (uint32_t i = 0; i < MAX_ROWS; i++)
+        if (rows[i].item && id - rows[i].item < 2)
+            return 1;
+    return 0;
 }
 
 /* Appends the rows anchored on the stock row Apple just appended. The first
@@ -180,9 +267,8 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
             row[MenuRow_id / 4] = r->item;
             row[MenuRow_title / 4] = r->item + 1;
             ((uint8_t *)row)[MenuRow_title_from_model] = 1;
-            if (r->stale)
-                row[MenuRow_visible / 4] = 0;
             r->data = row;
+            ((uint8_t *)row)[MenuRow_visible] = shown(r);
         }
         core_next_call(next, list, (uint32_t)row, bytes, metadata);
     }

@@ -15,6 +15,15 @@ void core_menus_release(struct rv_extension_record *owner);
 const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **owner,
                                     uint32_t *item);
 
+/* Live rows of a Main or Music root, in registration order, for the Settings
+ * toggle screens: their count, the n-th row's label, whether it shows and the
+ * stock row it follows, and flipping it. */
+uint32_t core_menus_count(uint8_t root);
+const char *core_menus_label(uint8_t root, uint32_t n, int *visible, uint32_t *after);
+void core_menus_toggle(uint8_t root, uint32_t n);
+/* 1 when `id` is the item or source id of a row, live or stale. */
+int core_menus_owns(uint32_t id);
+
 void core_menus_init(void *bank);
 
 #endif

@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 2
+#define RV_API_MINOR 3
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* The loader's record of the extension; passed back to every call. */
@@ -53,8 +53,10 @@ enum rv_setting_type {
     RV_SETTING_BLOB = 4,
 };
 
-/* Key 0 is the enabled flag the core keeps for every extension. */
+/* Keys the core keeps in every extension's settings: the enabled flag, and which
+ * of its Main and Music rows are shown (bit n is entry n). */
 #define RV_KEY_ENABLED 0
+#define RV_KEY_MENU_VISIBILITY 0xffff
 
 /* A declared setting: the core applies `fallback` when the store has no record,
  * clears the record on Reset All Settings, and renders it from `label`. */
