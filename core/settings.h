@@ -16,6 +16,14 @@ enum core_setting_type {
 
 #define CORE_SETTINGS_OWNER_CORE 0xdd5e607eu /* core_settings_owner("core") */
 
+/* Keys of the core's own settings. */
+enum core_setting_key {
+    CORE_KEY_CACHE_BUDGET = 1,    /* bool: size the block cache for the library and disk */
+    CORE_KEY_READAHEAD_FLOOR = 2, /* bool: smaller read-ahead floor when a game must fit */
+    CORE_KEY_POOL_SLOTS = 3,      /* bool: round fixed-pool slots to 8 bytes */
+    CORE_KEY_GAME_BLOCKS = 4,     /* bool: grow the cache for a game and shrink after */
+};
+
 uint32_t core_settings_owner(const char *id);
 void core_settings_load(void);
 /* Bytes copied, 0 when the record is absent. Longer records are truncated. */

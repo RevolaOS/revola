@@ -5,6 +5,7 @@
  * the data volume is readable: it writes the entry sites and binds the core's handlers. core_preferences_init runs when Apple loads its
  * preferences file, the first point where the disk can be read. */
 
+#include "memory.h"
 #include "osos-2.0.5.h"
 #include "patch.h"
 #include "settings.h"
@@ -17,6 +18,7 @@ static uint32_t core_preferences_init(void *preferences, const struct core_next 
 {
     uint32_t result = core_next_call(next, (uint32_t)preferences, 0, 0, 0);
     core_settings_load();
+    core_memory_bind();
 #ifdef CORE_SELFTEST
     core_selftest_preferences();
 #endif

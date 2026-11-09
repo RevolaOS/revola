@@ -47,6 +47,16 @@ The install-time recipe keeps only what must hold before the core runs: the heap
 
 The store is loaded in `core_preferences_init`, the first point where the disk is readable; the installer creates `/Revola/`. Flush points: before light sleep (both `System_Sleep` calls), after Apple's own save-all (USB disk mode entry among its callers), and `core_settings_flush` on request. Reset All Settings empties the store. TODO: a flush a few seconds after a change while the disk is already powered (`Disk_GetPowerState`) needs a UI timer; the period units of `UI_InitializeEventTimer` are not measured yet.
 
+## Memory rules
+
+Apple's global memory policy is adjusted at boot, each rule behind a core setting (default on) read from the store in `core_preferences_init`; `core/memory.c` carries the reasoning and the numbers. Ported from RepriseOS perf/memory.
+
+| Setting | Rule |
+|---|---|
+| `CORE_KEY_CACHE_BUDGET` | Size the block cache after the library import as max(heap total - import cost - reserve, floor): 14/14 MiB on a hard disk as Apple does, 24/6 MiB on flash, detected from the ATA IDENTIFY data. |
+
+TODO: media read-ahead floor, 8-byte pool slots, game block grow and shrink. The 32 KiB UI stack waits for stack-watermark evidence on the canvas and loader paths.
+
 ## What drives development
 
 1. **RAM first.** 64 MiB in total, about 20 MiB of heap shared with Apple's music database. Every pull request reports resident and peak bytes from the emulator heap profile. An increase needs a stated reason. A disabled extension costs zero bytes. Reuse what exists before adding anything.
