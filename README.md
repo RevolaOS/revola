@@ -17,7 +17,7 @@ Directories for the SDK and extension loader are created when their code lands.
 
 ## Build
 
-Requires Python 3.11+, Rockbox's `arm-elf-eabi-` GCC 9.5.0 (`firmware/apple.json` pins the version), and decrypted 2.0.5 inputs produced by the installer tooling. TODO: the recipe assembler is still the RepriseOS `reprise` CLI on PATH until the installer repository ships revola's.
+Requires Python 3.11+, Rockbox's `arm-elf-eabi-` GCC 9.5.0 (`firmware/apple.json` pins the version),, decrypted 2.0.5 inputs produced by the installer tooling, and the `revola` CLI from the installer repository on PATH (`cargo build --release -p revola-cli`), which applies the recipe.
 
 ```sh
 python3 tools/build.py osos --inputs /path/to/firmware-2.0.5 --cross-prefix /path/to/arm-elf-eabi-

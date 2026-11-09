@@ -43,7 +43,7 @@ def compiler_prefix(value, version):
 
 
 def assemble(config, files, out, inputs, nor=None):
-    """Apply a recipe to local Apple inputs. TODO: replace the RepriseOS CLI with revola's."""
+    """Apply a recipe to local Apple inputs with the installer repository's CLI."""
     config.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="assemble-", dir=config.work) as temporary:
         image = Path(temporary) / out.name
@@ -200,7 +200,7 @@ def main():
     )
     parser.add_argument("--jobs", type=int, choices=range(1, 9), default=8)
     parser.add_argument(
-        "--assembler", default="reprise", help="recipe assembler CLI on PATH"
+        "--assembler", default="revola", help="recipe assembler CLI on PATH"
     )
     parser.add_argument(
         "--selftest",
