@@ -105,10 +105,12 @@ def resolve_copy(patch, symbols, layout):
 
 def resolve_write(patch, symbols, layout):
     address = patch.address
-    value = require(symbols, patch.symbol)
+    value = patch.value if patch.kind == Kind.WORD else require(symbols, patch.symbol)
     if address % 4:
         raise ValueError(f"Unaligned patch at {address:#x}")
-    if value % 4 or not layout.start <= value <= layout.limit:
+    if patch.kind != Kind.WORD and (
+        value % 4 or not layout.start <= value <= layout.limit
+    ):
         raise ValueError(f"Patch symbol outside core or unaligned: {patch.symbol}")
     if patch.kind in (Kind.CALL, Kind.JUMP) and value >= layout.end:
         raise ValueError(f"Hook outside core: {patch.symbol}")
