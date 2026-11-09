@@ -6,7 +6,7 @@
  * Legal-row copies, Sound Check's for toggles. A choice, multi-choice or
  * runtime list has one row that expands into one row per entry (indexed.c):
  * a copy of the Settings > EQ row, the Main Menu row (checkmarks) or the Sound
- * Check row (a detail beside the label). */
+ * Check row (a detail beside the label, or under it in the two-line style). */
 
 #include "ui/lists.h"
 #include "osos-2.0.5.h"
@@ -126,7 +126,7 @@ static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *va
     const struct rv_screen *d = s->declaration;
     *value = d->kind == RV_SCREEN_RUNTIME_LIST ||
              (d->kind == RV_SCREEN_LIST && d->list.rows[i].kind == RV_ROW_TOGGLE);
-    if (*value) /* TODO: a runtime list's `stacked` detail needs a two-line row style. */
+    if (*value)
         return stock_row(RES_SettingsMenu_Items, RES_SettingsMenu_SoundCheck_Item);
     switch (d->kind) {
     case RV_SCREEN_CHOICE:
@@ -155,10 +155,13 @@ static int clone_list(struct core_screen *s, uint8_t *scratch, uint32_t scratch_
         const uint8_t *row = prototype(s, i, &value);
         if (!row)
             return 0;
-        uint32_t words[4] = {MenuRow_id, item, MenuRow_title, source};
+        /* A stacked runtime list draws the inline value under the label. */
+        int stacked = d->kind == RV_SCREEN_RUNTIME_LIST && d->runtime.stacked;
+        uint32_t words[6] = {MenuRow_id, item, MenuRow_title, source, MenuRow_style,
+                             MenuRowStyle_TwoLine};
         uint32_t begin = core_write_block_begin(&w, 0);
         uint32_t at = w.at;
-        core_write_copy(&w, row, ROW_BYTES, words, 2);
+        core_write_copy(&w, row, ROW_BYTES, words, stacked ? 3 : 2);
         scratch[at + MenuRow_title_from_model] = 1;
         core_write_block_end(&w, begin);
         if (value)

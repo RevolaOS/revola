@@ -159,7 +159,7 @@ static const struct rv_screen screens[] = {
     {"hello.colour", "Colour", RV_SCREEN_CHOICE, RV_LAYOUT_FULL, {0},
      {.choice = {SETTING_COLOUR, 0, colours, 4}}},
     {"hello.planets", "Planets", RV_SCREEN_RUNTIME_LIST, RV_LAYOUT_SPLIT, {0},
-     {.runtime = {planet_count, planet_row, planet_select, 0}}},
+     {.runtime = {planet_count, planet_row, planet_select, 1}}},
     {"hello.toppings", "Toppings", RV_SCREEN_MULTI_CHOICE, RV_LAYOUT_SPLIT, {0},
      {.choice = {SETTING_TOPPINGS, 0, toppings, 4}}},
 };
