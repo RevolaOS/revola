@@ -61,12 +61,18 @@ static const struct rv_hook hooks[] = {
     {RV_SITE_Settings_Property_slot, RV_HOOK_FILTER, 0, 10, first},
 };
 
+static const char *const levels[] = {"Off", "Low", "Medium", "High", "Full"};
+static const char *const colours[] = {"Blue", "Red", "Green", "Grey"};
+static const char *const toppings[] = {"Cheese", "Olives", "Basil", "Chili"};
+
+/* Level and Toppings open the screens the core makes from their style; Colour
+ * keeps a declared choice screen so both paths are exercised. */
 static const struct rv_setting settings[] = {
-    {SETTING_CALLS, RV_SETTING_INT, 0, 0, 0, 1000000, "Property calls"},
-    {SETTING_BEEP, RV_SETTING_BOOL, 0, 0, 0, 1, "Beep"},
-    {SETTING_LEVEL, RV_SETTING_INT, 0, 0, 0, 4, "Level"},
-    {SETTING_COLOUR, RV_SETTING_INT, 0, 0, 0, 3, "Colour"},
-    {SETTING_TOPPINGS, RV_SETTING_INT, 0, 0, 0, 15, "Toppings"},
+    {SETTING_CALLS, RV_SETTING_INT, RV_STYLE_NONE, 0, 0, 1000000, "Property calls", 0, 0},
+    {SETTING_BEEP, RV_SETTING_BOOL, RV_STYLE_NONE, 0, 0, 1, "Beep", 0, 0},
+    {SETTING_LEVEL, RV_SETTING_INT, RV_STYLE_SLIDER, 2, 0, 4, "Level", levels, 5},
+    {SETTING_COLOUR, RV_SETTING_INT, RV_STYLE_NONE, 0, 0, 3, "Colour", 0, 0},
+    {SETTING_TOPPINGS, RV_SETTING_INT, RV_STYLE_MULTI, 1, 0, 15, "Toppings", toppings, 4},
 };
 
 static void wave(void)
@@ -78,8 +84,6 @@ static const char *const about[] = {
     "Hello is the fixture extension of the RevolaOS SDK.",
     "It declares one screen of every kind so the emulator tests can open them.",
 };
-
-static const char *const levels[] = {"Off", "Low", "Medium", "High", "Full"};
 
 /* Sketch: a box the wheel moves and Select recolours; inputs are logged as
  * 0xc0 | kind << 8 | key << 12. */
@@ -112,9 +116,6 @@ static int sketch_input(const struct rv_input *input)
     return 1;
 }
 
-static const char *const colours[] = {"Blue", "Red", "Green", "Grey"};
-static const char *const toppings[] = {"Cheese", "Olives", "Basil", "Chili"};
-
 /* Planets: a runtime list; choosing logs 0xd0 | index << 8, the last row pops. */
 static const char *const planets[][2] = {
     {"Mercury", "0.4 AU"}, {"Venus", "0.7 AU"}, {"Earth", "1 AU"}, {"Mars", "1.5 AU"},
@@ -140,27 +141,24 @@ static int planet_select(uint32_t index)
 
 static const struct rv_row rows[] = {
     {"About", RV_ROW_PUSH, 0, 0, "hello.about", 0, 0},
-    {"Beep", RV_ROW_TOGGLE, 0, SETTING_BEEP, 0, 0, 0},
+    {"Beep", RV_ROW_SETTING, 0, SETTING_BEEP, 0, 0, 0},
     {"Wave", RV_ROW_ACTION, 0, 0, 0, wave, 0},
     {"Wave again", RV_ROW_ACTION, 0, 0, 0, wave, 0},
-    {"Level", RV_ROW_PUSH, 0, 0, "hello.level", 0, 0},
+    {"Level", RV_ROW_SETTING, 0, SETTING_LEVEL, 0, 0, 0},
     {"Sketch", RV_ROW_PUSH, 0, 0, "hello.sketch", 0, 0},
     {"Colour", RV_ROW_PUSH, 0, 0, "hello.colour", 0, 0},
     {"Planets", RV_ROW_PUSH, 0, 0, "hello.planets", 0, 0},
-    {"Toppings", RV_ROW_PUSH, 0, 0, "hello.toppings", 0, 0},
+    {"Toppings", RV_ROW_SETTING, 0, SETTING_TOPPINGS, 0, 0, 0},
 };
 
 static const struct rv_screen screens[] = {
     {"hello.menu", "Hello", RV_SCREEN_LIST, RV_LAYOUT_AUTO, {0}, {.list = {rows, 9}}},
     {"hello.about", "About Hello", RV_SCREEN_TEXT, 0, {0}, {.text = {about, 2}}},
-    {"hello.level", "Level", RV_SCREEN_SLIDER, 0, {0}, {.choice = {SETTING_LEVEL, 0, levels, 5}}},
     {"hello.sketch", "Sketch", RV_SCREEN_CANVAS, 0, {0}, {.canvas = {sketch_draw, sketch_input}}},
     {"hello.colour", "Colour", RV_SCREEN_CHOICE, RV_LAYOUT_FULL, {0},
      {.choice = {SETTING_COLOUR, 0, colours, 4}}},
     {"hello.planets", "Planets", RV_SCREEN_RUNTIME_LIST, RV_LAYOUT_SPLIT, {0},
      {.runtime = {planet_count, planet_row, planet_select, 1}}},
-    {"hello.toppings", "Toppings", RV_SCREEN_MULTI_CHOICE, RV_LAYOUT_AUTO, {0},
-     {.choice = {SETTING_TOPPINGS, 0, toppings, 4}}},
 };
 
 /* The Settings pane icon: a 48 x 48 indexed BMap of a red disc, palette
@@ -208,7 +206,7 @@ static void unload(void)
 }
 
 static const struct rv_extension extension = {
-    sizeof extension, hooks, 2, settings, 5, 0, 0, unload, screens, 7, entries, 8,
+    sizeof extension, hooks, 2, settings, 5, 0, 0, unload, screens, 5, entries, 8,
 };
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)

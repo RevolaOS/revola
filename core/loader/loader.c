@@ -597,6 +597,18 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             return 0;
         }
         int registered = core_screens_register(record, descriptor->screens, descriptor->screen_count);
+        uint32_t synthesized =
+            core_screens_from_settings(descriptor->settings, descriptor->setting_count, NULL);
+        if (registered == RV_OK && synthesized) {
+            record->setting_screens = allocate(record, synthesized * sizeof(struct rv_screen));
+            if (!record->setting_screens) {
+                registered = RV_NO_MEMORY;
+            } else {
+                core_screens_from_settings(descriptor->settings, descriptor->setting_count,
+                                           record->setting_screens);
+                registered = core_screens_register(record, record->setting_screens, synthesized);
+            }
+        }
         if (registered == RV_OK)
             registered = core_menus_register(record, descriptor->entries, descriptor->entry_count);
         if (registered != RV_OK) {
@@ -628,6 +640,10 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
             core_containers_release(record, &descriptor->containers[i]);
         core_menus_release(record);
         core_screens_release(record);
+        if (record->setting_screens) {
+            release(record, record->setting_screens);
+            record->setting_screens = NULL;
+        }
         for (uint32_t i = 0; i < descriptor->hook_count; i++)
             core_hook_unbind(&record->hooks[i]);
         retire(record->hooks);

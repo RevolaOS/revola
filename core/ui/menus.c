@@ -193,7 +193,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         if (root == RV_ROOT_SETTINGS)
             core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
-        if (e->row.kind == RV_ROW_TOGGLE)
+        if (e->row.kind == RV_ROW_TOGGLE || e->row.kind == RV_ROW_SETTING)
             core_set_source2(bank, item + 1, item, item + 1, SourceDestination_InlineValue);
         else
             core_set_source(bank, item + 1, item, 1);
@@ -261,6 +261,16 @@ void core_menus_toggle(uint8_t root, uint32_t n)
             mask |= (uint32_t)(shown(&rows[i]) ^ (&rows[i] == r)) << rows[i].index;
     core_settings_set(r->owner->owner, RV_KEY_MENU_VISIBILITY, CORE_SETTING_INT, &mask, 4);
     apply_visibility(r);
+}
+
+void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
+{
+    for (uint32_t i = 0; i < MAX_ROWS; i++) {
+        const struct rv_row *row = rows[i].entry ? &rows[i].entry->row : NULL;
+        if (row && rows[i].owner == owner && row->key == key &&
+            (row->kind == RV_ROW_TOGGLE || row->kind == RV_ROW_SETTING))
+            core_screens_notify(rows[i].item + 1);
+    }
 }
 
 const struct rv_entry *core_menus_entry(uint32_t item)

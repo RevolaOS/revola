@@ -63,12 +63,21 @@ static const struct rv_row *screen_row(struct core_screen *s, uint32_t id, uint3
     return &s->declaration->list.rows[(id - rows) / 2];
 }
 
+/* A toggle or setting row's value: the chosen label of a setting with labels
+ * (nothing for a multi-choice), else On or Off. */
 static const char *row_text(struct rv_extension_record *owner, const struct rv_row *row,
                             int value)
 {
-    if (!value || row->kind != RV_ROW_TOGGLE)
+    if (!value || (row->kind != RV_ROW_TOGGLE && row->kind != RV_ROW_SETTING))
         return row->label;
-    return core_settings_get_int(settings_owner(owner), row->key, 0) ? "On" : "Off";
+    const struct rv_setting *setting = core_screens_setting(owner, row->key);
+    int32_t v = core_screens_setting_value(owner, row->key);
+    if (setting && setting->labels) {
+        if (setting->style == RV_STYLE_MULTI || (uint32_t)v >= setting->label_count)
+            return "";
+        return setting->labels[v];
+    }
+    return v ? "On" : "Off";
 }
 
 static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t out,
@@ -160,15 +169,17 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
         if (target)
             core_screens_push(target, controller);
         break;
-    case RV_ROW_TOGGLE: {
-        uint32_t id = settings_owner(owner);
-        core_settings_set_int(id, row->key, !core_settings_get_int(id, row->key, 0));
-        if (s)
-            core_screens_refresh(s);
-        else
-            core_screens_notify(item + 1);
+    case RV_ROW_TOGGLE:
+    case RV_ROW_SETTING:
+        target = row->kind == RV_ROW_SETTING ? core_screens_find_setting(owner, row->key) : NULL;
+        if (target) {
+            core_screens_push(target, controller);
+            break;
+        }
+        core_settings_set_int(settings_owner(owner), row->key,
+                              !core_screens_setting_value(owner, row->key));
+        core_screens_setting_changed(owner, row->key);
         break;
-    }
     case RV_ROW_ACTION:
         if (row->action)
             row->action();

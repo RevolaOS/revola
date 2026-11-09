@@ -74,8 +74,7 @@ static int32_t range[ControlRange_bytes / 4]; /* the bar copies it when it reads
 static int32_t slider_value(struct core_screen *s)
 {
     const struct rv_screen *d = s->declaration;
-    int32_t value = core_settings_get_int(s->owner ? s->owner->owner : CORE_SETTINGS_OWNER_CORE,
-                                          d->choice.key, 0);
+    int32_t value = core_screens_setting_value(s->owner, d->choice.key);
     if (value < 0)
         return 0;
     return value < (int32_t)d->choice.count ? value : (int32_t)d->choice.count - 1;
@@ -108,6 +107,7 @@ static void slide(struct core_screen *s, int steps)
                           s->declaration->choice.key, value);
     core_screens_notify(CORE_SCREEN_ROWS(s));
     core_screens_notify(CORE_SCREEN_ROWS(s) + 1);
+    core_screens_setting_changed(s->owner, s->declaration->choice.key);
 }
 
 /* Controller */

@@ -81,8 +81,9 @@ static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, u
 static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *value)
 {
     const struct rv_screen *d = s->declaration;
-    *value = d->kind == RV_SCREEN_RUNTIME_LIST ||
-             (d->kind == RV_SCREEN_LIST && d->list.rows[i].kind == RV_ROW_TOGGLE);
+    uint8_t row_kind = d->kind == RV_SCREEN_LIST ? d->list.rows[i].kind : 0;
+    *value = d->kind == RV_SCREEN_RUNTIME_LIST || (d->kind == RV_SCREEN_LIST &&
+             (row_kind == RV_ROW_TOGGLE || row_kind == RV_ROW_SETTING));
     if (*value)
         return stock_row(RES_SettingsMenu_Items, RES_SettingsMenu_SoundCheck_Item);
     switch (d->kind) {

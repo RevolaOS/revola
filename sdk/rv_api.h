@@ -60,16 +60,28 @@ enum rv_setting_type {
 #define RV_KEY_ENABLED 0
 #define RV_KEY_MENU_VISIBILITY 0xffff
 
+/* How an RV_ROW_SETTING row shows an int setting with `labels`. */
+enum rv_setting_style {
+    RV_STYLE_NONE,   /* no row of its own */
+    RV_STYLE_CHOICE, /* a list of the labels; the value is the chosen index */
+    RV_STYLE_SLIDER, /* a bar over the labels; the value is the position */
+    RV_STYLE_MULTI,  /* a checkmark per label; bit n of the value is label n */
+};
+
 /* A declared setting: the core applies `fallback` when the store has no record,
- * clears the record on Reset All Settings, and renders it from `label`. */
+ * clears the record on Reset All Settings, and renders it from `label`. An
+ * RV_ROW_SETTING row shows a bool as On or Off and flips it; an int with
+ * `labels` shows the chosen label and opens a screen of `style` titled `label`. */
 struct rv_setting {
     uint16_t key;
     uint8_t type;
-    uint8_t reserved;
+    uint8_t style; /* rv_setting_style */
     int32_t fallback;
     int32_t minimum;
     int32_t maximum;
     const char *label;
+    const char *const *labels; /* one per value; at most 32 for RV_STYLE_MULTI */
+    uint32_t label_count;
 };
 
 /* A submenu of a menu, shared with every other extension that declares the
@@ -89,6 +101,8 @@ enum rv_row_kind {
     RV_ROW_STOCK,  /* a stock Settings row (an RV_SETTINGS_* row of rv_menus.h in `stock`)
                       moved here with its stock behaviour; only inside a container under
                       Settings */
+    RV_ROW_SETTING, /* the declared setting `key`: shows its value; flips a bool, opens the
+                       screen of an int with labels */
 };
 
 /* One row of a list screen or an entry in a menu. */

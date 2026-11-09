@@ -34,6 +34,18 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
 void core_screens_release(struct rv_extension_record *owner);
 /* The screen named `name` of `owner`, or NULL. */
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name);
+/* The screen of `owner` that edits the setting `key`, or NULL. */
+struct core_screen *core_screens_find_setting(struct rv_extension_record *owner, uint16_t key);
+/* The declared setting `key` of `owner`; NULL when undeclared or for the core. */
+const struct rv_setting *core_screens_setting(struct rv_extension_record *owner, uint16_t key);
+/* The setting's int value, its declared fallback when the store has none. */
+int32_t core_screens_setting_value(struct rv_extension_record *owner, uint16_t key);
+/* The screens RV_ROW_SETTING rows open: one per int setting with a style and
+ * labels, written to `out` when it is not NULL. Returns how many. */
+uint32_t core_screens_from_settings(const struct rv_setting *settings, uint32_t count,
+                                    struct rv_screen *out);
+/* Redraws every open row that shows the setting `key` of `owner`. */
+void core_screens_setting_changed(struct rv_extension_record *owner, uint16_t key);
 /* The screen whose ids include `id`, or NULL. */
 struct core_screen *core_screens_of_id(uint32_t id);
 /* The open screen of a controller the runtime pushed, or NULL. */

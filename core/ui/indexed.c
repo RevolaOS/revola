@@ -44,7 +44,7 @@ static uint32_t row_count(const struct core_screen *s)
 
 static int32_t setting(const struct core_screen *s)
 {
-    return core_settings_get_int(owner_of(s), s->declaration->choice.key, 0);
+    return core_screens_setting_value(s->owner, s->declaration->choice.key);
 }
 
 /* A multi-choice row asks which row styles to build, then each expanded row's. */
@@ -207,6 +207,7 @@ void core_indexed_chosen(struct core_screen *s)
     switch (d->kind) {
     case RV_SCREEN_CHOICE:
         core_settings_set_int(owner_of(s), d->choice.key, (int32_t)index);
+        core_screens_setting_changed(s->owner, d->choice.key);
         core_screens_pop();
         break;
     case RV_SCREEN_MULTI_CHOICE:

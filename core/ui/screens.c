@@ -94,6 +94,74 @@ struct core_screen *core_screens_find(struct rv_extension_record *owner, const c
     return NULL;
 }
 
+const struct rv_setting *core_screens_setting(struct rv_extension_record *owner, uint16_t key)
+{
+    const struct rv_extension *d = owner ? owner->descriptor : NULL;
+    for (uint32_t i = 0; d && i < d->setting_count; i++)
+        if (d->settings[i].key == key)
+            return &d->settings[i];
+    return NULL;
+}
+
+int32_t core_screens_setting_value(struct rv_extension_record *owner, uint16_t key)
+{
+    const struct rv_setting *setting = core_screens_setting(owner, key);
+    return core_settings_get_int(owner ? owner->owner : CORE_SETTINGS_OWNER_CORE, key,
+                                 setting ? setting->fallback : 0);
+}
+
+/* A setting with labels and a style edits as a screen of that style, titled
+ * and named by its label. */
+static uint8_t setting_screen_kind(const struct rv_setting *setting)
+{
+    if (setting->type != RV_SETTING_INT || !setting->labels || !setting->label_count)
+        return 0xff;
+    switch (setting->style) {
+    case RV_STYLE_CHOICE:
+        return RV_SCREEN_CHOICE;
+    case RV_STYLE_SLIDER:
+        return RV_SCREEN_SLIDER;
+    case RV_STYLE_MULTI:
+        return RV_SCREEN_MULTI_CHOICE;
+    default:
+        return 0xff;
+    }
+}
+
+uint32_t core_screens_from_settings(const struct rv_setting *settings, uint32_t count,
+                                    struct rv_screen *out)
+{
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        uint8_t kind = setting_screen_kind(&settings[i]);
+        if (kind == 0xff)
+            continue;
+        if (out) {
+            struct rv_screen *s = &out[n];
+            s->name = s->title = settings[i].label;
+            s->kind = kind;
+            s->layout = RV_LAYOUT_AUTO;
+            s->choice.key = settings[i].key;
+            s->choice.labels = settings[i].labels;
+            s->choice.count = settings[i].label_count;
+        }
+        n++;
+    }
+    return n;
+}
+
+struct core_screen *core_screens_find_setting(struct rv_extension_record *owner, uint16_t key)
+{
+    for (uint32_t i = 0; i < MAX_SCREENS; i++) {
+        struct core_screen *s = &core_screens[i];
+        const struct rv_screen *d = s->declaration;
+        if (d && s->owner == owner && d->kind != RV_SCREEN_LIST && d->kind != RV_SCREEN_TEXT &&
+            d->kind != RV_SCREEN_CANVAS && d->kind != RV_SCREEN_RUNTIME_LIST && d->choice.key == key)
+            return s;
+    }
+    return NULL;
+}
+
 struct core_screen *core_screens_of_id(uint32_t id)
 {
     for (uint32_t i = 0; i < MAX_SCREENS; i++) {
@@ -131,6 +199,21 @@ struct core_screen *core_screens_of_controller(void *controller)
         if (open[i].controller == controller)
             return open[i].screen;
     return NULL;
+}
+
+void core_screens_setting_changed(struct rv_extension_record *owner, uint16_t key)
+{
+    for (uint32_t i = 0; i < open_count; i++) {
+        struct core_screen *s = open[i].screen;
+        const struct rv_screen *d = s->declaration;
+        if (!d || s->owner != owner || d->kind != RV_SCREEN_LIST)
+            continue;
+        for (uint32_t r = 0; r < d->list.count; r++)
+            if ((d->list.rows[r].kind == RV_ROW_TOGGLE || d->list.rows[r].kind == RV_ROW_SETTING) &&
+                d->list.rows[r].key == key)
+                core_screens_notify(CORE_SCREEN_ROWS(s) + 2 * r + 1);
+    }
+    core_menus_setting_changed(owner, key);
 }
 
 struct core_screen *core_screens_top(uint8_t kind)
