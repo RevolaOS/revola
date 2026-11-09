@@ -1,0 +1,12 @@
+id = "hello"
+name = "Hello"
+description = "Loader test: two filters on one chainable site"
+version = "0.1.0"
+author = "RevolaOS"
+license = "GPL-3.0-only"
+api = "1.0"
+enabled = true
+
+[[module]]
+name = "main"
+trigger = "always"
