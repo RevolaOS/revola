@@ -7,10 +7,11 @@
  * on each request, so the numbers are current every time Settings opens. Apple keeps
  * pointers to the rows, so they live in core memory for good. */
 
+#include "about.h"
 #include "osos-2.0.5.h"
 #include "sites.h"
 
-#define ROWS 4
+#define ROWS CORE_ABOUT_ROWS
 #define ROW_BYTES 0x98
 #define ROW_ID 0x30
 #define ROW_TITLE 0x68
@@ -18,7 +19,7 @@
 #define TEXT_BYTES 40
 
 /* Ids from the core's block; property ids stay outside Apple's 0x8900-0x892f. */
-#define ITEM_ID(i) (0x0cf00001u + (i))
+#define ITEM_ID(i) CORE_ABOUT_ITEM_ID(i)
 #define SOURCE_ID(i) (0x0cf00011u + (i))
 #define PROPERTY_ID(i) (0x0cf00021u + (i))
 
