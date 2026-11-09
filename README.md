@@ -62,6 +62,8 @@ Apple's global memory policy is adjusted at boot, each rule behind a core settin
 | `CORE_KEY_POOL_SLOTS` | Fixed-pool slots round to 8 bytes instead of 16 (ArtworkDB thumbnail records: 40 instead of 48). |
 | `CORE_KEY_GAME_BLOCKS` | When the eApp block manager asks for a game's blocks the cache first grows by what the other clients keep, leaving 1 MiB of heap; after the release the unassigned blocks above the import size go back to the heap. |
 
+The cache budget also releases the four sorted orders the import builds and never reads (4 bytes per track each).
+
 The 32 KiB UI stack is not carried until stack-watermark evidence exists on the canvas and loader paths.
 
 ## What drives development

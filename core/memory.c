@@ -127,10 +127,29 @@ uint32_t core_block_cache_size(uint32_t heap_total, uint32_t import_cost, int fl
 /* The size chosen after the import. */
 static uint32_t import_cache_bytes;
 
-static uint32_t block_cache_budget(uint32_t heap_total, uint32_t import_cost,
+/* Sorted orders of the library that Apple builds itself during the import: 2 copies
+ * the database order, and 22, 26 and 29 serve the playlist import. Nothing reads them
+ * while browsing and a later request rebuilds the same order, so the import's end
+ * releases them (4 bytes per track each). Orders read from the iTunesDB stay: a
+ * rebuild would sort them with Apple's collation instead of the order iTunes wrote.
+ * RepriseOS perf/memory f2a9c67. */
+static void release_import_orders(uint8_t *owner)
+{
+    static const uint8_t built_orders[] = {2, 22, 26, 29};
+    struct MediaList **slot = owner ? FIELD(owner, MediaBrowser_library, struct MediaList **) : 0;
+    struct MediaList *library = slot ? *slot : 0;
+    if (!library)
+        return;
+    for (uint32_t i = 0; i < sizeof built_orders; i++)
+        MediaList_InvalidateOrderCache(library, built_orders[i]);
+}
+
+/* Runs once the import has built every list, so it also drops what the import alone used. */
+static uint32_t block_cache_budget(uint32_t heap_total, uint32_t import_cost, uint32_t owner,
                                    const struct core_next *next)
 {
     (void)next;
+    release_import_orders((uint8_t *)owner);
     import_cache_bytes =
         core_block_cache_size(heap_total, import_cost, core_storage_is_flash(ATA_Identify));
     return import_cache_bytes;
