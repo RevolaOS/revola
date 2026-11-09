@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from symbols import require
 
 ROW = struct.Struct("<4I4B")
-CALL, VTABLE, ENTRY, ENTRY_NORETURN, WORD = range(5)
+CALL, VTABLE, ENTRY, ENTRY_NORETURN, WORD, INSERT = range(6)
 LDR_PC = 0xE51FF004
 PC = 15
 
@@ -44,8 +44,12 @@ def read(code, symbols, core_start):
         address, original, word0, word1, kind, chain, argc, copy = ROW.unpack_from(
             code, offset
         )
-        if kind > WORD or argc > 4 or chain > 1:
+        if kind > INSERT or argc > 4 or chain > 1:
             raise ValueError(f"Malformed site row at {address:#x}")
+        if kind == INSERT and (argc > 3 or chain):
+            raise ValueError(
+                f"Insert site {address:#x}: at most three arguments, no chain"
+            )
         if copy and (copy < 4 or copy > 11 or argc < 1 or kind == WORD):
             raise ValueError(
                 f"Site {address:#x}: register copy needs r4-r11 and an argument"

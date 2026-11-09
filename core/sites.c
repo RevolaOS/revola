@@ -144,6 +144,7 @@ static void patch_site(const struct core_site_row *row, uint32_t stub, int bound
 {
     switch (row->kind) {
     case CORE_SITE_CALL:
+    case CORE_SITE_INSERT:
         core_patch_word(row->address, bound ? BL(row->address, stub) : row->word0);
         break;
     case CORE_SITE_VTABLE:

@@ -17,6 +17,7 @@
 #define ENTRY 2
 #define ENTRY_NORETURN 3
 #define WORD 4
+#define INSERT 5
 #define BL(address, callee) 0
 #define REPLAY(name) 0
 
@@ -29,6 +30,9 @@
 .text
 .balign 4
 core_stub_\name:
+.if \kind == INSERT
+    push {r0-r3, r12, lr}
+.endif
 .if \copy
 .if \argc == 1
     mov r0, r\copy
@@ -40,7 +44,13 @@ core_stub_\name:
     mov r3, r\copy
 .endif
 .endif
-.if \argc < 4
+.if \kind == INSERT
+    ldr r\argc, =core_root_\name
+    ldr r12, =core_site_slots + 4 * index
+    ldr r12, [r12]
+    blx r12
+    pop {r0-r3, r12, pc}
+.elseif \argc < 4
     ldr r\argc, =core_root_\name
     ldr r12, =core_site_slots + 4 * index
     ldr pc, [r12]

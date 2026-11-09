@@ -14,6 +14,7 @@ enum core_site_kind {
     CORE_SITE_ENTRY,
     CORE_SITE_ENTRY_NORETURN,
     CORE_SITE_WORD,
+    CORE_SITE_INSERT, /* BL over an ordinary instruction: r0-r3, r12 preserved, no result */
 };
 
 enum core_hook_mode { CORE_HOOK_FILTER, CORE_HOOK_REPLACE };

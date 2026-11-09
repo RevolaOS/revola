@@ -5,7 +5,7 @@ import struct
 import unittest
 
 import sites
-from sites import CALL, ENTRY, ENTRY_NORETURN, VTABLE, WORD, Site
+from sites import CALL, ENTRY, ENTRY_NORETURN, INSERT, VTABLE, WORD, Site
 
 BASE = 0x08000000
 PUSH_LR = 0xE92D4010  # push {r4, lr}
@@ -48,6 +48,10 @@ class SiteTests(unittest.TestCase):
             ),  # copy from a scratch register
             sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0, 4),  # copy with no argument slot
             sites.ROW.pack(BASE, 0, 0, 0, WORD, 0, 1, 4),
+            sites.ROW.pack(
+                BASE, 0, 0, 0, INSERT, 0, 4, 0
+            ),  # four arguments need the stack
+            sites.ROW.pack(BASE, 0, 0, 0, INSERT, 1, 2, 0),  # exclusive by construction
         ):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 sites.read(struct.pack("<I", 1) + row, symbols, 0x1000)

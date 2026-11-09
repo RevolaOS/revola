@@ -5,7 +5,9 @@
  *
  * SITE(name, address, kind, original, word0, word1, chain, argc, copy)
  *   address   the patched word (SITE_* from the symbols header)
- *   kind      CALL, VTABLE, ENTRY, ENTRY_NORETURN or WORD
+ *   kind      CALL, VTABLE, ENTRY, ENTRY_NORETURN, WORD or INSERT (a call written over an
+ *             ordinary instruction whose neighbours keep r0-r3 and r12 live; the stub
+ *             preserves them and the handler's result is dropped)
  *   original  what an unbound site does: the callee of a CALL, the pointer in a
  *             VTABLE slot, REPLAY(name) for an ENTRY, 0 for ENTRY_NORETURN and WORD
  *   word0/1   the Apple words at the site, checked against the pinned image at build
