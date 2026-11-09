@@ -30,18 +30,18 @@ SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsM
      ADDR_SettingsModel_GetProperty, 0, 1, 4)
 
 /* Light sleep: the disk powers down inside, so stores are written on the way in. */
-SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_System_Sleep,
-     BL(SITE_Sleep_Idle_call, ADDR_System_Sleep), 0, 1, 1)
-SITE(Sleep_Request_call, SITE_Sleep_Request_call, CALL, ADDR_System_Sleep,
-     BL(SITE_Sleep_Request_call, ADDR_System_Sleep), 0, 1, 1)
+SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_Power_EnterLightSleep,
+     BL(SITE_Sleep_Idle_call, ADDR_Power_EnterLightSleep), 0, 1, 1)
+SITE(Sleep_Request_call, SITE_Sleep_Request_call, CALL, ADDR_Power_EnterLightSleep,
+     BL(SITE_Sleep_Request_call, ADDR_Power_EnterLightSleep), 0, 1, 1)
 
 /* Apple's save-all (USB disk mode entry among its callers) writes its preferences. */
-SITE(Preferences_Flush_call, SITE_Preferences_Flush_call, CALL, ADDR_Preferences_Flush,
-     BL(SITE_Preferences_Flush_call, ADDR_Preferences_Flush), 0, 1, 1)
+SITE(Preferences_FlushIfDirty_call, SITE_Preferences_FlushIfDirty_call, CALL, ADDR_Preferences_FlushIfDirty,
+     BL(SITE_Preferences_FlushIfDirty_call, ADDR_Preferences_FlushIfDirty), 0, 1, 1)
 
 /* Reset All Settings confirmed; Apple resets its preferences and menus. */
-SITE(Settings_ResetAll_call, SITE_Settings_ResetAll_call, CALL, ADDR_Settings_ResetAll,
-     BL(SITE_Settings_ResetAll_call, ADDR_Settings_ResetAll), 0, 1, 1)
+SITE(SettingsModel_ResetAllSettings_call, SITE_SettingsModel_ResetAllSettings_call, CALL, ADDR_SettingsModel_ResetAllSettings,
+     BL(SITE_SettingsModel_ResetAllSettings_call, ADDR_SettingsModel_ResetAllSettings), 0, 1, 1)
 
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be

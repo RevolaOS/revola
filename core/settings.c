@@ -375,8 +375,8 @@ static uint32_t reset_all(uint32_t model, const struct core_next *next)
 static const struct core_hook hooks[] = {
     {CORE_SITE_Sleep_Idle_call, CORE_HOOK_FILTER, 0, flush_then_sleep},
     {CORE_SITE_Sleep_Request_call, CORE_HOOK_FILTER, 0, flush_then_sleep},
-    {CORE_SITE_Preferences_Flush_call, CORE_HOOK_FILTER, 0, save_all},
-    {CORE_SITE_Settings_ResetAll_call, CORE_HOOK_FILTER, 0, reset_all},
+    {CORE_SITE_Preferences_FlushIfDirty_call, CORE_HOOK_FILTER, 0, save_all},
+    {CORE_SITE_SettingsModel_ResetAllSettings_call, CORE_HOOK_FILTER, 0, reset_all},
 };
 
 void core_settings_bind(void)
