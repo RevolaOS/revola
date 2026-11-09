@@ -78,10 +78,23 @@ def symbols(prefix, elf):
     return values
 
 
-def relocations(prefix, elf):
+def absolute_symbols(symbol_table):
+    """Names of SHN_ABS symbols in `readelf -sW` output: the firmware's, from
+    --just-symbols. Words that point at them stay as linked."""
+    names = set()
+    for line in symbol_table.splitlines():
+        parts = line.split()
+        if len(parts) == 8 and parts[0].rstrip(":").isdigit() and parts[6] == "ABS":
+            names.add(parts[7])
+    return names
+
+
+def abs32_offsets(relocation_table, absolute):
+    """Offsets of the R_ARM_ABS32 words in `readelf -rW` output that the loader
+    must move with the image: every one except those naming an absolute symbol."""
     offsets = []
     section = None
-    for line in run([prefix + "readelf", "-rW", elf]).splitlines():
+    for line in relocation_table.splitlines():
         match = re.match(r"Relocation section '(\S+)'", line)
         if match:
             section = match.group(1)
@@ -93,10 +106,16 @@ def relocations(prefix, elf):
             continue
         kind = parts[2]
         if kind == "R_ARM_ABS32":
-            offsets.append(int(parts[0], 16))
+            if len(parts) < 5 or parts[4] not in absolute:
+                offsets.append(int(parts[0], 16))
         elif kind not in RELATIVE_RELOCATIONS:
             raise ValueError(f"unsupported relocation {kind} at {parts[0]}")
     return sorted(set(offsets))
+
+
+def relocations(prefix, elf):
+    absolute = absolute_symbols(run([prefix + "readelf", "-sW", elf]))
+    return abs32_offsets(run([prefix + "readelf", "-rW", elf]), absolute)
 
 
 def pack_image(values, image, offsets, api, firmware, module):

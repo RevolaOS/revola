@@ -57,3 +57,19 @@ class RvxTests(unittest.TestCase):
         self.assertEqual(rvx.fnv1a("core"), 0xDD5E607E)  # CORE_SETTINGS_OWNER_CORE
         with self.assertRaises(ValueError):
             rvx.unpack_header(b"RVX0" + bytes(36))  # format 0
+
+    def test_words_naming_firmware_symbols_stay_as_linked(self):
+        symbols = (
+            "     2: 000005b4     0 SECTION LOCAL  DEFAULT    3 .data\n"
+            "    79: 08259b28     0 NOTYPE  GLOBAL DEFAULT  ABS GraphicsContext_SetColor\n"
+        )
+        table = (
+            "Relocation section '.rel.text' at offset 0x13c1c contains 3 entries:\n"
+            " Offset     Info    Type                Sym. Value  Symbol's Name\n"
+            "00000014  00000202 R_ARM_ABS32            000005b4   .data\n"
+            "0000019c  00004f02 R_ARM_ABS32            08259b28   GraphicsContext_SetColor\n"
+            "000001a0  00000102 R_ARM_ABS32            00000000   .text\n"
+        )
+        absolute = rvx.absolute_symbols(symbols)
+        self.assertEqual(absolute, {"GraphicsContext_SetColor"})
+        self.assertEqual(rvx.abs32_offsets(table, absolute), [0x14, 0x1A0])
