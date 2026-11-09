@@ -10,6 +10,7 @@
 
 #ifdef CORE_SELFTEST
 #include "osos-2.0.5.h"
+#include "settings.h"
 #include "sites.h"
 
 enum {
@@ -27,7 +28,11 @@ struct core_selftest {
     uint32_t property_calls;
     uint32_t bind_results[8];
     uint32_t unbind_results[4];
+    uint32_t boots;      /* core setting "boots" read at boot, then incremented and flushed */
+    uint32_t set_result; /* 0 when the store accepted the write */
 } core_selftest;
+
+enum { SETTING_BOOTS = 0x7e57 };
 
 static void record(uint32_t event)
 {
@@ -116,6 +121,10 @@ void core_selftest_boot(void)
 
 void core_selftest_preferences(void)
 {
+    core_selftest.boots = core_settings_get_int(CORE_SETTINGS_OWNER_CORE, SETTING_BOOTS, 0);
+    core_selftest.set_result =
+        core_settings_set_int(CORE_SETTINGS_OWNER_CORE, SETTING_BOOTS, core_selftest.boots + 1);
+    core_settings_flush();
     core_selftest.bind_results[3] = core_hook_bind(&property_a);
     core_selftest.bind_results[4] = core_hook_bind(&property_b);
     core_selftest.bind_results[5] = core_hook_bind(&append_hook);

@@ -30,7 +30,8 @@ SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsM
      ADDR_SettingsModel_GetProperty, 0, 1, 4)
 
 #ifdef CORE_SELFTEST
-/* Reset All Settings > main menu reset. Exercised by the self-test only. */
+/* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
+ * inside it while core_boot runs during UI start-up. */
 SITE(SettingsModel_ResetMainMenu_entry, SITE_SettingsModel_ResetMainMenu_entry, ENTRY,
      REPLAY(SettingsModel_ResetMainMenu_entry), 0xe92d47f0, 0xe1a09000, 0, 1)
 #endif
