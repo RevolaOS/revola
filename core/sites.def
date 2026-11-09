@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
+/* Hook sites of OSOS 2.0.5, one row each. Included by sites.c (table and ids) and
+ * stubs.S (per-site stubs and slots), so the two never disagree.
+ *
+ * SITE(name, address, kind, original, word0, word1, chain, argc)
+ *   address   the patched word (SITE_* from the symbols header)
+ *   kind      CALL, VTABLE, ENTRY, ENTRY_NORETURN or WORD
+ *   original  what an unbound site does: the callee of a CALL, the pointer in a
+ *             VTABLE slot, REPLAY(name) for an ENTRY, 0 for ENTRY_NORETURN and WORD
+ *   word0/1   the Apple words at the site, checked against the pinned image at build
+ *             time and at install time
+ *   chain     1 when Apple's semantics are understood well enough for several handlers
+ *   argc      register arguments the Apple function takes (at most 4)
+ */
+
+/* Apple loads its preferences here; the disk is readable from this point on. */
+SITE(Preferences_LoadFile_call, SITE_Preferences_LoadFile_call, CALL,
+     ADDR_Preferences_LoadFile, BL(SITE_Preferences_LoadFile_call, ADDR_Preferences_LoadFile), 0,
+     1, 1)
+
+/* Called once per row while Apple builds a menu's ITEM list. */
+SITE(ResourceBlockList_AppendBorrowedBlock_call, SITE_ResourceBlockList_AppendBorrowedBlock_call,
+     CALL, ADDR_ResourceBlockList_AppendBorrowedBlock,
+     BL(SITE_ResourceBlockList_AppendBorrowedBlock_call, ADDR_ResourceBlockList_AppendBorrowedBlock),
+     0, 1, 4)
+
+/* Settings model property lookup: (model, type, property, out). */
+SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsModel_GetProperty,
+     ADDR_SettingsModel_GetProperty, 0, 1, 4)
+
+#ifdef CORE_SELFTEST
+/* Reset All Settings > main menu reset. Exercised by the self-test only. */
+SITE(SettingsModel_ResetMainMenu_entry, SITE_SettingsModel_ResetMainMenu_entry, ENTRY,
+     REPLAY(SettingsModel_ResetMainMenu_entry), 0xe92d47f0, 0xe1a09000, 0, 1)
+#endif

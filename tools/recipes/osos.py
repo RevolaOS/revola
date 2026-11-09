@@ -5,6 +5,7 @@ import struct
 from dataclasses import dataclass
 
 import declarations
+import sites
 from declarations import Copy, Kind
 from symbols import require
 from toolchain import compile_payload
@@ -35,20 +36,26 @@ def arm_call(address, destination):
     return 0xEB000000 | ((delta >> 2) & 0xFFFFFF)
 
 
-def core_units(source):
+def core_units(source, defines=()):
     return [
-        (path.name, [])
+        (path.name, list(defines))
         for path in sorted(source.iterdir())
         if path.suffix in (".c", ".S") and not path.name.endswith(".lds.S")
     ]
 
 
-def build_recipe(source, firmware, directory, fingerprint, prefix, jobs):
-    """Compile core/ and resolve its install-time patches against the pinned OSOS."""
+def build_recipe(
+    source, firmware, directory, fingerprint, prefix, jobs, image=None, defines=()
+):
+    """Compile core/ and resolve its install-time patches against the pinned OSOS.
+
+    `image` is the decrypted OSOS when available; the site table is then checked
+    against it (expected words, branches into entry+4). The recipe carries the same
+    expectations so the installer checks them again on the user's image."""
     code, symbols = compile_payload(
         directory,
         source,
-        core_units(source),
+        core_units(source, defines),
         "core.lds.S",
         "core",
         prefix,
@@ -58,10 +65,11 @@ def build_recipe(source, firmware, directory, fingerprint, prefix, jobs):
         just_symbols=firmware / "osos-2.0.5.ld",
     )
     patches = declarations.collect(directory, "core", prefix)
+    table = sites.read(code, symbols, symbols["__core_start"])
+    sites.verify(table, image, BASE, symbols["__osos_load_offset"])
     used = symbols["__core_end"] - symbols["__core_start"]
-    capacity = symbols["__core_limit"] - symbols["__core_start"]
-    print(f"Core: {used:,} of {capacity:,} reserved bytes", flush=True)
-    return build(code, patches, symbols, fingerprint)
+    print(f"Core: {used:,} bytes resident, {len(table)} sites", flush=True)
+    return build(code, patches, symbols, fingerprint, table)
 
 
 def core_layout(code, symbols, original_size):
@@ -139,11 +147,13 @@ def size_header_writes(recipe, original_size, output_size):
     return writes
 
 
-def build(code, patches, symbols, fingerprint):
+def build(code, patches, symbols, fingerprint, table=()):
     original_size = fingerprint["bytes"]
     layout = core_layout(code, symbols, original_size)
     recipe = Recipe({"osos": fingerprint})
     writes, copies = resolve_patches(recipe, patches, symbols, layout)
+    for site in table:
+        recipe.expect("osos", site.address - BASE + layout.load_offset, site.expected)
     writes.extend(
         size_header_writes(recipe, original_size, original_size + layout.reserved_size)
     )

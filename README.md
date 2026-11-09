@@ -8,7 +8,7 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), panic screen |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`), panic screen |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patches and the pinned Rockbox commit |
 | `tools/` | Recipe builder, build and release scripts, tests |
@@ -25,9 +25,21 @@ python3 tools/build.py loader-recipe
 cd tools && python3 -m unittest discover -s tests
 ```
 
-`osos` writes `build/osos.json`, `build/osos.data` and the assembled `build/osos-cfw.bin`; `osos-recipe` stops before assembly and needs no Apple inputs. Boot the image in the emulator with `ipodvm launch --firmware build/osos-cfw.bin --disk <test disk>` from this directory.
+`osos` writes `build/osos.json`, `build/osos.data` and the assembled `build/osos-cfw.bin`; `osos-recipe` stops before assembly and needs no Apple inputs, so it skips the checks of the site table against the image. `--selftest` compiles the dispatcher self-test into the core (results in `core_selftest`, read with `ipodvm peek`). Boot the image in the emulator with `ipodvm launch --firmware build/osos-cfw.bin --disk <test disk>` from this directory.
+
+The build prints the core's resident bytes; the link fails above `CORE_BYTES` (96 KiB) in `core/layout.h`.
 
 Apple symbols: `firmware/osos-2.0.5.ld` is passed to the linker with `--just-symbols`, so C code calls Apple functions by the names declared in `firmware/osos-2.0.5.h`. Both files are copied from the reversing repository; never edit them here.
+
+## Hook sites
+
+Apple code runs from DRAM, so the core patches it at boot. `core/sites.def` lists every site the core can patch: address, kind (`CALL`, `VTABLE`, `ENTRY`, `ENTRY_NORETURN`, `WORD`), what an unbound site does, the Apple words expected there, whether several handlers may chain, and the argument count. Each site has one pointer slot and one stub in the core. Call and vtable sites are patched when the first handler binds and restored when the last unbinds; entry sites are written once by `core_boot`, before Apple starts its tasks, and fall through to a replay stub while unbound. Every write runs with IRQ and FIQ masked and is followed by `core_cache_sync`.
+
+A handler receives the Apple arguments followed by `next` (in `r[argc]`, or as the first stack argument for four-argument sites). A `filter` continues with `core_next_call`; a `replace` handler is exclusive and a second claim is reported as a conflict. With one handler bound the slot holds the handler itself; with more it holds a chain entry that calls them in priority order. Handler lists are published with a single store and the retired list is freed at the next `core_grace_tick`. TODO: the grace tick is not yet driven by a UI idle site.
+
+The build tool reads the table from the linked core, rejects entry sites whose displaced words use `pc`, are conditional, branch, or are the target of a branch at `entry+4`, checks every expected word against the pinned image when Apple inputs are present, and records the same expectations in the recipe for the installer.
+
+The install-time recipe keeps only what must hold before the core runs: the heap-base literals, the panic entries and the one call that bootstraps `core_boot`.
 
 ## What drives development
 

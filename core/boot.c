@@ -14,3 +14,7 @@ PATCH_POINTER(SITE_RuntimeHeapBase_literal, OSOS_NATIVE_HEAP_BASE, __core_limit)
 /* Exceptions and aborts render the panic screen instead of rebooting silently. */
 PATCH_JUMP(SITE_Panic_entry, 0xe59f1010, 0xe3a00004, core_panic_entry);
 PATCH_JUMP(SITE_Abort_entry, 0xe3a01000, 0xe92d4010, core_abort_entry);
+
+/* The one code patch the recipe writes: Apple's resource override init is the
+ * earliest point the core can run, so it bootstraps every runtime-written site. */
+PATCH_CALL(SITE_ResourceBank_InitOverrides_call, ADDR_ResourceBank_InitOverrides, core_boot);

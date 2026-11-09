@@ -1,23 +1,35 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Two boot hooks. core_resource_init runs when Apple initialises resource
- * overrides, before the data volume is readable. core_preferences_init runs when
- * Apple loads its preferences file, so the disk is available from here on. */
+/* Boot sequence. core_boot runs from the install-time call when Apple initialises
+ * resource overrides, before the data volume is readable: it writes the entry sites
+ * and binds the core's handlers. core_preferences_init runs when Apple loads its
+ * preferences file, the first point where the disk can be read. */
 
 #include "osos-2.0.5.h"
 #include "patch.h"
+#include "sites.h"
 
-PATCH_ARM void core_resource_init(void *bank)
+void core_selftest_boot(void);
+void core_selftest_preferences(void);
+
+static uint32_t core_preferences_init(void *preferences, const struct core_next *next)
+{
+    uint32_t result = core_next_call(next, (uint32_t)preferences, 0, 0, 0);
+#ifdef CORE_SELFTEST
+    core_selftest_preferences();
+#endif
+    return result;
+}
+
+static const struct core_hook preferences_hook = {
+    CORE_SITE_Preferences_LoadFile_call, CORE_HOOK_FILTER, 0, core_preferences_init};
+
+PATCH_ARM void core_boot(void *bank)
 {
     ResourceBank_InitOverrides(bank);
+    core_sites_init();
+    core_hook_bind(&preferences_hook);
+#ifdef CORE_SELFTEST
+    core_selftest_boot();
+#endif
 }
-
-PATCH_ARM void core_preferences_init(void *preferences)
-{
-    Preferences_LoadFile(preferences);
-}
-
-PATCH_CALL(SITE_ResourceBank_InitOverrides_call, ADDR_ResourceBank_InitOverrides,
-           core_resource_init);
-PATCH_CALL(SITE_Preferences_LoadFile_call, ADDR_Preferences_LoadFile,
-           core_preferences_init);

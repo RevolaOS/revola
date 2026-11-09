@@ -66,9 +66,13 @@ def assemble(config, files, out, inputs, nor=None):
         image.replace(out)
 
 
-def build_osos(config, out, inputs, recipe_only=False):
+def build_osos(config, out, inputs, recipe_only=False, selftest=False):
     print("Building core recipe...", flush=True)
     fingerprint = firmware.load()["inputs"]["osos.bin"]
+    image = None
+    if not recipe_only:
+        image = (inputs / "osos.bin").read_bytes()
+        firmware.verify(image, fingerprint, "osos.bin")
     recipe = build_recipe(
         ROOT / "core",
         firmware.DIRECTORY,
@@ -76,6 +80,8 @@ def build_osos(config, out, inputs, recipe_only=False):
         fingerprint,
         config.prefix,
         config.jobs,
+        image,
+        ["-DCORE_SELFTEST"] if selftest else [],
     )
     files = recipe.save(out, "osos")
     if not recipe_only:
@@ -193,6 +199,11 @@ def main():
     parser.add_argument(
         "--assembler", default="reprise", help="recipe assembler CLI on PATH"
     )
+    parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="compile the dispatcher self-test into the core (emulator runs only)",
+    )
     args = parser.parse_args()
     try:
         target = firmware.load()
@@ -209,7 +220,9 @@ def main():
     config = BuildConfig(ROOT / ".build", prefix, args.jobs, args.assembler)
     if args.target in ("all", "osos", "osos-recipe"):
         identity(ROOT, args.tag)
-        build_osos(config, out, args.inputs, args.target == "osos-recipe")
+        build_osos(
+            config, out, args.inputs, args.target == "osos-recipe", args.selftest
+        )
     if args.target in ("all", "loader", "loader-recipe"):
         build_apple(config, out, args.inputs, args.target == "loader-recipe", args.nor)
     if args.target in ("all", "bootloader"):
