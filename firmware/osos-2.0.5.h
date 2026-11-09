@@ -61,6 +61,7 @@ struct MediaEntry *PlaybackList_GetEntryByIndex(void *list, uint32_t index);
 void MediaList_InvalidateOrderCache(struct MediaList *list, uint32_t order_mode);
 void *MediaList_CopyEntryAtPosition(void *source, void *destination, void *cursor, uint32_t flags);
 struct MediaEntry *MediaList_GetEntryByOrderIndex(struct MediaList *list, int order_mode, uint32_t reverse, uint32_t index);
+int MediaList_GetEntryOrderIndex(void *entry, uint32_t order_mode, uint32_t reverse);
 int MediaList_BuildOrderIndex(struct MediaList *list, uint32_t order);
 void MediaList_ResolveOrderMode(struct MediaList *list, uint32_t *order, uint8_t *reverse);
 int MediaListController_AddSelectionToOnTheGo(void *controller);
@@ -224,6 +225,7 @@ int NestedPlaylists_DispatchAction(void *controller, const char *action, uint32_
 int Genius_DispatchAction(void *controller, const char *action, uint32_t argument);
 void UI_InitializeEventTimer(void *controller, void *timer, uint32_t period, void *event_queue);
 void Timer_Start(void *timer);
+void UITask_Main(void);
 void Timer_SetPeriod(void *timer, uint32_t milliseconds);
 int Controller_ExecuteNavigatorAction(void *controller, void *action, int action_context, uint8_t *stop_dispatch);
 void Navigator_PopTop(uint32_t flags);
@@ -232,6 +234,7 @@ void Navigator_PopToPixoMainScreen(void);
 int ExtrasMenu_DispatchAction(void *controller, const char *action, uint32_t argument);
 void *UI_ConstructScreenDefinition(void *definition, uint32_t screen_id, int load_layouts);
 void UI_LoadScreenLayouts(void *definition);
+uint32_t SettingsMenuListController_Deactivate(void *controller, uint32_t leaving);
 void *ControllerLayoutCache_GetOrInsert(void *definition, uint32_t layout_id);
 void *View_FindViewById(void *view, uint32_t id);
 void *UI_FindTemplateView(void *owner, uint32_t template_id);
@@ -530,6 +533,8 @@ extern void *const AlbumsController_vtable[];
 #define ADDR_ExtrasMenu_DispatchAction 0x0811a664
 #define ADDR_UI_ConstructScreenDefinition 0x0813ca44
 #define ADDR_UI_LoadScreenLayouts 0x0813c91c
+#define ADDR_SettingsMenuListController_Deactivate 0x083a4a90
+#define ADDR_ScreenController_ShowLayout 0x08398a94
 #define ADDR_ControllerLayoutCache_GetOrInsert 0x0813ca2c
 #define ADDR_UI_CreateTemplateFromResource 0x081df580
 #define ADDR_View_FindViewById 0x08292580
@@ -582,9 +587,9 @@ extern void *const AlbumsController_vtable[];
 #define SITE_MediaList_DispatchAction_entry 0x0820f5a4
 #define SITE_MediaList_OnTheGoAdd_call 0x0820f9cc
 #define SITE_ITunesDB_ImportTrackDataset_call 0x08058f1c
-#define SITE_ITunesDB_AlbumArtist_slot 0x0808adcc
-#define SITE_ITunesDB_SortArtist_slot 0x0808add0
-#define SITE_ITunesDB_SortAlbumArtist_slot 0x0808ade8
+#define SITE_ITunesDB_AlbumArtist_word 0x0808adcc
+#define SITE_ITunesDB_SortArtist_word 0x0808add0
+#define SITE_ITunesDB_SortAlbumArtist_word 0x0808ade8
 #define SITE_TrackData_DestroyStorage_call 0x0803e650
 #define SITE_MediaBrowser_BuildArtists_entry 0x08048fe8
 #define SITE_MediaBrowser_ReadArtistName_entry 0x08047b54
@@ -698,6 +703,8 @@ extern void *const AlbumsController_vtable[];
 #define SITE_UI_TemplateEventsGet_call 0x081d6218
 #define SITE_UI_LayoutEventsGet_call 0x081d62b4
 #define SITE_UI_ControllerEventsGet_call 0x081d634c
+#define SITE_ScreenController_Deactivate_slot 0x0899d4ec
+#define SITE_SettingsMenuListController_Deactivate_slot 0x089a3bd0
 #define SITE_NowPlaying_Action_slot 0x0899be50
 #define SITE_NowPlaying_SecondaryAction_slot 0x089a2e00
 #define SITE_Music_Action_slot 0x089a940c
@@ -843,10 +850,13 @@ extern void *const AlbumsController_vtable[];
 #define MenuSettingsRow_preference 0xc
 #define MenuSettingsRow_visible 0x10
 #define MenuSettingsRow_bytes 0x14
+#define CppString_bytes 0x4
+#define StringInputStream_bytes 0x7c
 #define Model_notify_method 0x58
 #define ScreenController_push_method 0xd0
 #define ScreenController_pop_method 0xbc
 #define ScreenController_switch_layout_method 0x120
+#define ScreenController_show_layout_method 0x124
 #define ScreenController_action_method 0x114
 #define ScreenController_vtable_bytes 0x128
 #define ScreenController_screen 0xb4
@@ -954,6 +964,7 @@ extern void *const AlbumsController_vtable[];
 #define Resource_SLyt 0x534c7974
 #define Resource_SSin 0x5353696e
 #define Resource_VCvs 0x56437673
+#define Resource_VCrv 0x56437276
 #define Resource_VLyt 0x564c7974
 #define Resource_View 0x56696577
 #define Resource_TMLT 0x544d4c54
@@ -961,6 +972,8 @@ extern void *const AlbumsController_vtable[];
 #define Resource_VSlt 0x56536c74
 #define MainMenuSettings_row_count 0x22
 #define MusicMenuSettings_row_count 0xd
+#define StringInputStream_ResourceMode 0xc
+#define StringInputStream_DestroyComplete 0x2
 #define AnchorMode_Top 0x1
 #define AnchorMode_Left 0x2
 #define AnchorMode_Bottom 0x3
