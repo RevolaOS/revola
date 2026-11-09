@@ -12,6 +12,7 @@
 #include "sites.h"
 
 void core_about_init(void *bank);
+void core_artwork_bind(void);
 void core_selftest_boot(void);
 void core_selftest_preferences(void);
 
@@ -20,6 +21,7 @@ static uint32_t core_preferences_init(void *preferences, const struct core_next 
     uint32_t result = core_next_call(next, (uint32_t)preferences, 0, 0, 0);
     core_settings_load();
     core_memory_bind();
+    core_artwork_bind();
 #ifdef CORE_SELFTEST
     core_selftest_preferences();
 #endif

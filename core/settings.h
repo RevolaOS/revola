@@ -23,6 +23,7 @@ enum core_setting_key {
     CORE_KEY_POOL_SLOTS = 3,      /* bool: round fixed-pool slots to 8 bytes */
     CORE_KEY_GAME_BLOCKS = 4,     /* bool: grow the cache for a game and shrink after */
     CORE_KEY_POSITION_SCAN = 5,   /* bool: find list positions by scanning, no address index */
+    CORE_KEY_ARTWORK_SHARE = 6,   /* bool: share identical artwork chains, drop duplicate images */
 };
 
 uint32_t core_settings_owner(const char *id);

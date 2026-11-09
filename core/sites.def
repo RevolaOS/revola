@@ -85,6 +85,30 @@ SITE(MediaList_GetEntryOrderIndex_entry, SITE_MediaList_GetEntryOrderIndex_entry
 
 #define STACK(words) ((words) << 4)
 
+/* ArtworkDB load: (db, owner, path, a3, a4, a5); the last two on the stack. */
+SITE(ArtworkDatabase_Import_call, SITE_ArtworkDatabase_Import_call, CALL, ADDR_ArtworkDatabase_Import,
+     BL(SITE_ArtworkDatabase_Import_call, ADDR_ArtworkDatabase_Import), 0, 1, 4 | STACK(2), 0)
+/* One image's thumbnail chain read: (reader, image, count, flags). */
+SITE(ArtworkDatabase_ReadImageThumbs_call, SITE_ArtworkDatabase_ReadImageThumbs_call, CALL,
+     ADDR_ArtworkDatabase_ReadImageThumbs,
+     BL(SITE_ArtworkDatabase_ReadImageThumbs_call, ADDR_ArtworkDatabase_ReadImageThumbs), 0, 1, 4, 0)
+/* Photo album image lookup by id while the database loads: (db, id). */
+SITE(ArtworkDatabase_FindById_PhotoAlbum_call, SITE_ArtworkDatabase_FindById_PhotoAlbum_call, CALL, ADDR_ArtworkDatabase_FindById,
+     BL(SITE_ArtworkDatabase_FindById_PhotoAlbum_call, ADDR_ArtworkDatabase_FindById), 0, 1, 2, 0)
+/* Image lookups by DBID: (db, a1, dbid_low, dbid_high, sorted); the last on the stack. */
+SITE(ArtworkDatabase_FindByDbid_0804581c_call, SITE_ArtworkDatabase_FindByDbid_0804581c_call, CALL, ADDR_ArtworkDatabase_FindByDbid,
+     BL(SITE_ArtworkDatabase_FindByDbid_0804581c_call, ADDR_ArtworkDatabase_FindByDbid), 0, 1, 4 | STACK(1), 0)
+SITE(ArtworkDatabase_FindByDbid_08046494_call, SITE_ArtworkDatabase_FindByDbid_08046494_call, CALL,
+     ADDR_ArtworkDatabase_FindByDbid,
+     BL(SITE_ArtworkDatabase_FindByDbid_08046494_call, ADDR_ArtworkDatabase_FindByDbid), 0, 1, 4 | STACK(1), 0)
+/* The mhit parser's store of a track's image id: str r0, [r4, #0xf0]. */
+SITE(TrackData_ArtworkId_word, SITE_TrackData_ArtworkId_word, INSERT, 0, 0xe58400f0, 0,
+     0, 2, 4)
+/* The iTunesDB track parse: (reader). */
+SITE(ITunesDB_ImportTrackDataset_call, SITE_ITunesDB_ImportTrackDataset_call, CALL,
+     ADDR_ITunesDB_ImportTrackDataset,
+     BL(SITE_ITunesDB_ImportTrackDataset_call, ADDR_ITunesDB_ImportTrackDataset), 0, 1, 1, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */

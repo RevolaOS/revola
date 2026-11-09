@@ -62,6 +62,7 @@ Apple's global memory policy is adjusted at boot, each rule behind a core settin
 | `CORE_KEY_POOL_SLOTS` | Fixed-pool slots round to 8 bytes instead of 16 (ArtworkDB thumbnail records: 40 instead of 48). |
 | `CORE_KEY_GAME_BLOCKS` | When the eApp block manager asks for a game's blocks the cache first grows by what the other clients keep, leaving 1 MiB of heap; after the release the unassigned blocks above the import size go back to the heap. |
 | `CORE_KEY_POSITION_SCAN` | List positions come from scanning the order instead of Apple's address index beside it (8 bytes per entry of a play-all queue). |
+| `CORE_KEY_ARTWORK_SHARE` | While the ArtworkDB loads, an image whose thumbnail chain matches one already loaded shares that chain and its record goes back to the pool; tracks that named the dropped image get the first image's id (`core/artwork.c`). |
 
 The cache budget also releases the four sorted orders the import builds and never reads (4 bytes per track each). Two changes are not settings: the track count of media-list nodes is widened to 32 bits by sixty constant words in `core/trackcount.c`, written by the recipe, so libraries over 65,535 tracks import; and the core's own layout of that node (tracks at 0x2c as a word, groups at 0x1e) lives next to those words, while the symbols file keeps Apple's.
 
