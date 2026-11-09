@@ -78,6 +78,29 @@ struct row {
 static struct row rows[MAX_ROWS];
 static void *bank;
 
+static const char *const root_names[RV_ROOT_COUNT] = {
+    [RV_ROOT_MAIN] = "main",       [RV_ROOT_MUSIC] = "music",
+    [RV_ROOT_EXTRAS] = "extras",   [RV_ROOT_SETTINGS] = "settings",
+    [RV_ROOT_NOWPLAYING_MENU] = "nowplaying", [RV_ROOT_SONG_MENU] = "song",
+    [RV_ROOT_ALBUM_MENU] = "album", [RV_ROOT_ARTIST_MENU] = "artist",
+};
+
+static int same(const char *a, const char *b)
+{
+    while (*a && *a == *b)
+        a++, b++;
+    return *a == *b;
+}
+
+/* The root an entry names, -1 for a container id. */
+static int root_of(const char *in)
+{
+    for (int i = 0; in && i < RV_ROOT_COUNT; i++)
+        if (same(in, root_names[i]))
+            return i;
+    return -1;
+}
+
 /* Main and Music rows can be hidden in Settings > Main Menu and Music Menu: bit
  * n of the owner's RV_KEY_MENU_VISIBILITY record is entry n, and without a
  * record an entry shows as its `visible` says. Other rows always show. */
@@ -120,12 +143,13 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
     uint32_t key = core_resource_owner(owner);
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_entry *e = &entries[n];
-        if (e->root >= RV_ROOT_COUNT || e->container)
+        int root = root_of(e->in);
+        if (root < 0)
             return RV_BAD_ARGUMENT; /* TODO: containers */
         uint32_t label = core_settings_owner(e->row.label);
         struct row *r = NULL;
         for (uint32_t i = 0; i < MAX_ROWS && !r; i++)
-            if (rows[i].stale && rows[i].root == e->root && rows[i].label == label &&
+            if (rows[i].stale && rows[i].root == root && rows[i].label == label &&
                 core_resource_owner(rows[i].owner) == key)
                 r = &rows[i];
         if (r) {
@@ -142,18 +166,18 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         if (!r)
             return RV_NO_MEMORY;
         /* Item, title source, and for a Settings row its pane handler. */
-        uint32_t item = core_resource_take(key, e->root == RV_ROOT_SETTINGS ? 3 : 2);
+        uint32_t item = core_resource_take(key, root == RV_ROOT_SETTINGS ? 3 : 2);
         if (!item)
             return core_resource_block_held(key) ? RV_CONFLICT : RV_NO_MEMORY;
         r->owner = owner;
         r->entry = e;
         r->item = item;
         r->label = label;
-        r->root = e->root;
+        r->root = (uint8_t)root;
         r->index = (uint8_t)n;
         r->stale = 0;
         r->data = NULL;
-        if (!roots[e->root].table) {
+        if (!roots[root].table) {
             r->after = 0;
             r->data = Heap_AllocateZeroed(11);
             if (!r->data)
@@ -165,8 +189,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             ResourceBank_SetResource(bank, Resource_String, item + 1, e->row.label, n + 1);
             continue;
         }
-        r->after = e->after ? e->after : roots[e->root].anchor;
-        if (e->root == RV_ROOT_SETTINGS)
+        r->after = e->after ? e->after : roots[root].anchor;
+        if (root == RV_ROOT_SETTINGS)
             core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
         if (e->row.kind == RV_ROW_TOGGLE)

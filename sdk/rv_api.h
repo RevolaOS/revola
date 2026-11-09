@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 5
+#define RV_API_MINOR 6
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* The loader's record of the extension; passed back to every call. */
@@ -72,38 +72,26 @@ struct rv_setting {
     const char *label;
 };
 
-/* A submenu under a native root, shared with every other extension that
- * declares the same id. Ids are stable names such as "settings.sound"; the
- * parent is a root name (see rv_root) or another container's id. The core
- * shows the submenu while at least one entry names it. */
+/* A submenu of a menu, shared with every other extension that declares the
+ * same id. Ids are stable names such as "settings.sound"; the parent is a menu
+ * name (see rv_entry) or another container's id. The core shows the submenu
+ * while at least one entry names it. */
 struct rv_container {
     const char *id;
     const char *parent;
     const char *label;
 };
 
-/* Native menus an entry or container may hang from. */
-enum rv_root {
-    RV_ROOT_MAIN,              /* "main" */
-    RV_ROOT_MUSIC,             /* "music" */
-    RV_ROOT_EXTRAS,            /* "extras" */
-    RV_ROOT_SETTINGS,          /* "settings" */
-    RV_ROOT_NOWPLAYING_MENU,   /* "nowplaying": Now Playing context menu */
-    RV_ROOT_SONG_MENU,         /* "song": song list context menus */
-    RV_ROOT_ALBUM_MENU,        /* "album" */
-    RV_ROOT_ARTIST_MENU,       /* "artist" */
-    RV_ROOT_COUNT,
-};
-
 enum rv_row_kind {
     RV_ROW_PUSH,   /* opens `screen` */
     RV_ROW_TOGGLE, /* flips the bool setting `key`; the row shows On or Off */
     RV_ROW_ACTION, /* calls `action` */
-    RV_ROW_NATIVE, /* a stock Settings row (RV_RES_* id in `native`) moved here with its
-                      stock behaviour; only inside a container under Settings */
+    RV_ROW_STOCK,  /* a stock Settings row (an RV_SETTINGS_* row of rv_menus.h in `stock`)
+                      moved here with its stock behaviour; only inside a container under
+                      Settings */
 };
 
-/* One row of a list screen or an entry in a native menu. `action` receives the
+/* One row of a list screen or an entry in a menu. `action` receives the
  * Apple controller the row was chosen on; context menu rows get the list or Now
  * Playing controller. */
 struct rv_row {
@@ -113,7 +101,7 @@ struct rv_row {
     uint16_t key;
     const char *screen;
     int (*action)(void *controller);
-    uint32_t native;
+    uint32_t stock;
 };
 
 enum rv_screen_kind {
@@ -184,18 +172,20 @@ struct rv_screen {
     };
 };
 
-/* A row the extension adds to a native menu (`root`, `container` NULL) or to a
- * container. `after` is an RV_RES_* row id of that menu, 0 for the end. Under
- * Settings the preview pane shows the label, `caption` as the line below and
- * `bitmap` as the icon while the row is highlighted; `bitmap` is a BMap resource
- * (BMap_* in the symbols header). Either may be NULL, and the pane then shows
- * nothing in its place. Rows under Main and Music appear in Settings > Main
- * Menu and Music Menu, `visible` is their default there. */
+/* A row the extension adds to a menu. `in` names the menu: "main", "music",
+ * "extras", "settings", the menu a long press of Select opens on Now Playing
+ * "nowplaying" or on a song, album or artist row "song", "album" and "artist",
+ * or a container id such as "settings.sound". `after` is a stock row of that menu from
+ * rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under Settings the preview pane
+ * shows the label, `caption` as the line below and `bitmap` as the icon while
+ * the row is highlighted; `bitmap` is a BMap resource (BMap_* in the symbols
+ * header). Either may be NULL, and the pane then shows nothing in its place.
+ * Rows under Main and Music appear in Settings > Main Menu and Music Menu,
+ * `visible` is their default there. */
 struct rv_entry {
-    uint8_t root;
+    const char *in;
     uint8_t visible;
-    uint8_t reserved[2];
-    const char *container;
+    uint8_t reserved[3];
     uint32_t after;
     struct rv_row row;
     const char *caption;

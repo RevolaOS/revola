@@ -5,6 +5,19 @@
 #include "loader/loader.h"
 #include "rv_api.h"
 
+/* The native menus an entry names in rv_entry.in. */
+enum rv_root {
+    RV_ROOT_MAIN,            /* "main" */
+    RV_ROOT_MUSIC,           /* "music" */
+    RV_ROOT_EXTRAS,          /* "extras" */
+    RV_ROOT_SETTINGS,        /* "settings" */
+    RV_ROOT_NOWPLAYING_MENU, /* "nowplaying": the Now Playing context menu */
+    RV_ROOT_SONG_MENU,       /* "song": the song list context menus */
+    RV_ROOT_ALBUM_MENU,      /* "album" */
+    RV_ROOT_ARTIST_MENU,     /* "artist" */
+    RV_ROOT_COUNT,
+};
+
 /* Registers the descriptor's entries as rows of the native menus. */
 int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
                         uint32_t count);

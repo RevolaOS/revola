@@ -6,6 +6,7 @@ Headers, linker script, tools and Make include for building extensions against o
 |---|---|
 | `rv_api.h` | the `rv_api` table the core passes to a module's entry, the descriptor it returns, hook, setting and container declarations; `RV_API_MAJOR`/`RV_API_MINOR` |
 | `rv_sites.h` | `RV_SITE_*` ids of every hook site in this core, generated from the core's site table |
+| `rv_menus.h` | the stock rows of the Main, Music, Extras and Settings menus (`RV_SETTINGS_LEGAL`), generated from the symbols header; what an entry anchors on |
 | `rv_firmware.h`, `rv_firmware.mk` | `RV_FIRMWARE_ID` of the Apple firmware the symbols describe; the loader refuses a module built for another |
 | `osos-2.0.5.h`, `osos-2.0.5.ld` | Apple functions, data, constants and struct offsets by name; modules call Apple directly |
 | `rvx.lds` | module layout: linked at 0, text, rodata, data and bss in one segment |

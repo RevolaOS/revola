@@ -8,7 +8,7 @@
 
 #include "osos-2.0.5.h"
 #include "rv_api.h"
-#include "rv_resources.h"
+#include "rv_menus.h"
 #include "rv_sites.h"
 
 #define SETTING_CALLS 1
@@ -193,15 +193,14 @@ static void build_icon(void)
 #define WAVE_ROW {"Wave", RV_ROW_ACTION, 0, 0, 0, wave, 0}
 
 static const struct rv_entry entries[] = {
-    {RV_ROOT_SETTINGS, 1, {0}, 0, RV_RES_SettingsMenu_Legal_Item, PUSH_ROW, "Fixture extension",
-     icon},
-    {RV_ROOT_MAIN, 1, {0}, 0, RV_RES_MainMenu_Extras_Item, PUSH_ROW, 0, 0},
-    {RV_ROOT_MUSIC, 1, {0}, 0, 0, PUSH_ROW, 0, 0},
-    {RV_ROOT_EXTRAS, 1, {0}, 0, 0, PUSH_ROW, 0, 0},
-    {RV_ROOT_NOWPLAYING_MENU, 1, {0}, 0, 0, WAVE_ROW, 0, 0},
-    {RV_ROOT_SONG_MENU, 1, {0}, 0, 0, WAVE_ROW, 0, 0},
-    {RV_ROOT_ALBUM_MENU, 1, {0}, 0, 0, WAVE_ROW, 0, 0},
-    {RV_ROOT_ARTIST_MENU, 1, {0}, 0, 0, WAVE_ROW, 0, 0},
+    {"settings", 1, {0}, RV_SETTINGS_LEGAL, PUSH_ROW, "Fixture extension", icon},
+    {"main", 1, {0}, RV_MAIN_EXTRAS, PUSH_ROW, 0, 0},
+    {"music", 1, {0}, 0, PUSH_ROW, 0, 0},
+    {"extras", 1, {0}, 0, PUSH_ROW, 0, 0},
+    {"nowplaying", 1, {0}, 0, WAVE_ROW, 0, 0},
+    {"song", 1, {0}, 0, WAVE_ROW, 0, 0},
+    {"album", 1, {0}, 0, WAVE_ROW, 0, 0},
+    {"artist", 1, {0}, 0, WAVE_ROW, 0, 0},
 };
 
 static void unload(void)

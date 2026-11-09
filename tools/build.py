@@ -128,8 +128,8 @@ def stage_sdk(config, directory):
     shutil.copyfile(ROOT / "tools/manifest.py", directory / "manifest")
     names = sites.names(ROOT / "core", firmware.DIRECTORY, config.prefix)
     (directory / "rv_sites.h").write_text(sites.header(names))
-    (directory / "rv_resources.h").write_text(
-        firmware.resources_header((firmware.DIRECTORY / "osos-2.0.5.h").read_text())
+    (directory / "rv_menus.h").write_text(
+        firmware.menus_header((firmware.DIRECTORY / "osos-2.0.5.h").read_text())
     )
     build_id = firmware.build_id()
     (directory / "rv_firmware.h").write_text(
