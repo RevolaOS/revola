@@ -120,8 +120,6 @@ static void patch_entry(const struct core_site_row *row, uint32_t stub)
     core_irq_restore(cpsr);
 }
 
-extern const uint32_t core_site_stubs[CORE_SITE_COUNT];
-
 /* Section descriptor access permission bits [11:10]; 0 means no privileged write. */
 static void probe_mmu(void)
 {

@@ -20,6 +20,8 @@
  *             value Apple keeps in a callee-saved register at the site is an argument
  */
 
+#define STACK(words) ((words) << 4)
+
 /* Apple loads its preferences here; the disk is readable from this point on. */
 SITE(Preferences_LoadFile_call, SITE_Preferences_LoadFile_call, CALL,
      ADDR_Preferences_LoadFile, BL(SITE_Preferences_LoadFile_call, ADDR_Preferences_LoadFile), 0,
@@ -39,6 +41,57 @@ SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsM
  * compare the action string and pass the rest on. */
 SITE(Settings_Action_slot, SITE_Settings_Action_slot, VTABLE, ADDR_Settings_HandleAction,
      ADDR_Settings_HandleAction, 0, 1, 3, 0)
+
+/* Action dispatch of the Main, Music, Extras, Now Playing, Artists and Albums
+ * controllers: (controller, action, argument); 0 when unhandled, so handlers chain.
+ * Main, Music and Now Playing each have two controller classes with the slot. */
+SITE(Main_Action_slot, SITE_Main_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchCommonAction,
+     ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Music_Action_slot, SITE_Music_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchCommonAction,
+     ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Main_SecondaryAction_slot, SITE_Main_SecondaryAction_slot, VTABLE,
+     ADDR_MainMediaMenu_DispatchCommonAction, ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Music_SecondaryAction_slot, SITE_Music_SecondaryAction_slot, VTABLE,
+     ADDR_MainMediaMenu_DispatchCommonAction, ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(NowPlaying_SecondaryAction_slot, SITE_NowPlaying_SecondaryAction_slot, VTABLE,
+     ADDR_NowPlaying_DispatchAction, ADDR_NowPlaying_DispatchAction, 0, 1, 3, 0)
+SITE(Extras_Action_slot, SITE_Extras_Action_slot, VTABLE, ADDR_ExtrasMenu_DispatchAction,
+     ADDR_ExtrasMenu_DispatchAction, 0, 1, 3, 0)
+SITE(NowPlaying_Action_slot, SITE_NowPlaying_Action_slot, VTABLE, ADDR_NowPlaying_DispatchAction,
+     ADDR_NowPlaying_DispatchAction, 0, 1, 3, 0)
+SITE(Artists_Action_slot, SITE_Artists_Action_slot, VTABLE, ADDR_MediaListController_DispatchAction,
+     ADDR_MediaListController_DispatchAction, 0, 1, 3, 0)
+SITE(Albums_Action_slot, SITE_Albums_Action_slot, VTABLE, ADDR_MediaListController_DispatchAction,
+     ADDR_MediaListController_DispatchAction, 0, 1, 3, 0)
+
+/* Song list action dispatch (song, playlist and Genius lists): (controller, action,
+ * argument). Nothing is inside them while core_boot runs during UI start-up. */
+SITE(SongList_DispatchAction_entry, SITE_SongList_DispatchAction_entry, ENTRY,
+     REPLAY(SongList_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
+SITE(NestedPlaylists_DispatchAction_entry, SITE_NestedPlaylists_DispatchAction_entry, ENTRY,
+     REPLAY(NestedPlaylists_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
+SITE(Genius_DispatchAction_entry, SITE_Genius_DispatchAction_entry, ENTRY,
+     REPLAY(Genius_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
+
+/* The Cancel row of each context menu: (items, label, action, flags). A handler
+ * appends its rows first, then the Cancel row through next. */
+#define CANCEL_APPEND(name)                                                                      \
+    SITE(name##_CancelAppend_call, SITE_##name##_CancelAppend_call, CALL,                        \
+         ADDR_ContextMenuItems_Append,                                                           \
+         BL(SITE_##name##_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+CANCEL_APPEND(SongList)
+CANCEL_APPEND(NestedPlaylists)
+CANCEL_APPEND(Genius)
+CANCEL_APPEND(NowPlaying)
+CANCEL_APPEND(Artists)
+CANCEL_APPEND(Albums)
+#undef CANCEL_APPEND
+
+/* UI start enumerates the View templates: (bank, id*, bytes*) through the ROM
+ * index; a handler yields more when the original returns NULL. */
+SITE(ResourceBank_NextTemplate_call, SITE_ResourceBank_NextTemplate_call, CALL,
+     ADDR_ResourceBank_NextResource,
+     BL(SITE_ResourceBank_NextTemplate_call, ADDR_ResourceBank_NextResource), 0, 1, 3, 0)
 
 /* A layout's event tables were loaded; observers append bindings: (layout). */
 SITE(UI_LoadLayoutEvents_call, SITE_UI_LoadLayoutEvents_call, CALL, ADDR_UI_LoadLayoutEventTables,
@@ -91,8 +144,6 @@ SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlock
  * the entry in r1. Nothing is inside it while core_boot runs during UI start-up. */
 SITE(MediaList_GetEntryOrderIndex_entry, SITE_MediaList_GetEntryOrderIndex_entry, ENTRY,
      REPLAY(MediaList_GetEntryOrderIndex_entry), 0xe92d40f7, 0xe1b06000, 0, 3, 0)
-
-#define STACK(words) ((words) << 4)
 
 /* ArtworkDB load: (db, owner, path, a3, a4, a5); the last two on the stack. */
 SITE(ArtworkDatabase_Import_call, SITE_ArtworkDatabase_Import_call, CALL, ADDR_ArtworkDatabase_Import,

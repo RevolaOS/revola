@@ -66,6 +66,8 @@ extern const uint32_t core_site_count;
 extern uint32_t core_site_slots[CORE_SITE_COUNT];
 /* FNV-1a of each row name; the id extensions bind by. */
 extern const uint32_t core_site_ids[CORE_SITE_COUNT];
+/* Each site's stub, 0 for word sites: what a patched site branches to. */
+extern const uint32_t core_site_stubs[CORE_SITE_COUNT];
 
 void core_sites_init(void);
 int core_hook_bind(const struct core_hook *hook);

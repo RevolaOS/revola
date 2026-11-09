@@ -8,9 +8,11 @@
  * timer and the extensions follow in that order. */
 
 #include "loader.h"
+#include "menus.h"
 #include "memory.h"
 #include "osos-2.0.5.h"
 #include "patch.h"
+#include "screens.h"
 #include "settings.h"
 #include "sites.h"
 #include "timer.h"
@@ -45,6 +47,8 @@ PATCH_ARM void core_boot(void *bank)
     core_hook_bind(&preferences_hook);
     core_settings_bind();
     core_about_init(bank);
+    core_screens_init(bank);
+    core_menus_init(bank);
     core_extensions_init(bank);
 #ifdef CORE_SELFTEST
     core_selftest_boot();

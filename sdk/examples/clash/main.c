@@ -19,7 +19,7 @@ static const struct rv_hook hooks[] = {
     {RV_SITE_ResourceBlockList_AppendBorrowedBlock_call, RV_HOOK_REPLACE, 0, 0, append},
 };
 
-static const struct rv_extension extension = {sizeof extension, hooks, 1, 0, 0, 0, 0, 0};
+static const struct rv_extension extension = {.size = sizeof extension, .hooks = hooks, .hook_count = 1};
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)
 {

@@ -15,10 +15,12 @@
 
 #include "file.h"
 #include "loader.h"
+#include "menus.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
 #include "rv_api.h"
 #include "rvx.h"
+#include "screens.h"
 #include "settings.h"
 #include "sites.h"
 #include <stddef.h>
@@ -404,6 +406,35 @@ static void api_container_release(rv_handle self, const struct rv_container *con
         core_containers_release(record, container);
 }
 
+static int api_ui_push(rv_handle self, const char *screen, void *controller)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
+    if (!s || !controller)
+        return RV_BAD_ARGUMENT;
+    return core_screens_push(s, controller) ? RV_OK : RV_NO_MEMORY;
+}
+
+static void api_ui_pop(rv_handle self)
+{
+    if (valid_handle(self))
+        core_screens_pop();
+}
+
+static void api_ui_refresh(rv_handle self, const char *screen)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
+    if (s)
+        core_screens_refresh(s);
+}
+
+static void api_ui_invalidate(rv_handle self)
+{
+    if (valid_handle(self))
+        core_screens_invalidate();
+}
+
 const char *core_loader_last_log;
 
 static void api_log(rv_handle self, const char *line)
@@ -417,6 +448,7 @@ static const struct rv_api api = {
     api_next,             api_setting_get,    api_setting_set,    core_settings_flush,
     api_alloc,            api_free,           api_module_load,    api_module_unload,
     api_container_declare, api_container_release, api_log,
+    api_ui_push,          api_ui_pop,            api_ui_refresh,     api_ui_invalidate,
 };
 
 /* Modules */
@@ -494,6 +526,15 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             unload_module(record, 0);
             return 0;
         }
+        int registered = core_screens_register(record, descriptor->screens, descriptor->screen_count);
+        if (registered == RV_OK)
+            registered = core_menus_register(record, descriptor->entries, descriptor->entry_count);
+        if (registered != RV_OK) {
+            unload_module(record, 0);
+            record->failure = registered == RV_CONFLICT ? CORE_EXTENSION_ID_COLLISION
+                                                        : CORE_EXTENSION_NO_MEMORY;
+            return 0;
+        }
         for (uint32_t i = 0; i < descriptor->container_count; i++)
             core_containers_declare(record, &descriptor->containers[i]);
     }
@@ -515,6 +556,8 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
         }
         for (uint32_t i = 0; i < descriptor->container_count; i++)
             core_containers_release(record, &descriptor->containers[i]);
+        core_menus_release(record);
+        core_screens_release(record);
         for (uint32_t i = 0; i < descriptor->hook_count; i++)
             core_hook_unbind(&record->hooks[i]);
         retire(record->hooks);

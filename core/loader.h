@@ -21,6 +21,7 @@ enum core_extension_failure {
     CORE_EXTENSION_CONFLICT,    /* a hook claim collided; conflict_site names the site */
     CORE_EXTENSION_BAD_SITE,    /* the module binds a site this core does not have */
     CORE_EXTENSION_NO_DESCRIPTOR,
+    CORE_EXTENSION_ID_COLLISION, /* its resource id block is held by another extension */
 };
 
 /* One per enabled extension found at boot or enabled since, heap-allocated. */

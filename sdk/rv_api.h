@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 0
+#define RV_API_MINOR 1
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* The loader's record of the extension; passed back to every call. */
@@ -70,11 +70,121 @@ struct rv_setting {
 
 /* A submenu under a native root, shared with every other extension that
  * declares the same id. Ids are stable names such as "settings.sound"; the
- * parent is a root ("settings") or another container. */
+ * parent is a root name (see rv_root) or another container's id. The core
+ * shows the submenu while at least one entry names it. */
 struct rv_container {
     const char *id;
     const char *parent;
     const char *label;
+};
+
+/* Native menus an entry or container may hang from. */
+enum rv_root {
+    RV_ROOT_MAIN,              /* "main" */
+    RV_ROOT_MUSIC,             /* "music" */
+    RV_ROOT_EXTRAS,            /* "extras" */
+    RV_ROOT_SETTINGS,          /* "settings" */
+    RV_ROOT_NOWPLAYING_MENU,   /* "nowplaying": Now Playing context menu */
+    RV_ROOT_SONG_MENU,         /* "song": song list context menus */
+    RV_ROOT_ALBUM_MENU,        /* "album" */
+    RV_ROOT_ARTIST_MENU,       /* "artist" */
+    RV_ROOT_COUNT,
+};
+
+enum rv_row_kind {
+    RV_ROW_PUSH,   /* opens `screen` */
+    RV_ROW_TOGGLE, /* flips the bool setting `key`; the row shows On or Off */
+    RV_ROW_ACTION, /* calls `action` */
+    RV_ROW_NATIVE, /* a stock Settings row (RV_RES_* id in `native`) moved here with its
+                      stock behaviour; only inside a container under Settings */
+};
+
+/* One row of a list screen or an entry in a native menu. `action` receives the
+ * Apple controller the row was chosen on; context menu rows get the list or Now
+ * Playing controller. */
+struct rv_row {
+    const char *label;
+    uint8_t kind;
+    uint8_t reserved;
+    uint16_t key;
+    const char *screen;
+    int (*action)(void *controller);
+    uint32_t native;
+};
+
+enum rv_screen_kind {
+    RV_SCREEN_LIST,         /* rows from `list` */
+    RV_SCREEN_CHOICE,       /* one checkmark among `choice.labels`; stores the index in
+                               the int setting `choice.key` and pops */
+    RV_SCREEN_SLIDER,       /* a bar over `choice.labels`; wheel and Previous/Next change
+                               the int setting `choice.key` */
+    RV_SCREEN_TEXT,         /* the paragraphs of `text` */
+    RV_SCREEN_CANVAS,       /* the extension draws and reads input */
+    RV_SCREEN_RUNTIME_LIST, /* rows from callbacks, for data known only at run time */
+};
+
+enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
+enum rv_key { RV_KEY_CENTER, RV_KEY_MENU, RV_KEY_PREVIOUS, RV_KEY_NEXT, RV_KEY_PLAY };
+
+struct rv_input {
+    uint8_t kind;
+    uint8_t key;   /* rv_key for presses and releases */
+    int16_t delta; /* wheel steps, signed */
+};
+
+/* A screen the core registers for the extension. `name` is "<id>.<screen>",
+ * the name a module's manifest trigger and RV_ROW_PUSH use. Labels, text and
+ * bitmaps are read from the module while the screen is open; nothing is copied. */
+struct rv_screen {
+    const char *name;
+    const char *title;
+    uint8_t kind;
+    uint8_t reserved[3];
+    union {
+        struct {
+            const struct rv_row *rows;
+            uint32_t count;
+        } list;
+        struct {
+            uint16_t key;
+            uint16_t reserved;
+            const char *const *labels;
+            uint32_t count;
+        } choice;
+        struct {
+            const char *const *paragraphs;
+            uint32_t count;
+        } text;
+        struct {
+            /* Draw into `bounds` {top, left, bottom, right} with the Apple graphics
+             * context; input returns 1 when consumed, 0 to leave the key to Apple. */
+            void (*draw)(void *context, const int32_t *bounds);
+            int (*input)(const struct rv_input *input);
+        } canvas;
+        struct {
+            uint32_t (*count)(void);
+            /* Row `index`; a detail text goes to *detail (NULL for none). */
+            const char *(*row)(uint32_t index, const char **detail);
+            int (*select)(uint32_t index); /* returns 1 to pop the screen */
+            uint8_t stacked;               /* detail under the label instead of inline */
+        } runtime;
+    };
+};
+
+/* A row the extension adds to a native menu (`root`, `container` NULL) or to a
+ * container. `after` is an RV_RES_* row id of that menu, 0 for the end. Under
+ * Settings the preview pane shows `caption` and `bitmap` while the row is
+ * highlighted. Rows under Main and Music appear in Settings > Main Menu and
+ * Music Menu, `visible` is their default there. */
+struct rv_entry {
+    uint8_t root;
+    uint8_t visible;
+    uint8_t reserved[2];
+    const char *container;
+    uint32_t after;
+    struct rv_row row;
+    const char *caption;
+    const void *bitmap;
 };
 
 /* Returned by the module entry; everything it points to lives as long as the
@@ -88,6 +198,10 @@ struct rv_extension {
     const struct rv_container *containers;
     uint32_t container_count;
     void (*unload)(void); /* before the hooks are unbound; may be NULL */
+    const struct rv_screen *screens;
+    uint32_t screen_count;
+    const struct rv_entry *entries;
+    uint32_t entry_count;
 };
 
 struct rv_api {
@@ -121,6 +235,15 @@ struct rv_api {
 
     /* Kept for the emulator; nothing on the device shows it. */
     void (*log)(rv_handle self, const char *text);
+
+    /* Screens by name. push opens one above the screen of `controller`, the
+     * one an action received (its module loads first); pop closes the top
+     * screen; refresh redraws rows whose text changed; invalidate redraws an
+     * open canvas. */
+    int (*ui_push)(rv_handle self, const char *screen, void *controller);
+    void (*ui_pop)(rv_handle self);
+    void (*ui_refresh)(rv_handle self, const char *screen);
+    void (*ui_invalidate)(rv_handle self);
 };
 
 /* Every module exports this. The entry of the main module returns the
