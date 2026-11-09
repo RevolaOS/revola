@@ -114,3 +114,17 @@ class SiteTests(unittest.TestCase):
         # a blx-immediate (cond 0xF) to the same place is not a branch Apple code resumes from
         words[BASE + 128] |= 0xF0000000
         sites.verify(table, image(words), BASE)
+
+
+class SiteIdTests(unittest.TestCase):
+    def test_ids_hash_names_and_reject_collisions(self):
+        self.assertEqual(sites.fnv1a("core"), 0xDD5E607E)
+        self.assertEqual(sites.ids(["a", "b"]), [sites.fnv1a("a"), sites.fnv1a("b")])
+        with self.assertRaises(ValueError):
+            sites.ids(["a", "a"])
+        header = sites.header(["Preferences_LoadFile_call"])
+        self.assertIn(
+            f"#define RV_SITE_Preferences_LoadFile_call "
+            f"{sites.fnv1a('Preferences_LoadFile_call'):#010x}",
+            header,
+        )

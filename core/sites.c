@@ -240,6 +240,15 @@ int core_hook_unbind(const struct core_hook *hook)
     return CORE_HOOK_OK;
 }
 
+const struct core_hook *core_hook_find(uint32_t site, const void *handler)
+{
+    struct hook_list *list = site < CORE_SITE_COUNT ? lists[site] : NULL;
+    for (uint32_t i = 0; list && i < list->count; i++)
+        if (list->hooks[i]->handler == handler)
+            return list->hooks[i];
+    return NULL;
+}
+
 void core_grace_tick(void)
 {
     struct hook_list *list = retired;

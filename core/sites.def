@@ -35,6 +35,15 @@ SITE(ResourceBlockList_AppendBorrowedBlock_call, SITE_ResourceBlockList_AppendBo
 SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsModel_GetProperty,
      ADDR_SettingsModel_GetProperty, 0, 1, 4, 0)
 
+/* Settings controller action dispatch: (controller, action, argument); handlers
+ * compare the action string and pass the rest on. */
+SITE(Settings_Action_slot, SITE_Settings_Action_slot, VTABLE, ADDR_Settings_HandleAction,
+     ADDR_Settings_HandleAction, 0, 1, 3, 0)
+
+/* A layout's event tables were loaded; observers append bindings: (layout). */
+SITE(UI_LoadLayoutEvents_call, SITE_UI_LoadLayoutEvents_call, CALL, ADDR_UI_LoadLayoutEventTables,
+     BL(SITE_UI_LoadLayoutEvents_call, ADDR_UI_LoadLayoutEventTables), 0, 1, 1, 0)
+
 /* Light sleep: the disk powers down inside, so stores are written on the way in. */
 SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_Power_EnterLightSleep,
      BL(SITE_Sleep_Idle_call, ADDR_Power_EnterLightSleep), 0, 1, 1, 0)

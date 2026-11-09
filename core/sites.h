@@ -64,10 +64,14 @@ struct core_next {
 extern const struct core_site_row core_sites[CORE_SITE_COUNT];
 extern const uint32_t core_site_count;
 extern uint32_t core_site_slots[CORE_SITE_COUNT];
+/* FNV-1a of each row name; the id extensions bind by. */
+extern const uint32_t core_site_ids[CORE_SITE_COUNT];
 
 void core_sites_init(void);
 int core_hook_bind(const struct core_hook *hook);
 int core_hook_unbind(const struct core_hook *hook);
+/* The bound hook on `site` with this handler, or NULL. */
+const struct core_hook *core_hook_find(uint32_t site, const void *handler);
 uint32_t core_next_call6(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
                          uint32_t d, uint32_t e, uint32_t f);
 #define core_next_call(next, a, b, c, d) core_next_call6(next, a, b, c, d, 0, 0)

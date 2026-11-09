@@ -7,6 +7,7 @@
  * first point where the disk can be read: the store, the memory rules, the grace
  * timer and the extensions follow in that order. */
 
+#include "loader.h"
 #include "memory.h"
 #include "osos-2.0.5.h"
 #include "patch.h"
@@ -26,6 +27,7 @@ static uint32_t core_preferences_init(void *preferences, const struct core_next 
     core_memory_bind();
     core_artwork_bind();
     core_timer_init();
+    core_loader_boot();
 #ifdef CORE_SELFTEST
     core_selftest_preferences();
 #endif

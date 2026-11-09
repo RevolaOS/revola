@@ -9,9 +9,11 @@
  * patch and restore by peek, and an entry site proves the replay stub. */
 
 #ifdef CORE_SELFTEST
+#include "loader.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
 #include "sites.h"
+#include "timer.h"
 
 enum {
     EVENT_PREFERENCES_A = 0xa1,
@@ -30,6 +32,12 @@ struct core_selftest {
     uint32_t unbind_results[4];
     uint32_t boots;      /* core setting "boots" read at boot, then incremented and flushed */
     uint32_t set_result; /* 0 when the store accepted the write */
+    /* Loader: heap used bytes sampled every third tick while hello is toggled
+     * off and on (even samples: unloaded and settled, odd: reloaded), then the
+     * hello record's live bytes, failure, bound hooks and conflict site. */
+    uint32_t heap_used[10];
+    uint32_t hello_live, hello_failure, hello_hooks, hello_conflict;
+    uint32_t loader_stage;
 } core_selftest;
 
 enum { SETTING_BOOTS = 0x7e57 };
@@ -117,6 +125,42 @@ void core_selftest_boot(void)
     core_selftest.bind_results[0] = core_hook_bind(&preferences_hook_a);
     core_selftest.bind_results[1] = core_hook_bind(&preferences_hook_b);
     core_selftest.bind_results[2] = core_hook_bind(&reset_hook);
+}
+
+static uint32_t heap_used(void)
+{
+    return *(uint32_t *)((uint8_t *)MainHeap + MainHeap_used_bytes);
+}
+
+static struct rv_extension_record *hello(void)
+{
+    for (struct rv_extension_record *r = core_extensions; r; r = r->next)
+        if (r->owner == core_settings_owner("hello"))
+            return r;
+    return 0;
+}
+
+/* Driven by the grace tick from the third one on: every third tick samples the
+ * heap and toggles hello, so retired blocks had two ticks to be freed. Sample
+ * 2k is taken with hello unloaded, 2k+1 with it loaded. */
+void core_selftest_tick(void)
+{
+    struct rv_extension_record *r = hello();
+    uint32_t stage = core_selftest.loader_stage;
+    if (core_timer_ticks < 40 || stage / 3 >= 10)
+        return;
+    if (stage == 0 && r) {
+        core_selftest.hello_live = r->live;
+        core_selftest.hello_failure = r->failure;
+        core_selftest.hello_hooks = r->hooks_bound;
+        core_selftest.hello_conflict = r->conflict_site;
+    }
+    if (stage % 3 == 0) {
+        uint32_t sample = stage / 3;
+        core_selftest.heap_used[sample] = heap_used();
+        core_loader_set_enabled("hello", sample % 2);
+    }
+    core_selftest.loader_stage++;
 }
 
 void core_selftest_preferences(void)

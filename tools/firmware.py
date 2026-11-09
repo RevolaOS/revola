@@ -19,3 +19,9 @@ def verify(data, fingerprint, name):
         or hashlib.sha256(data).hexdigest() != fingerprint["sha256"]
     ):
         raise ValueError(f"Input does not match firmware: {name}")
+
+
+def build_id(profile=None):
+    """RV_FIRMWARE_ID: the first eight hex digits of the pinned osos.bin sha256."""
+    profile = profile or load()
+    return int(profile["inputs"]["osos.bin"]["sha256"][:8], 16)

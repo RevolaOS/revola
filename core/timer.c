@@ -6,6 +6,7 @@
  * event. The core's recipient is a bare object whose vtable has only the event
  * slot. Each tick re-arms the timer (Timer_Start arms once). */
 
+#include "loader.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
 #include "sites.h"
@@ -20,6 +21,7 @@ static struct {
 } recipient;
 
 uint32_t core_timer_ticks;
+void core_selftest_tick(void);
 
 static int on_event(void *self, uint8_t *event)
 {
@@ -28,7 +30,11 @@ static int on_event(void *self, uint8_t *event)
         return 0;
     core_timer_ticks++;
     core_grace_tick();
+    core_loader_tick();
     core_settings_tick();
+#ifdef CORE_SELFTEST
+    core_selftest_tick();
+#endif
     Timer_Start(timer);
     return 1;
 }

@@ -52,6 +52,9 @@ def build_recipe(
     `image` is the decrypted OSOS when available; the site table is then checked
     against it (expected words, branches into entry+4). The recipe carries the same
     expectations so the installer checks them again on the user's image."""
+    directory.mkdir(parents=True, exist_ok=True)
+    row_names = sites.names(source, firmware, prefix, defines)
+    sites.write_id_table(directory / "site_ids.inc", row_names)
     code, symbols = compile_payload(
         directory,
         source,
@@ -60,12 +63,14 @@ def build_recipe(
         "core",
         prefix,
         jobs,
-        includes=(firmware, source.parent),
+        includes=(firmware, source.parent, source.parent / "sdk"),
         thumb_symbols=True,
         just_symbols=firmware / "osos-2.0.5.ld",
     )
     patches = declarations.collect(directory, "core", prefix)
     table = sites.read(code, symbols, symbols["__core_start"])
+    if len(table) != len(row_names):
+        raise ValueError("site id table and site table differ in length")
     sites.verify(table, image, BASE, symbols["__osos_load_offset"])
     used = symbols["__core_end"] - symbols["__core_start"]
     print(f"Core: {used:,} bytes resident, {len(table)} sites", flush=True)

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
+#include "loader.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
 #include <stddef.h>
@@ -367,9 +368,26 @@ static void render_line(const struct panic_frame *frame)
     }
 }
 
+/* The extension whose code the core was calling, else the one owning the
+ * faulting address, the link register or any saved register or stack word. */
+static uint32_t crashed_extension(const struct panic_frame *frame)
+{
+    uint32_t owner = core_panic_extension;
+    if (!owner)
+        owner = core_loader_owner_of(frame->exception_lr);
+    for (unsigned i = 0; !owner && frame->valid && i < 13; i++)
+        owner = core_loader_owner_of(frame->registers[i]);
+    for (unsigned i = 0; !owner && i < frame->stack_count && i < PANIC_STACK_WORDS; i++)
+        owner = core_loader_owner_of(frame->stack[i]);
+    return owner;
+}
+
 void core_panic_screen(const struct panic_frame *frame)
 {
     REG32(0x3c800000) = 0;
+    core_panic_extension = crashed_extension(frame);
+    if (core_panic_extension)
+        CORE_CRASH_SCRATCH = core_panic_extension;
     show_pixels(frame);
     for (;;) {
     }

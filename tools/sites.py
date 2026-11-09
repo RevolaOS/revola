@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Read the core's hook site table from its image and check it against the firmware."""
 
+import re
 import struct
+import subprocess
 from array import array
 from dataclasses import dataclass
 
@@ -150,3 +152,65 @@ def verify(sites, image=None, base=0x08000000, load_offset=0):
             raise ValueError(f"Site {site.address:#x} does not match the firmware")
         if site.is_entry and branch_targets_into(words, base, site.address + 4):
             raise ValueError(f"Entry site {site.address:#x}: a branch targets entry+4")
+
+
+def fnv1a(text):
+    """The site id extensions bind by: FNV-1a of the sites.def row name."""
+    value = 2166136261
+    for byte in text.encode():
+        value = ((value ^ byte) * 16777619) & 0xFFFFFFFF
+    return value
+
+
+def names(source, firmware, prefix, defines=()):
+    """Row names of sites.def in table order, through the preprocessor so the
+    same conditionals apply as in the core build."""
+    driver = '#define SITE(name, ...) @name\n#include "sites.def"\n'
+    output = subprocess.run(
+        [
+            prefix + "gcc",
+            "-E",
+            "-P",
+            "-x",
+            "c",
+            *defines,
+            "-I",
+            str(firmware),
+            "-I",
+            str(source),
+            "-",
+        ],
+        input=driver,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return re.findall(r"@(\w+)", output)
+
+
+def ids(row_names):
+    values = [fnv1a(name) for name in row_names]
+    if len(set(values)) != len(values):
+        raise ValueError("site id collision in sites.def")
+    return values
+
+
+def write_id_table(path, row_names):
+    """site_ids.inc for stubs.S: one word per site in table order."""
+    path.write_text("".join(f".word {value:#010x}\n" for value in ids(row_names)))
+
+
+def header(row_names):
+    """rv_sites.h for the SDK."""
+    lines = [
+        "/* SPDX-License-Identifier: GPL-3.0-only */",
+        "/* Generated from core/sites.def: the ids extensions bind hooks by. */",
+        "#pragma once",
+        "",
+    ]
+    width = max(len(name) for name in row_names)
+    lines += [
+        f"#define RV_SITE_{name.ljust(width)} {value:#010x}"
+        for name, value in zip(row_names, ids(row_names))
+    ]
+    return "\n".join(lines) + "\n"

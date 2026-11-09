@@ -5,13 +5,16 @@
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
+import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import setup
+import sites
 from recipes.companion import build_recipe as build_companion_recipe
 from recipes.osos import build_recipe
 from toolchain import run
@@ -69,7 +72,10 @@ def assemble(config, files, out, inputs, nor=None):
 def build_osos(config, out, inputs, version, recipe_only=False, selftest=False):
     print("Building core recipe...", flush=True)
     fingerprint = firmware.load()["inputs"]["osos.bin"]
-    defines = ['-DCORE_VERSION="' + version + '"']
+    defines = [
+        '-DCORE_VERSION="' + version + '"',
+        f"-DCORE_FIRMWARE_ID={firmware.build_id():#010x}u",
+    ]
     if selftest:
         defines.append("-DCORE_SELFTEST")
     image = None
@@ -103,6 +109,71 @@ def build_apple(config, out, inputs, recipe_only=False, nor=None):
     files = recipe.save(out, "companion")
     if not recipe_only:
         assemble(config, files, out / "cfw-loader.bin", inputs, nor=nor)
+
+
+SDK_FILES = ("rv_api.h", "rvx.lds", "rv.mk", "README.md")
+
+
+def api_version():
+    text = (ROOT / "sdk/rv_api.h").read_text()
+    major = re.search(r"#define RV_API_MAJOR (\d+)", text).group(1)
+    minor = re.search(r"#define RV_API_MINOR (\d+)", text).group(1)
+    return f"{major}.{minor}"
+
+
+def stage_sdk(config, directory):
+    """The SDK tree: committed headers, the generated site and firmware ids, the
+    symbols of the pinned OSOS and the two tools, each self-contained."""
+    if directory.exists():
+        shutil.rmtree(directory)
+    directory.mkdir(parents=True)
+    for name in SDK_FILES:
+        shutil.copyfile(ROOT / "sdk" / name, directory / name)
+    for name in ("osos-2.0.5.h", "osos-2.0.5.ld"):
+        shutil.copyfile(firmware.DIRECTORY / name, directory / name)
+    shutil.copyfile(ROOT / "tools/rvx.py", directory / "rvx-pack")
+    shutil.copyfile(ROOT / "tools/manifest.py", directory / "manifest")
+    names = sites.names(ROOT / "core", firmware.DIRECTORY, config.prefix)
+    (directory / "rv_sites.h").write_text(sites.header(names))
+    build_id = firmware.build_id()
+    (directory / "rv_firmware.h").write_text(
+        "/* SPDX-License-Identifier: GPL-3.0-only */\n"
+        "/* Generated from firmware/apple.json. */\n"
+        "#pragma once\n"
+        f"#define RV_FIRMWARE_ID {build_id:#010x}u\n"
+    )
+    (directory / "rv_firmware.mk").write_text(
+        "# SPDX-License-Identifier: GPL-3.0-only\n"
+        f"RV_API := {api_version()}\n"
+        f"RV_FIRMWARE_ID := {build_id:#010x}\n"
+        "RV_FIRMWARE_LD := osos-2.0.5.ld\n"
+    )
+    return directory
+
+
+def build_examples(config, out):
+    """The fixture extensions under sdk/examples, built against the staged SDK."""
+    sdk = stage_sdk(config, config.work / "sdk")
+    for example in sorted((ROOT / "sdk/examples").iterdir()):
+        if not (example / "Makefile").is_file():
+            continue
+        target = out / "examples" / example.name
+        env = os.environ.copy()
+        env["CROSS_COMPILE"] = config.prefix
+        run(
+            ["make", "-C", example, f"SDK={sdk}", f"OUT={target}", "-s"],
+            ROOT,
+            env,
+        )
+        print(f"Built example {example.name}: {target}", flush=True)
+
+
+def build_sdk(config, out, version):
+    sdk = stage_sdk(config, config.work / "sdk")
+    archive = out / f"revola-sdk-{version}.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(sdk, arcname=f"revola-sdk-{version}")
+    print(f"Built SDK: {archive}", flush=True)
 
 
 def build_rockbox(config, out, rockbox):
@@ -192,7 +263,16 @@ def main():
     parser.add_argument(
         "target",
         nargs="?",
-        choices=["all", "osos", "osos-recipe", "loader", "loader-recipe", "bootloader"],
+        choices=[
+            "all",
+            "osos",
+            "osos-recipe",
+            "loader",
+            "loader-recipe",
+            "bootloader",
+            "examples",
+            "sdk",
+        ],
         default="all",
     )
     parser.add_argument(
@@ -231,6 +311,10 @@ def main():
             args.target == "osos-recipe",
             args.selftest,
         )
+    if args.target == "examples":
+        build_examples(config, out)
+    if args.target in ("all", "sdk"):
+        build_sdk(config, out, identity(ROOT, args.tag)["version"])
     if args.target in ("all", "loader", "loader-recipe"):
         build_apple(config, out, args.inputs, args.target == "loader-recipe", args.nor)
     if args.target in ("all", "bootloader"):

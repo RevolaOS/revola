@@ -141,6 +141,13 @@ core_site_stubs:
 #include "sites.def"
 #undef SITE
 
+/* Site ids in table order: FNV-1a of the row name, written by the build. */
+.section .rodata
+.balign 4
+.global core_site_ids
+core_site_ids:
+#include "site_ids.inc"
+
 .bss
 .balign 4
 .global core_site_slots
