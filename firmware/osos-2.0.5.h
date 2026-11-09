@@ -169,6 +169,7 @@ int SettingsModel_GetProperty(void *model, uint32_t type, uint32_t property, uin
 int SettingsModel_GetIndexedProperty(void *model, uint32_t type, uint32_t property, uint32_t index, uintptr_t *out);
 void SettingsModel_ToggleMainMenuItem(void *model, uint32_t index);
 void SettingsModel_ToggleMusicMenuItem(void *model, uint32_t index);
+void *SettingsModel_ApplyMainMenuPreferences(void *model);
 void *SettingsModel_ApplyMusicMenuPreferences(void *model);
 void *SettingsModel_ResetMainMenu(void *model);
 void *SettingsModel_ResetMusicMenu(void *model);
@@ -184,6 +185,7 @@ int SettingsMainMenu_HandleAction(void *controller, const char *action, uint32_t
 int SettingsEQ_HandleEvent(void *controller, void *event);
 int SettingsEQ_SelectCurrentRow(void *controller, uint32_t deferred);
 int SettingsBacklight_SelectCurrentRow(void *controller, uint32_t deferred);
+int SettingsMusicMenu_HandleAction(void *controller, const char *action, uint32_t argument);
 void SettingsModel_AdjustBrightness(void *model, int delta);
 void *CppString_Init(void *string, const char *text);
 void *CppString_InitBytes(void *string, const void *data, uint32_t bytes, void *allocator);
@@ -262,6 +264,7 @@ void *ResourceService_GetIndexedResource(void *service, uint32_t type, uint32_t 
 void MenuItems_RegisterAll(void);
 void BitmapView_LoadBitmap(void *view);
 void *Object_GetInterface(void *object, uint32_t interface);
+int UI_EmitControllerEvent(void *controller, void *event_name);
 void *ControllerLayoutCache_GetOrInsert(void *definition, uint32_t layout_id);
 void *View_FindViewById(void *view, uint32_t id);
 void *UI_FindTemplateView(void *owner, uint32_t template_id);
@@ -478,6 +481,7 @@ extern void *const AlbumsController_vtable[];
 #define ADDR_SettingsModel_GetIndexedProperty 0x081e30ac
 #define ADDR_SettingsModel_ToggleMainMenuItem 0x081e3460
 #define ADDR_SettingsModel_ToggleMusicMenuItem 0x081e36ac
+#define ADDR_SettingsModel_ApplyMainMenuPreferences 0x081e2a50
 #define ADDR_SettingsModel_ApplyMusicMenuPreferences 0x081e2e48
 #define ADDR_SettingsModel_ResetMainMenu 0x081e1024
 #define ADDR_SettingsModel_ResetMusicMenu 0x081e1134
@@ -497,6 +501,7 @@ extern void *const AlbumsController_vtable[];
 #define ADDR_SettingsEQ_HandleEvent 0x08398e78
 #define ADDR_SettingsEQ_SelectCurrentRow 0x08134750
 #define ADDR_SettingsBacklight_SelectCurrentRow 0x08100d88
+#define ADDR_SettingsMusicMenu_HandleAction 0x081dd60c
 #define ADDR_SettingsModel_AdjustBrightness 0x081e2ee8
 #define ADDR_CppString_Init 0x083cf82c
 #define ADDR_CppString_InitBytes 0x083cf87c
@@ -586,10 +591,12 @@ extern void *const AlbumsController_vtable[];
 #define ADDR_ScreenController_PopSelf 0x081034f0
 #define ADDR_ResourceService_GetIndexedResource 0x08138dd8
 #define ADDR_MenuList_GetRowProperty 0x08194ecc
+#define ADDR_MenuList_HandleNotification 0x08195120
 #define ADDR_MenuItems_RegisterAll 0x081951cc
 #define ADDR_BitmapView_LoadBitmap 0x08100020
 #define ADDR_Object_GetInterface 0x0826c594
 #define ADDR_UI_TransitionToLayout 0x0817518c
+#define ADDR_UI_EmitControllerEvent 0x0812a150
 #define ADDR_ScreenController_ShowLayout 0x08398a94
 #define ADDR_ControllerLayoutCache_GetOrInsert 0x0813ca2c
 #define ADDR_UI_CreateTemplateFromResource 0x081df580
@@ -682,6 +689,10 @@ extern void *const AlbumsController_vtable[];
 #define SITE_Runtime_ReportUncaughtException_entry 0x0825de34
 #define SITE_Settings_Action_slot 0x089a3bf4
 #define SITE_Settings_SecondaryAction_slot 0x089a7c3c
+#define SITE_SettingsMainMenu_Action_slot 0x089a00f4
+#define SITE_SettingsMainMenu_SecondaryAction_slot 0x08996280
+#define SITE_SettingsMusicMenu_Action_slot 0x089a05bc
+#define SITE_SettingsMusicMenu_SecondaryAction_slot 0x08997094
 #define SITE_Settings_Property_slot 0x08997b60
 #define SITE_Settings_IndexedProperty_slot 0x08997b7c
 #define SITE_EQ_PreviewCount_word 0x081e0f74
@@ -917,6 +928,7 @@ extern void *const AlbumsController_vtable[];
 #define ScreenController_push_method 0xd0
 #define ScreenController_pop_method 0xbc
 #define ScreenController_switch_layout_method 0x120
+#define ScreenController_emit_event_method 0x11c
 #define ScreenController_pop_self_method 0xb8
 #define ScreenController_named_event_method 0x110
 #define ScreenController_show_layout_method 0x124
@@ -1095,6 +1107,7 @@ extern void *const AlbumsController_vtable[];
 #define MenuRowStyle_Check 0x3
 #define MenuRowStyle_CheckIndented 0x4
 #define MenuRowStyle_Submenu 0x5
+#define MenuRowStyle_TwoLine 0x6
 #define MenuRowStyle_InlineValue 0xc
 #define Event_ModelChange 0x13
 #define SourceDestination_InlineValue 0xa
@@ -1124,6 +1137,9 @@ extern void *const AlbumsController_vtable[];
 #define RES_SettingsMenu_Main_Layout 0x0dad0c7f
 #define RES_Settings_MainMenu_Screen 0x0dad0c90
 #define RES_Settings_MainMenu_Layout 0x0dad0c92
+#define RES_Settings_MusicMenu_Screen 0x0dad0c93
+#define RES_Settings_MusicMenu_Layout 0x0dad0c95
+#define RES_Settings_MusicMenu_Items 0x00000043
 #define RES_Settings_Legal_Screen 0x0dad0cb3
 #define RES_Settings_Legal_Layout 0x0dad0cb4
 #define RES_Settings_EQ_Items 0x00000047
