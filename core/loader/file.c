@@ -42,3 +42,8 @@ void core_file_close(void *handle)
 {
     File_CloseLegacyHandle(handle);
 }
+
+int core_file_create_directory(const char *path)
+{
+    return Directory_CreateWithParents(path, 0) == 0;
+}

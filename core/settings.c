@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Settings store: /Revola/settings.a and settings.b hold the same record stream;
+/* Settings store: /Revola/Settings/system.a and system.b hold the same record stream;
  * a flush writes the file that was not loaded, with the generation advanced, so an
  * interrupted write leaves the other copy intact and the newer valid one wins at
- * boot. Apple's file API has open, read, write and close only, so there is no
- * rename and no size query; the header carries the length.
+ * boot. Apple's file API has no rename and no size query; the header carries the
+ * length. The first flush of a boot creates the folder.
  *
  * File: header {magic, version, length, generation, fnv1a of the records}, then
  * records {owner, key, type, size, data} padded to a word. Unknown records are
@@ -37,7 +37,8 @@ struct record {
     uint8_t size;
 };
 
-static const char *const files[2] = {"/Revola/settings.a", "/Revola/settings.b"};
+#define FOLDER "/Revola/Settings"
+static const char *const files[2] = {FOLDER "/system.a", FOLDER "/system.b"};
 
 static uint8_t *store; /* header followed by records */
 static uint32_t capacity;
@@ -45,6 +46,7 @@ static uint32_t generation;
 static uint8_t current; /* file index the store was loaded from or last written to */
 static uint8_t dirty;
 static uint8_t dirty_ticks; /* grace ticks since the store became dirty */
+static uint8_t folder_ready;
 
 #ifdef CORE_SELFTEST
 /* Per file: open result, read result, bytes got, header validity, body validity. */
@@ -224,7 +226,7 @@ void core_settings_load(void)
     load_file(1, scratch, sizeof scratch);
     if (!header()->length) {
         reset_store();
-        current = 1; /* the first flush writes settings.a */
+        current = 1; /* the first flush writes system.a */
     }
     dirty = 0;
 }
@@ -315,6 +317,8 @@ void core_settings_flush(void)
 {
     if (!store || !dirty)
         return;
+    if (!folder_ready && !(folder_ready = core_file_create_directory(FOLDER)))
+        return; /* stays dirty; the next flush point retries */
     uint8_t target = current ^ 1;
     header()->generation = generation + 1;
     header()->checksum = checksum(store, header()->length);
