@@ -117,7 +117,7 @@ SDK_FILES = ("rv_api.h", "rv_ui.h", "rvx.lds", "rv.mk", "README.md")
 
 def stage_sdk(config, directory):
     """The SDK tree: committed headers, the generated site and firmware ids, the
-    symbols of the pinned OSOS and the two tools, each self-contained."""
+    symbols of the pinned OSOS and rvx-pack with the two modules it imports."""
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
@@ -126,7 +126,8 @@ def stage_sdk(config, directory):
     for name in ("osos-2.0.5.h", "osos-2.0.5.ld"):
         shutil.copyfile(firmware.DIRECTORY / name, directory / name)
     shutil.copyfile(ROOT / "tools/rvx.py", directory / "rvx-pack")
-    shutil.copyfile(ROOT / "tools/manifest.py", directory / "manifest")
+    for name in ("manifest.py", "bitmap.py"):
+        shutil.copyfile(ROOT / "tools" / name, directory / name)
     names = sites.names(ROOT / "core", firmware.DIRECTORY, config.prefix)
     (directory / "rv_sites.h").write_text(sites.header(names))
     (directory / "rv_menus.h").write_text(

@@ -7,6 +7,7 @@
  * the same boot. */
 
 #include "ui/screens.h"
+#include "ui/bitmaps.h"
 #include "ui/canvas.h"
 #include "ui/clones.h"
 #include "ui/indexed.h"
@@ -237,6 +238,8 @@ static void screen_left(void *controller)
             open[j] = open[j + 1];
         if (s->open)
             s->open--;
+        if (!s->open)
+            core_bitmaps_screen_closed(s);
         if (s->declaration)
             core_loader_screen_popped(s->declaration->name);
         return;

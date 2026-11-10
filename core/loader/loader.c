@@ -1,11 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Extension loader. Each directory under /Revola/Extensions holds a manifest.bin
- * and one .rvx per module. At boot the enabled ones are read into the Apple heap,
- * relocated in place and entered through the rv_api table; their descriptor's
- * hooks are bound in order and a collision unloads the extension with the site
- * recorded for Settings > Extensions. A disabled extension is never read past
- * its manifest and keeps no record: zero bytes.
+/* Extension loader. Each extension is one file /Revola/Extensions/<id>.rvx holding
+ * its manifest, modules and assets (loader/rvx.h). At boot the enabled ones are
+ * read into the Apple heap, relocated in place and entered through the rv_api
+ * table; their descriptor's hooks are bound in order and a collision unloads the
+ * extension with the site recorded for Settings > Extensions. A disabled
+ * extension is never read past its manifest and keeps no record: zero bytes.
+ *
+ * Resident assets are read with the main module into one block and stay there
+ * as stored until it unloads. Other assets are found by streaming the rest of
+ * the catalog when asked for.
  *
  * Every block the loader hands out carries an 8-byte header naming its owner, so
  * the record's live and peak counters are exact. Images and hook arrays are not
@@ -15,6 +19,7 @@
 
 #include "loader/file.h"
 #include "loader/loader.h"
+#include "loader/lz.h"
 #include "ui/menus.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
@@ -23,19 +28,30 @@
 #include "ui/screens.h"
 #include "settings.h"
 #include "hooks/sites.h"
+#include "storage.h"
+#include "ui/bitmaps.h"
 #include <stddef.h>
 
 #define ROOT "/Revola/Extensions"
-#define MANIFEST_FILE "manifest.bin"
+#define SUFFIX ".rvx"
 #define MANIFEST_MAGIC 0x464d5652u /* RVMF */
 #define MANIFEST_VERSION 2
 #define MANIFEST_ENABLED 1
 #define MANIFEST_MAX 1024
 #define MAX_MODULES 15
-#define MAX_DIRECTORIES 16
+#define MAX_EXTENSIONS 16
 #define IDLE_TICKS 10 /* grace ticks a screen module stays loaded with no screen open */
 #define RELOC_CHUNK 32
+#define CATALOG_CHUNK 8
 #define PATH_MAX_BYTES 96
+#define MAX_ENTRIES 0xffff
+#define MAX_PAYLOAD (16u << 20) /* keeps sums of payload sizes far from overflow */
+
+/* Experiment, off: on flash, leave resident assets on disk like the others, to
+ * measure whether reading them on request is fast enough there. */
+#ifndef CORE_FLASH_ASSETS_ON_DISK
+#define CORE_FLASH_ASSETS_ON_DISK 0
+#endif
 
 struct manifest_header {
     uint32_t magic;
@@ -50,7 +66,6 @@ struct manifest_header {
 
 struct manifest_module {
     uint16_t name;
-    uint16_t file;
     uint8_t trigger; /* 0 always, 1 screen, 2 manual */
     uint8_t screen_count;
     uint16_t screens; /* first of screen_count consecutive strings */
@@ -94,6 +109,18 @@ static struct block *retired;  /* unlinked before the last tick; freed at the ne
 static uint32_t fnv1a(const char *text)
 {
     return core_settings_owner(text);
+}
+
+static int read_all(void *handle, void *buffer, uint32_t bytes)
+{
+    uint32_t got = 0;
+    return core_file_read(handle, buffer, bytes, &got) && got == bytes;
+}
+
+static void copy(void *to, const void *from, uint32_t bytes)
+{
+    for (uint32_t i = 0; i < bytes; i++)
+        ((uint8_t *)to)[i] = ((const uint8_t *)from)[i];
 }
 
 static uint32_t length(const char *text)
@@ -159,20 +186,21 @@ static void retire(void *memory)
     retiring = block;
 }
 
-/* Manifest access; offsets were bounds-checked when the manifest was read. */
-static const struct manifest_module *module_record(const struct rv_extension_record *record,
-                                                   uint32_t index)
-{
-    return (const struct manifest_module *)(record->manifest + sizeof(struct manifest_header)) +
-           index;
-}
-
+/* Manifest access: header, sites, modules, strings. Offsets were bounds-checked
+ * when the manifest was read. */
 static const struct manifest_site *site_record(const struct rv_extension_record *record,
                                                uint32_t index)
 {
+    return (const struct manifest_site *)(record->manifest + sizeof(struct manifest_header)) +
+           index;
+}
+
+static const struct manifest_module *module_record(const struct rv_extension_record *record,
+                                                   uint32_t index)
+{
     const struct manifest_header *header = (const struct manifest_header *)record->manifest;
-    return (const struct manifest_site *)(record->manifest + sizeof *header +
-                                          header->module_count * sizeof(struct manifest_module)) +
+    return (const struct manifest_module *)(record->manifest + sizeof *header +
+                                            header->site_count * sizeof(struct manifest_site)) +
            index;
 }
 
@@ -207,49 +235,266 @@ static int manifest_valid(const uint8_t *buffer, uint32_t bytes)
     for (uint32_t i = 0; i < 6; i++)
         if (header->text[i] >= header->strings_bytes)
             return 0;
-    const struct manifest_module *modules = (const struct manifest_module *)(buffer + sizeof *header);
+    const struct manifest_site *sites = (const struct manifest_site *)(buffer + sizeof *header);
+    for (uint32_t i = 0; i < header->site_count; i++)
+        if (sites[i].name >= header->strings_bytes)
+            return 0;
+    const struct manifest_module *modules = (const struct manifest_module *)(sites + header->site_count);
     if (modules[0].trigger != TRIGGER_ALWAYS)
         return 0;
     for (uint32_t i = 0; i < header->module_count; i++)
-        if (modules[i].name >= header->strings_bytes || modules[i].file >= header->strings_bytes ||
+        if (modules[i].name >= header->strings_bytes ||
             modules[i].screens >= header->strings_bytes || modules[i].trigger > TRIGGER_MANUAL)
-            return 0;
-    const struct manifest_site *sites = (const struct manifest_site *)(modules + header->module_count);
-    for (uint32_t i = 0; i < header->site_count; i++)
-        if (sites[i].name >= header->strings_bytes)
             return 0;
     return buffer[table + header->text[0]] != 0; /* id present */
 }
 
-/* ROOT "/" directory "/" file; 0 when it does not fit. */
-static int build_path(char *path, const char *directory, const char *file)
+/* Opens ROOT "/" file SUFFIX and reads its header; 0 when either fails. */
+static int open_extension(const char *file, void **handle, struct rvx_header *header)
 {
-    uint32_t n = 0;
-    const char *parts[4] = {ROOT, directory, file, NULL};
-    for (uint32_t p = 0; parts[p]; p++) {
-        if (p)
-            path[n++] = '/';
+    char path[PATH_MAX_BYTES];
+    uint32_t n = 0, got = 0;
+    const char *parts[3] = {ROOT "/", file, SUFFIX};
+    for (uint32_t p = 0; p < 3; p++)
         for (const char *c = parts[p]; *c; c++) {
             if (n >= PATH_MAX_BYTES - 1)
                 return 0;
             path[n++] = *c;
         }
-    }
     path[n] = 0;
+    if (!core_file_open(path, CORE_FILE_READ, handle))
+        return 0;
+    if (core_file_read(*handle, header, sizeof *header, &got) && got == sizeof *header &&
+        header->magic == RVX_MAGIC && header->format == RVX_FORMAT)
+        return 1;
+    core_file_close(*handle);
+    return 0;
+}
+
+/* The manifest of `file` into `buffer`; its size, or 0 when it is unreadable. */
+static uint32_t read_manifest(const char *file, uint8_t *buffer)
+{
+    void *handle;
+    struct rvx_header header;
+    uint32_t got = 0;
+    if (!open_extension(file, &handle, &header))
+        return 0;
+    int ok = header.manifest_bytes <= MANIFEST_MAX &&
+             core_file_read(handle, buffer, header.manifest_bytes, &got) &&
+             got == header.manifest_bytes;
+    core_file_close(handle);
+    return ok && manifest_valid(buffer, got) ? got : 0;
+}
+
+/* Catalog */
+
+static uint32_t catalog_offset(const struct rv_extension_record *record)
+{
+    return sizeof(struct rvx_header) + ((record->manifest_bytes + 3) & ~3u);
+}
+
+/* Checks an entry before anything trusts it; offsets past the end of the file
+ * show up as short reads. */
+static int entry_valid(const struct rv_extension_record *record, const struct rvx_entry *e,
+                       uint32_t index)
+{
+    uint32_t payloads = catalog_offset(record) + record->entry_count * sizeof *e;
+    int kind = index < record->module_count ? e->kind == RVX_MODULE && e->codec == RVX_RAW
+                                            : e->kind == RVX_DATA || e->kind == RVX_BITMAP;
+    return kind && e->codec <= RVX_LZ && (e->codec == RVX_LZ || e->stored == e->bytes) &&
+           e->offset % 4 == 0 && e->offset >= payloads && e->stored <= MAX_PAYLOAD &&
+           e->bytes <= MAX_PAYLOAD;
+}
+
+/* Streams catalog entries [index, end) through the stack. */
+struct catalog {
+    void *handle;
+    const struct rv_extension_record *record;
+    uint32_t index, end, have, at;
+    struct rvx_entry chunk[CATALOG_CHUNK];
+};
+
+static int catalog_start(struct catalog *c, const struct rv_extension_record *record,
+                         void *handle, uint32_t first, uint32_t end)
+{
+    c->handle = handle;
+    c->record = record;
+    c->index = first;
+    c->end = end;
+    c->have = c->at = 0;
+    return core_file_seek(handle, catalog_offset(record) + first * sizeof c->chunk[0]);
+}
+
+/* The next valid entry, or NULL at the end and for a bad or unreadable one;
+ * c->index == c->end tells the two apart. */
+static const struct rvx_entry *catalog_next(struct catalog *c)
+{
+    if (c->index == c->end)
+        return NULL;
+    if (c->at == c->have) {
+        uint32_t n = c->end - c->index < CATALOG_CHUNK ? c->end - c->index : CATALOG_CHUNK;
+        if (!read_all(c->handle, c->chunk, n * sizeof c->chunk[0]))
+            return NULL;
+        c->have = n;
+        c->at = 0;
+    }
+    const struct rvx_entry *e = &c->chunk[c->at];
+    if (!entry_valid(c->record, e, c->index))
+        return NULL;
+    c->at++;
+    c->index++;
+    return e;
+}
+
+static int read_entry(void *handle, const struct rv_extension_record *record, uint32_t index,
+                      struct rvx_entry *out)
+{
+    struct catalog c;
+    const struct rvx_entry *e =
+        catalog_start(&c, record, handle, index, index + 1) ? catalog_next(&c) : NULL;
+    if (e)
+        *out = *e;
+    return e != NULL;
+}
+
+static void drop_resident(struct rv_extension_record *record)
+{
+    if (record->resident)
+        retire(record->resident);
+    record->resident = NULL;
+    record->resident_count = 0;
+}
+
+/* Reads the resident entries, then their payloads in file order, into one block:
+ * the entries with offsets rebased onto it, then the payloads word-aligned. */
+static int load_resident(struct rv_extension_record *record, void *handle, uint32_t count)
+{
+    if (CORE_FLASH_ASSETS_ON_DISK && core_storage_is_flash(ATA_Identify))
+        count = 0;
+    if (!count)
+        return 1;
+    uint32_t first = record->module_count, bytes = count * sizeof(struct rvx_entry);
+    struct catalog c;
+    const struct rvx_entry *e;
+    if (!catalog_start(&c, record, handle, first, first + count))
+        return 0;
+    while ((e = catalog_next(&c)))
+        bytes += (e->stored + 3) & ~3u;
+    if (c.index != c.end)
+        return 0;
+    struct rvx_entry *block = allocate(record, bytes);
+    if (!block) {
+        record->failure = CORE_EXTENSION_NO_MEMORY;
+        return 0;
+    }
+    uint32_t at = count * sizeof *block;
+    int ok = core_file_seek(handle, catalog_offset(record) + first * sizeof *block) &&
+             read_all(handle, block, count * sizeof *block);
+    for (uint32_t i = 0; ok && i < count; i++) {
+        struct rvx_entry *r = &block[i];
+        ok = entry_valid(record, r, first + i) && r->stored <= bytes - at &&
+             core_file_seek(handle, r->offset) && read_all(handle, (uint8_t *)block + at, r->stored);
+        r->offset = at;
+        at += (r->stored + 3) & ~3u;
+    }
+    if (!ok) {
+        release(record, block);
+        return 0;
+    }
+    record->resident = block;
+    record->resident_count = count;
     return 1;
 }
 
-static uint32_t read_manifest(const char *directory, uint8_t *buffer)
+static const struct rvx_entry *resident_entry(const struct rv_extension_record *record,
+                                              uint32_t name)
 {
-    char path[PATH_MAX_BYTES];
-    void *handle;
-    uint32_t got = 0;
-    if (!build_path(path, directory, MANIFEST_FILE) ||
-        !core_file_open(path, CORE_FILE_READ, &handle))
+    for (uint32_t i = 0; i < record->resident_count; i++)
+        if (record->resident[i].name == name)
+            return &record->resident[i];
+    return NULL;
+}
+
+/* Opens the file and finds asset `name` among the entries not held in RAM; the
+ * handle stays open on success. */
+static int find_on_disk(const struct rv_extension_record *record, uint32_t name, void **handle,
+                        struct rvx_entry *out)
+{
+    struct rvx_header file;
+    struct catalog c;
+    const struct rvx_entry *e;
+    if (!open_extension(record->file, handle, &file))
         return 0;
-    int ok = core_file_read(handle, buffer, MANIFEST_MAX, &got);
-    core_file_close(handle);
-    return ok && manifest_valid(buffer, got) ? got : 0;
+    if (file.manifest_bytes == record->manifest_bytes && file.entry_count == record->entry_count &&
+        catalog_start(&c, record, *handle, record->module_count + record->resident_count,
+                      record->entry_count))
+        while ((e = catalog_next(&c)))
+            if (e->name == name) {
+                *out = *e;
+                return 1;
+            }
+    core_file_close(*handle);
+    return 0;
+}
+
+const void *core_loader_resident(const struct rv_extension_record *record, uint32_t name,
+                                 const struct rvx_entry **entry)
+{
+    const struct rvx_entry *e = resident_entry(record, name);
+    if (!e)
+        return NULL;
+    *entry = e;
+    return (const uint8_t *)record->resident + e->offset;
+}
+
+void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
+                        uint8_t *kind)
+{
+    const struct rvx_entry *r;
+    const uint8_t *memory = core_loader_resident(record, name, &r);
+    struct rvx_entry entry;
+    struct core_lz_input in;
+    void *handle = NULL;
+    int ok = 1;
+    if (memory) {
+        entry = *r;
+        core_lz_from_memory(&in, memory, entry.stored);
+    } else {
+        if (!find_on_disk(record, name, &handle, &entry))
+            return NULL;
+        ok = core_file_seek(handle, entry.offset);
+        core_lz_from_file(&in, handle, entry.stored);
+    }
+    uint8_t *out = ok ? allocate(record, entry.bytes) : NULL;
+    if (out) {
+        if (entry.codec == RVX_LZ)
+            ok = core_lz_decode(&in, out, entry.bytes);
+        else if (memory)
+            copy(out, memory, entry.bytes);
+        else
+            ok = read_all(handle, out, entry.bytes);
+    }
+    if (handle)
+        core_file_close(handle);
+    if (out && !ok) {
+        release(record, out);
+        return NULL;
+    }
+    if (out) {
+        *bytes = entry.bytes;
+        *kind = entry.kind;
+    }
+    return out;
+}
+
+void core_loader_retire(void *block)
+{
+    retire(block);
+}
+
+void core_loader_free(struct rv_extension_record *record, void *block)
+{
+    release(record, block);
 }
 
 /* rv_api */
@@ -501,12 +746,56 @@ static void api_ui_invalidate(rv_handle self)
         core_screens_invalidate();
 }
 
+static void *api_asset_load(rv_handle self, const char *name, uint32_t *bytes)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    uint32_t size = 0;
+    uint8_t kind;
+    void *block = record && name ? core_loader_asset(record, fnv1a(name), &size, &kind) : NULL;
+    if (block && bytes)
+        *bytes = size;
+    return block;
+}
+
+static int api_asset_read(rv_handle self, const char *name, uint32_t offset, void *out,
+                          uint32_t bytes, uint32_t *got)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (!record || !name || !out || !got)
+        return RV_BAD_ARGUMENT;
+    *got = 0;
+    uint32_t hash = fnv1a(name);
+    const struct rvx_entry *r;
+    const uint8_t *memory = core_loader_resident(record, hash, &r);
+    struct rvx_entry entry;
+    void *handle = NULL;
+    if (memory)
+        entry = *r;
+    else if (!find_on_disk(record, hash, &handle, &entry))
+        return RV_NOT_FOUND;
+    int result = RV_OK;
+    if (entry.codec != RVX_RAW || offset > entry.bytes) {
+        result = RV_BAD_ARGUMENT;
+    } else {
+        uint32_t n = entry.bytes - offset < bytes ? entry.bytes - offset : bytes;
+        if (memory)
+            copy(out, memory + offset, n);
+        else if (!core_file_seek(handle, entry.offset + offset) || !read_all(handle, out, n))
+            result = RV_NOT_FOUND;
+        if (result == RV_OK)
+            *got = n;
+    }
+    if (handle)
+        core_file_close(handle);
+    return result;
+}
+
 static struct rv_debug_info debug = {
     CORE_BUILD_ID,
     &core_extensions,
     offsetof(struct rv_extension_record, next),
     offsetof(struct rv_extension_record, owner),
-    offsetof(struct rv_extension_record, directory),
+    offsetof(struct rv_extension_record, file),
     offsetof(struct rv_extension_record, live),
     offsetof(struct rv_extension_record, peak),
     offsetof(struct rv_extension_record, failure),
@@ -534,7 +823,7 @@ static const struct rv_api api = {
     api_alloc,            api_free,           api_module_load,    api_module_unload,
     api_container_declare, api_container_release, api_log,
     api_ui_push,          api_ui_pop,            api_ui_refresh,     api_ui_invalidate,
-    api_debug_info,
+    api_debug_info,       api_asset_load,     api_asset_read,
 };
 
 /* Modules */
@@ -549,38 +838,48 @@ static const struct rv_extension *enter(struct rv_extension_record *record, void
     return descriptor;
 }
 
-/* Reads, relocates and enters one module. The relocation table is consumed in
- * chunks through the stack, so a module costs text + data + bss and no more. */
+/* Reads, relocates and enters one module; the main module brings the resident
+ * assets. The relocation table is consumed in chunks through the stack, so a
+ * module costs text + data + bss and no more. */
 static int load_module(struct rv_extension_record *record, uint32_t index)
 {
     struct core_module *module = &record->modules[index];
-    char path[PATH_MAX_BYTES];
-    struct rvx_header header;
+    struct rvx_header file;
+    struct rvx_entry entry;
+    struct rvx_module header;
     void *handle;
-    uint32_t got = 0;
     record->failure = CORE_EXTENSION_BAD_MODULE;
-    if (!build_path(path, record->directory, text(record, module_record(record, index)->file)) ||
-        !core_file_open(path, CORE_FILE_READ, &handle))
+    if (!open_extension(record->file, &handle, &file))
         return 0;
-    int ok = core_file_read(handle, &header, sizeof header, &got) && got == sizeof header &&
-             header.magic == RVX_MAGIC && header.format == RVX_FORMAT &&
-             (header.api >> 16) == RV_API_MAJOR && header.firmware == CORE_FIRMWARE_ID &&
+    if (index == 0)
+        record->entry_count = file.entry_count;
+    int ok = (file.api >> 16) == RV_API_MAJOR && file.firmware == CORE_FIRMWARE_ID &&
+             file.manifest_bytes == record->manifest_bytes &&
+             file.entry_count == record->entry_count && file.entry_count <= MAX_ENTRIES &&
+             file.entry_count >= record->module_count &&
+             file.resident_count <= file.entry_count - record->module_count &&
+             read_entry(handle, record, index, &entry) &&
+             core_file_seek(handle, entry.offset) && read_all(handle, &header, sizeof header) &&
              (header.text_bytes | header.data_bytes) % 4 == 0 &&
-             header.entry < header.text_bytes;
+             header.entry < header.text_bytes && header.text_bytes <= entry.stored &&
+             header.data_bytes <= entry.stored && header.reloc_count <= entry.stored / 4 &&
+             header.bss_bytes <= MAX_PAYLOAD &&
+             sizeof header + header.text_bytes + header.data_bytes + 4 * header.reloc_count ==
+                 entry.stored;
     uint32_t code_bytes = header.text_bytes + header.data_bytes;
     uint8_t *image = NULL;
     if (ok) {
         image = allocate(record, code_bytes + header.bss_bytes);
         if (!image)
             record->failure = CORE_EXTENSION_NO_MEMORY;
-        ok = image && core_file_read(handle, image, code_bytes, &got) && got == code_bytes;
+        ok = image && read_all(handle, image, code_bytes);
     }
     for (uint32_t done = 0; ok && done < header.reloc_count; done += RELOC_CHUNK) {
         uint32_t offsets[RELOC_CHUNK];
         uint32_t count = header.reloc_count - done;
         if (count > RELOC_CHUNK)
             count = RELOC_CHUNK;
-        ok = core_file_read(handle, offsets, count * 4, &got) && got == count * 4;
+        ok = read_all(handle, offsets, count * 4);
         for (uint32_t i = 0; ok && i < count; i++) {
             if (offsets[i] % 4 || offsets[i] > code_bytes - 4)
                 ok = 0;
@@ -588,6 +887,8 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
                 *(uint32_t *)(image + offsets[i]) += (uint32_t)image;
         }
     }
+    if (ok && index == 0)
+        ok = load_resident(record, handle, file.resident_count);
     core_file_close(handle);
     if (!ok) {
         if (image)
@@ -596,6 +897,7 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     }
     if (index == 0 && !claim_raw_sites(record)) {
         release(record, image);
+        drop_resident(record);
         return 0;
     }
     core_cache_sync(image, image + code_bytes);
@@ -671,8 +973,11 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
         record->hooks_bound -= descriptor->hook_count;
         record->descriptor = NULL;
     }
-    if (index == 0)
+    if (index == 0) {
         release_raw_sites(record);
+        core_bitmaps_release(record);
+        drop_resident(record);
+    }
     retire(module->image);
     module->image = NULL;
     module->loaded = 0;
@@ -680,10 +985,10 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
 
 /* Extensions */
 
-static struct rv_extension_record *find_directory(const char *directory)
+static struct rv_extension_record *find_file(const char *file)
 {
     for (struct rv_extension_record *r = core_extensions; r; r = r->next)
-        if (same_name(r->directory, directory))
+        if (same_name(r->file, file))
             return r;
     return NULL;
 }
@@ -691,11 +996,12 @@ static struct rv_extension_record *find_directory(const char *directory)
 /* Reads the manifest and, when the extension is enabled, builds its record and
  * loads the main module. Returns the record, or NULL for disabled and failed
  * manifests (nothing is kept for either). */
-static struct rv_extension_record *load_extension(const char *directory)
+static struct rv_extension_record *load_extension(const char *file)
 {
-    uint8_t buffer[MANIFEST_MAX];
-    uint32_t bytes = read_manifest(directory, buffer);
-    if (!bytes || length(directory) >= sizeof ((struct rv_extension_record *)0)->directory)
+    uint32_t words[MANIFEST_MAX / 4];
+    uint8_t *buffer = (uint8_t *)words;
+    uint32_t bytes = read_manifest(file, buffer);
+    if (!bytes || length(file) >= sizeof ((struct rv_extension_record *)0)->file)
         return NULL;
     const struct manifest_header *header = (const struct manifest_header *)buffer;
     uint32_t owner = fnv1a(strings(buffer) + header->text[0]);
@@ -715,8 +1021,8 @@ static struct rv_extension_record *load_extension(const char *directory)
     record->manifest_bytes = bytes;
     for (uint32_t i = 0; i < bytes; i++)
         record->manifest[i] = buffer[i];
-    for (uint32_t i = 0; directory[i]; i++)
-        record->directory[i] = directory[i];
+    for (uint32_t i = 0; file[i]; i++)
+        record->file[i] = file[i];
     record->next = core_extensions;
     core_extensions = record;
     load_module(record, 0); /* a failure stays on the record for the screen */
@@ -735,8 +1041,8 @@ static void unload_extension(struct rv_extension_record *record)
     retire(record);
 }
 
-/* Directory entries under ROOT, collected before any file is opened. */
-static uint32_t scan(char names[][sizeof ((struct rv_extension_record *)0)->directory])
+/* Files under ROOT ending in SUFFIX, without it, collected before any is opened. */
+static uint32_t scan(char names[][sizeof ((struct rv_extension_record *)0)->file])
 {
     uint32_t iterator_words[DirectoryIterator_bytes / 4];
     uint32_t path_words[NativePath_bytes / 4];
@@ -746,15 +1052,17 @@ static uint32_t scan(char names[][sizeof ((struct rv_extension_record *)0)->dire
     uint32_t count = 0;
     NativePath_InitEmpty(path);
     DirectoryIterator_Init(iterator, ROOT, 0, 0);
-    while (count < MAX_DIRECTORIES && DirectoryIterator_Next(iterator, path, &is_directory)) {
+    while (count < MAX_EXTENSIONS && DirectoryIterator_Next(iterator, path, &is_directory)) {
         const char *name = NativeString_GetUtf8((struct NativeString *)path);
-        if (!is_directory || !name || !name[0] || name[0] == '.' ||
-            length(name) >= sizeof names[0])
+        uint32_t stem = name ? length(name) : 0;
+        if (is_directory || stem <= sizeof SUFFIX - 1 || name[0] == '.')
             continue;
-        uint32_t i = 0;
-        for (; name[i]; i++)
+        stem -= sizeof SUFFIX - 1;
+        if (stem >= sizeof names[0] || !same_name(name + stem, SUFFIX))
+            continue;
+        for (uint32_t i = 0; i < stem; i++)
             names[count][i] = name[i];
-        names[count][i] = 0;
+        names[count][stem] = 0;
         count++;
     }
     DirectoryIterator_Destroy(iterator);
@@ -770,6 +1078,32 @@ static uint32_t held_buttons(void)
     return *(volatile uint32_t *)((uint8_t *)&WheelState + WheelState_buttons);
 }
 
+/* Sets duplicate[i] for every file whose manifest id another file also carries
+ * and that should not load: the file named after the id wins, else the first
+ * found. A renamed copy beside a fresh install loads once. `buffer` holds
+ * MANIFEST_MAX bytes. */
+static void pick(char names[][sizeof ((struct rv_extension_record *)0)->file], uint32_t count,
+                 uint8_t *duplicate, uint8_t *buffer)
+{
+    uint32_t owner[MAX_EXTENSIONS];
+    uint8_t readable[MAX_EXTENSIONS], named[MAX_EXTENSIONS];
+    for (uint32_t i = 0; i < count; i++) {
+        duplicate[i] = 0;
+        readable[i] = read_manifest(names[i], buffer) != 0;
+        if (!readable[i])
+            continue;
+        const struct manifest_header *header = (const struct manifest_header *)buffer;
+        const char *id = strings(buffer) + header->text[0];
+        owner[i] = fnv1a(id);
+        named[i] = (uint8_t)same_name(names[i], id);
+    }
+    for (uint32_t i = 0; i < count; i++)
+        for (uint32_t j = 0; j < count && readable[i] && !duplicate[i]; j++)
+            if (j != i && readable[j] && owner[j] == owner[i] &&
+                (named[j] > named[i] || (named[j] == named[i] && j < i)))
+                duplicate[i] = 1;
+}
+
 void core_loader_boot(void)
 {
     uint32_t crashed = CORE_CRASH_SCRATCH;
@@ -783,21 +1117,26 @@ void core_loader_boot(void)
         core_loader_core_only = 1;
         return;
     }
-    char names[MAX_DIRECTORIES][sizeof ((struct rv_extension_record *)0)->directory];
+    char names[MAX_EXTENSIONS][sizeof ((struct rv_extension_record *)0)->file];
+    uint8_t duplicate[MAX_EXTENSIONS];
+    uint32_t words[MANIFEST_MAX / 4];
     uint32_t count = scan(names);
+    pick(names, count, duplicate, (uint8_t *)words);
     for (uint32_t i = 0; i < count; i++)
-        load_extension(names[i]);
+        if (!duplicate[i])
+            load_extension(names[i]);
 }
 
-int core_loader_set_enabled(const char *directory, int enabled)
+int core_loader_set_enabled(const char *file, int enabled)
 {
-    struct rv_extension_record *record = find_directory(directory);
+    struct rv_extension_record *record = find_file(file);
     uint32_t owner;
     if (record) {
         owner = record->owner;
     } else {
-        uint8_t buffer[MANIFEST_MAX];
-        if (!read_manifest(directory, buffer))
+        uint32_t words[MANIFEST_MAX / 4];
+        uint8_t *buffer = (uint8_t *)words;
+        if (!read_manifest(file, buffer))
             return RV_NOT_FOUND;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
         owner = fnv1a(strings(buffer) + header->text[0]);
@@ -808,7 +1147,7 @@ int core_loader_set_enabled(const char *directory, int enabled)
         core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);
     }
     if (enabled && !record)
-        return load_extension(directory) ? RV_OK : RV_NOT_FOUND;
+        return load_extension(file) ? RV_OK : RV_NOT_FOUND;
     if (record)
         record->pending_unload = !enabled;
     return RV_OK;
@@ -898,9 +1237,12 @@ struct rv_extension_record *core_loader_find(uint32_t owner)
 
 uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity)
 {
-    char names[MAX_DIRECTORIES][sizeof out->directory];
-    uint8_t buffer[MANIFEST_MAX];
+    char names[MAX_EXTENSIONS][sizeof out->file];
+    uint32_t words[MANIFEST_MAX / 4];
+    uint8_t *buffer = (uint8_t *)words;
+    uint8_t duplicate[MAX_EXTENSIONS];
     uint32_t found = scan(names), count = 0;
+    pick(names, found, duplicate, buffer);
     for (uint32_t i = 0; i < found && count < capacity; i++) {
         if (!read_manifest(names[i], buffer))
             continue;
@@ -909,12 +1251,13 @@ uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity)
         const char *name = strings(buffer) + header->text[1];
         uint32_t n = 0;
         for (; names[i][n]; n++)
-            entry->directory[n] = names[i][n];
-        entry->directory[n] = 0;
+            entry->file[n] = names[i][n];
+        entry->file[n] = 0;
         for (n = 0; name[n] && n < sizeof entry->name - 1; n++)
             entry->name[n] = name[n];
         entry->name[n] = 0;
         entry->owner = fnv1a(strings(buffer) + header->text[0]);
+        entry->duplicate = duplicate[i];
     }
     return count;
 }

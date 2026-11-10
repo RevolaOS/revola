@@ -5,9 +5,10 @@
  * menus an entry can appear in. Open it from Settings, Main, Music (after
  * Settings > Music Menu turns it on) or Extras. The core gives an extension
  * 256 resource ids and shares 16 screens among all of them; this one takes 229
- * ids and 12 screens, three of which the core makes from the settings. */
+ * ids and 12 screens, three of which the core makes from the settings. Its
+ * assets are in manifest.toml: the pane icon, the canvas bitmap and a note the
+ * canvas reads back and draws. */
 
-#include "osos-2.0.5.h" /* the BMap layout of the Settings pane icon */
 #include "rv_api.h"
 #include "rv_menus.h"
 #include "rv_ui.h"
@@ -103,10 +104,44 @@ static int moon_select(uint32_t index)
 }
 
 /* Canvas: swatches of the colour roles, a line in each font, a box the wheel
- * moves and Select recolours, and the last input in the corner. */
+ * moves and Select recolours, a bitmap drawn by name and the same bitmap from
+ * the extension's own copy (loaded on the first draw, freed when Menu closes
+ * the canvas), what asset_load and asset_read returned, and the last input in
+ * the corner. */
 static int box_left = 120;
 static uint8_t box_red;
 static const char *last_input = "No input yet";
+static char loaded[40] = "asset_load failed";
+static char read_back[24] = "asset_read failed";
+static void *disc; /* the "disc" asset, for gfx->bmap while the canvas is open */
+
+static void copy_text(char *to, const char *prefix, const char *from, uint32_t bytes, uint32_t room)
+{
+    uint32_t n = 0;
+    while (*prefix && n < room - 1)
+        to[n++] = *prefix++;
+    for (uint32_t i = 0; i < bytes && n < room - 1 && from[i] != '\n'; i++)
+        to[n++] = from[i];
+    to[n] = 0;
+}
+
+static void read_assets(void)
+{
+    uint32_t bytes = 0, got = 0;
+    char *note = api->asset_load(self, "note", &bytes);
+    if (note) {
+        copy_text(loaded, "Load: ", note, bytes, sizeof loaded);
+        api->free(self, note);
+    }
+    char part[9];
+    if (api->asset_read(self, "note-raw", 7, part, sizeof part, &got) == RV_OK)
+        copy_text(read_back, "Read: ", part, got, sizeof read_back);
+}
+
+static void unload(void)
+{
+    api->free(self, disc); /* the canvas may be open */
+}
 
 static void canvas_draw(const struct rv_gfx *g, int width, int height)
 {
@@ -128,8 +163,15 @@ static void canvas_draw(const struct rv_gfx *g, int width, int height)
 
     struct rv_rect box = {(int16_t)box_left, (int16_t)y, 40, 40};
     g->fill(&box, box_red ? RV_RGB(204, 51, 0) : RV_RGB(0, 102, 204));
+    g->bitmap(4, y, RV_BITMAP("disc"));
+    if (!disc)
+        disc = api->asset_load(self, "disc", 0);
+    if (disc)
+        g->bmap(60, y, disc);
 
     int line = g->line_height(RV_FONT_TEXT);
+    g->text(4, y + 52, RV_FONT_TEXT, g->color(RV_COLOR_TEXT), loaded);
+    g->text(4, y + 52 + line, RV_FONT_TEXT, g->color(RV_COLOR_TEXT), read_back);
     g->text(4, height - line - 2, RV_FONT_TEXT, g->color(RV_COLOR_DIM), "Wheel moves, Select recolours");
     g->text(width - g->measure(RV_FONT_TEXT, last_input) - 4, height - 2 * line - 2, RV_FONT_TEXT,
             g->color(RV_COLOR_HIGHLIGHT), last_input);
@@ -143,6 +185,8 @@ static int canvas_input(const struct rv_input *input)
         box_left += input->delta * 8;
         box_left = box_left < 0 ? 0 : box_left > 280 ? 280 : box_left;
     } else if (input->key == RV_KEY_MENU) {
+        api->free(self, disc);
+        disc = 0;
         return 0; /* left to the system, which pops the canvas */
     } else if (input->kind == RV_INPUT_PRESS) {
         last_input = keys[input->key];
@@ -231,35 +275,9 @@ static const struct rv_screen screens[] = {
     RV_TEXT("entries", "Entries", entries_text),
 };
 
-/* The Settings pane icon: a 48 x 48 indexed BMap of a blue disc, palette
- * entries B, G, R, A. Built when the module loads.
- * TODO: replace with the SDK's PNG converter once it exists. */
-#define ICON_SIZE 48
-static uint32_t icon[(BMap_payload + 4 + 2 * 4 + ICON_SIZE * ICON_SIZE + 3) / 4];
-
-static void build_icon(void)
-{
-    static const uint8_t palette[2][4] = {{0, 0, 0, 0}, {204, 102, 0, 255}};
-    uint8_t *b = (uint8_t *)icon, *pixels = b + BMap_payload + 4 + sizeof palette;
-    *(uint16_t *)(b + BMap_format) = BMapFormat_Indexed8;
-    *(uint16_t *)(b + BMap_stride) = ICON_SIZE;
-    *(uint16_t *)(b + BMap_depth) = 8;
-    int32_t *bounds = (int32_t *)(b + BMap_bounds);
-    bounds[2] = bounds[3] = ICON_SIZE;
-    *(uint32_t *)(b + BMap_payload_bytes) = 4 + sizeof palette + ICON_SIZE * ICON_SIZE;
-    *(uint32_t *)(b + BMap_payload) = RV_COUNT(palette);
-    for (unsigned i = 0; i < sizeof palette; i++)
-        b[BMap_payload + 4 + i] = palette[i / 4][i % 4];
-    for (int y = 0; y < ICON_SIZE; y++)
-        for (int x = 0; x < ICON_SIZE; x++) {
-            int dx = 2 * x + 1 - ICON_SIZE, dy = 2 * y + 1 - ICON_SIZE;
-            pixels[y * ICON_SIZE + x] = dx * dx + dy * dy < ICON_SIZE * ICON_SIZE ? 1 : 0;
-        }
-}
-
 static const struct rv_entry entries[] = {
     RV_ENTRY("settings", RV_SETTINGS_LEGAL, RV_PUSH("UI Showcase", "menu"),
-             .caption = "Every SDK screen", .bitmap = (const struct rv_bitmap *)icon),
+             .caption = "Every SDK screen", .bitmap = RV_BITMAP("pane")),
     RV_ENTRY("main", RV_MAIN_EXTRAS, RV_PUSH("UI Showcase", "menu")),
     /* Hidden by default; spelt out because RV_ENTRY sets .visible = 1 and
      * -Werror=override-init refuses a second initializer. */
@@ -273,12 +291,13 @@ static const struct rv_entry entries[] = {
 
 static const struct rv_extension extension = {
     .size = sizeof extension, RV_SETTINGS(settings), RV_SCREENS(screens), RV_ENTRIES(entries),
+    .unload = unload,
 };
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)
 {
     api = core;
     self = handle;
-    build_icon();
+    read_assets();
     return &extension;
 }

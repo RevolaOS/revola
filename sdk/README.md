@@ -11,11 +11,10 @@ Headers, linker script, tools and Make include for building extensions against o
 | `rv_firmware.h`, `rv_firmware.mk` | `RV_FIRMWARE_ID` of the Apple firmware the symbols describe; the loader refuses a module built for another |
 | `osos-2.0.5.h`, `osos-2.0.5.ld` | Apple functions, data, constants and struct offsets by name; modules call Apple directly |
 | `rvx.lds` | module layout: linked at 0, text, rodata, data and bss in one segment |
-| `rvx-pack` | ELF to `.rvx` (Python 3.11+, needs the `arm-elf-eabi-` binutils) |
-| `manifest` | `manifest.toml` to `manifest.bin` |
-| `rv.mk` | Make include: set `ID`, `MODULES` and `<module>_SOURCES` (and `<module>_ARM_SOURCES`), include it, run `make` |
+| `rvx-pack`, `manifest.py`, `bitmap.py` | `manifest.toml`, the module ELFs and the assets to the extension's one `.rvx` (Python 3.11+, needs the `arm-elf-eabi-` binutils); `manifest.toml` is described at the top of `manifest.py` |
+| `rv.mk` | Make include: set `ID`, `MODULES` (in the manifest's order) and `<module>_SOURCES` (and `<module>_ARM_SOURCES`), include it, run `make` |
 
-A module exports `rvx_entry` (see `rv_entry_fn`). The main module returns a `struct rv_extension`; its hooks are bound in order and a conflict fails the load with the site named in Settings > Extensions. Install the output directory as `/Revola/Extensions/<id>/`.
+A module exports `rvx_entry` (see `rv_entry_fn`). The main module returns a `struct rv_extension`; its hooks are bound in order and a conflict fails the load with the site named in Settings > Extensions. Install `build/<id>.rvx` as `/Revola/Extensions/<id>.rvx`.
 
 ## Declaring UI
 
@@ -31,9 +30,21 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | `RV_CANVAS(name, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, colour roles themes can change) and reads wheel and key input |
 | `RV_ENTRY(menu, after, row)` | a row in `"main"`, `"music"`, `"extras"`, `"settings"`, a long-press menu (`"nowplaying"`, `"song"`, `"album"`, `"artist"`) or a container, after a stock row from `rv_menus.h`; under Settings `.caption` and `.bitmap` fill the preview pane |
 
-Screen names are local to the extension; `api->ui_push(self, name)` opens one from a row, choice or input callback. Labels, paragraphs and bitmaps are read from the module while a screen is open, never copied. Nothing about the firmware's own resources appears in a UI declaration; the symbols header is for hooks.
+Screen names are local to the extension; `api->ui_push(self, name)` opens one from a row, choice or input callback. Labels and paragraphs are read from the module while a screen is open, never copied. Nothing about the firmware's own resources appears in a UI declaration; the symbols header is for hooks.
 
-For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
+## Assets
+
+`[[asset]]` tables in `manifest.toml` put files into the `.rvx`: a `.png` becomes a bitmap, anything else data. Find them by name with `api->asset_load` (a decoded copy, freed with `api->free`) and `api->asset_read` (part of an asset stored with `compress = false`). Draw a bitmap with `RV_BITMAP("name")`.
+
+| Key | Meaning |
+|---|---|
+| `resident = true` | in RAM, as stored, while the extension is loaded: no disk access to use it. For what a screen needs at once, such as icons and small tables |
+| `menu = true` | a menu bitmap, such as an entry's `.bitmap` in the Settings pane: like the stock icons, a 78 x 121 coverage mask the system draws in its own colour, from the PNG's alpha (or its gray level when it is opaque grayscale) |
+| `compress = false` | data only: stored raw, so `asset_read` can seek in it. Bitmaps are always compressed |
+
+The core decodes only the menu bitmap shown and keeps a canvas's bitmaps decoded while the canvas is open, so `gfx->bitmap` costs a decode on the first draw only. Everything decoded is counted against the extension.
+
+For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest.py`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
 
 Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library; only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.
 

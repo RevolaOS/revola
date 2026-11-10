@@ -11,6 +11,7 @@
 
 #include "ui/panes.h"
 #include "osos-2.0.5.h"
+#include "ui/bitmaps.h"
 #include "ui/clones.h"
 #include "ui/menus.h"
 #include "ui/resources.h"
@@ -160,10 +161,11 @@ void core_panes_show(uint32_t item)
 int core_panes_property(uint32_t type, uint32_t id, uint32_t out)
 {
     const struct rv_entry *e;
-    if (!layout || id - CAPTION >= 3 || !(e = core_menus_entry(current)))
+    struct rv_extension_record *owner;
+    if (!layout || id - CAPTION >= 3 || !(e = core_menus_entry(current, &owner)))
         return 0;
     if (id == ICON && type == Property_Bitmap)
-        *(const void **)out = e->bitmap;
+        *(const void **)out = core_bitmap(owner, e->bitmap);
     else if (id != ICON && type == Property_String)
         *(const char **)out = id == CAPTION ? e->row.label : e->caption ? e->caption : "";
     else

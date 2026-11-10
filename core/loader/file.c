@@ -27,6 +27,11 @@ int core_file_read(void *handle, void *buffer, uint32_t bytes, uint32_t *got)
     return File_ReadLegacyHandle(handle, buffer, bytes, 0, got) == 0;
 }
 
+int core_file_seek(void *handle, uint32_t offset)
+{
+    return File_SeekLegacyHandle(handle, offset) == 0;
+}
+
 int core_file_write(void *handle, const void *buffer, uint32_t bytes)
 {
     uint32_t written = 0;

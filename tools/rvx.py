@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""rvx-pack: turn an ELF linked at address 0 into a flat .rvx module image.
+"""rvx-pack: build an extension's one .rvx file from its manifest.toml, module
+ELFs and assets.
 
-    rvx-pack module.elf module.rvx --module ext/main --api 1.0 --firmware 0x660eb6ff
+    rvx-pack hello.rvx manifest.toml main.elf editor.elf --api 1.7 \
+        --firmware 0x660eb6ff
 
-The ELF is linked with the SDK linker script and --emit-relocs, so the
-R_ARM_ABS32 entries survive; text, rodata, data and bss form one segment.
-Ships in the SDK tarball, so it depends on nothing outside this file.
+The ELFs come in the manifest's module order, main first. Each is linked at
+address 0 with the SDK linker script and --emit-relocs, so the R_ARM_ABS32
+entries survive; text, rodata, data and bss form one segment. Asset files are
+relative to manifest.toml. The file layout and the lz codec are in the core's
+loader/rvx.h. Ships in the SDK tarball with manifest.py and bitmap.py beside it.
 """
 
 import argparse
@@ -14,23 +18,45 @@ import re
 import struct
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+
+import bitmap
+import manifest
 
 MAGIC = 0x30585652  # RVX0
 FORMAT = 1
-HEADER = struct.Struct("<10I")
-FIELDS = (
+HEADER = struct.Struct("<7I")
+ENTRY = struct.Struct("<IBBBBIII")
+MODULE = struct.Struct("<5I")
+HEADER_FIELDS = (
     "magic",
     "format",
     "api",
     "firmware",
-    "module",
-    "text",
-    "data",
-    "bss",
-    "relocations",
-    "entry",
+    "manifest",
+    "entries",
+    "resident",
 )
+ENTRY_FIELDS = (
+    "name",
+    "kind",
+    "codec",
+    "flags",
+    "reserved",
+    "offset",
+    "stored",
+    "bytes",
+)
+MODULE_FIELDS = ("text", "data", "bss", "relocations", "entry")
+KIND_MODULE, KIND_DATA, KIND_BITMAP = 0, 1, 2
+KINDS = ("module", "data", "bitmap")
+RAW, LZ = 0, 1
+WINDOW = 4096
+MIN_MATCH = 3
+CHAIN = 48  # earlier positions tried per match search
+MANIFEST_MAGIC = 0x464D5652  # RVMF
+MANIFEST_VERSION = 2
 SYMBOLS = ("__data_start", "__data_end", "__bss_end", "rvx_entry")
 RELOCATION_SECTIONS = {
     ".rel.text",
@@ -55,10 +81,123 @@ RELATIVE_RELOCATIONS = {
 
 
 def fnv1a(text):
-    hash_ = 2166136261
+    """The catalog name of a module or asset; the core hashes the same way."""
+    value = 2166136261
     for byte in text.encode():
-        hash_ = ((hash_ ^ byte) * 16777619) & 0xFFFFFFFF
-    return hash_
+        value = (value ^ byte) * 16777619 & 0xFFFFFFFF
+    return value
+
+
+def padded(data):
+    return data + bytes(-len(data) % 4)
+
+
+def lz_match(data, i, positions):
+    """Longest match for data[i:] among earlier positions in the window."""
+    best_length = best_distance = 0
+    limit = len(data) - i
+    for j in reversed(positions[-CHAIN:]):
+        distance = i - j
+        if distance > WINDOW:
+            break
+        length = MIN_MATCH
+        while length < limit and data[j + length] == data[i + length]:
+            length += 1
+        if length > best_length:
+            best_length, best_distance = length, distance
+            if length == limit:
+                break
+    return best_length, best_distance
+
+
+def lz_encode(data):
+    """The lz stream for `data`: greedy matching with one step of lookahead."""
+    heads = {}
+    items = []
+
+    def remember(i):
+        if i + MIN_MATCH <= len(data):
+            chain = heads.setdefault(data[i : i + MIN_MATCH], [])
+            chain.append(i)
+            if len(chain) > 2 * CHAIN:
+                del chain[:CHAIN]
+
+    def search(i):
+        if i + MIN_MATCH > len(data):
+            return 0, 0
+        return lz_match(data, i, heads.get(data[i : i + MIN_MATCH], []))
+
+    i = 0
+    pending = search(0)
+    while i < len(data):
+        length, distance = pending
+        if length:
+            remember(i)
+            ahead = search(i + 1)
+            if ahead[0] > length + 1:
+                items.append(bytes((data[i],)))
+                i += 1
+                pending = ahead
+                continue
+            extra = length - MIN_MATCH
+            nibble = min(extra, 15)
+            match = bytes((nibble << 4 | (distance - 1) >> 8, (distance - 1) & 0xFF))
+            if nibble == 15:
+                extra -= 15
+                match += b"\xff" * (extra // 255) + bytes((extra % 255,))
+            items.append(match)
+            for k in range(i + 1, i + length):
+                remember(k)
+            i += length
+        else:
+            items.append(bytes((data[i],)))
+            remember(i)
+            i += 1
+        pending = search(i)
+    out = bytearray()
+    for group in range(0, len(items), 8):
+        chunk = items[group : group + 8]
+        out.append(sum(1 << bit for bit, item in enumerate(chunk) if len(item) > 1))
+        for item in chunk:
+            out += item
+    return bytes(out)
+
+
+def lz_decode(stream, size):
+    """`size` bytes decoded from an lz stream, which must end exactly there."""
+    out = bytearray()
+    at = 0
+    try:
+        while len(out) < size:
+            flags = stream[at]
+            at += 1
+            for bit in range(8):
+                if len(out) == size:
+                    break
+                if not flags >> bit & 1:
+                    out.append(stream[at])
+                    at += 1
+                    continue
+                high, low = stream[at], stream[at + 1]
+                at += 2
+                length = (high >> 4) + MIN_MATCH
+                distance = ((high & 15) << 8 | low) + 1
+                if high >> 4 == 15:
+                    while True:
+                        more = stream[at]
+                        at += 1
+                        length += more
+                        if more != 255:
+                            break
+                if distance > len(out) or len(out) + length > size:
+                    raise ValueError("lz match outside the output")
+                for _ in range(length):
+                    out.append(out[-distance])
+    except IndexError:
+        raise ValueError("lz stream ends early") from None
+    if at != len(stream):
+        raise ValueError("lz stream continues past its output")
+    return bytes(out)
 
 
 def api_word(version):
@@ -119,14 +258,20 @@ def relocations(prefix, elf):
     return abs32_offsets(run([prefix + "readelf", "-rW", elf]), absolute)
 
 
-def pack_image(values, image, offsets, api, firmware, module):
-    """Header, text+data and the relocation table for an image whose symbols are
-    `values`; `image` is the raw binary from address 0."""
+def module_image(values, image, offsets):
+    """The payload of one module: struct rvx_module, text and data, then the
+    relocation table. `values` are its symbols, `image` the raw binary from
+    address 0."""
     for name in SYMBOLS:
         if name not in values:
             raise ValueError(f"missing symbol {name}")
     data_start, data_end, bss_end, entry = (values[n] for n in SYMBOLS)
-    if not 0 <= data_start <= data_end <= bss_end or data_end % 4 or bss_end % 4:
+    if (
+        not 0 <= data_start <= data_end <= bss_end
+        or data_start % 4
+        or data_end % 4
+        or bss_end % 4
+    ):
         raise ValueError("segment layout is not text, data, bss in order")
     if (entry & ~1) >= data_start:
         raise ValueError(f"entry outside text: {entry:#x}")
@@ -134,50 +279,226 @@ def pack_image(values, image, offsets, api, firmware, module):
         if offset % 4 or offset > data_end - 4:
             raise ValueError(f"relocation outside image: {offset:#x}")
     body = bytes(image).ljust(data_end, b"\0")[:data_end]
-    header = HEADER.pack(
-        MAGIC,
-        FORMAT,
-        api,
-        firmware,
-        module,
+    fields = (
         data_start,
         data_end - data_start,
         bss_end - data_end,
         len(offsets),
         entry,
     )
-    return header + body + b"".join(struct.pack("<I", o) for o in offsets)
+    return MODULE.pack(*fields) + body + b"".join(struct.pack("<I", o) for o in offsets)
 
 
-def unpack_header(data):
+def asset_payload(path, menu=False):
+    """Kind and bytes of an asset file: a .png becomes a bitmap, a menu bitmap
+    when `menu` is set; the rest is data."""
+    data = Path(path).read_bytes()
+    if Path(path).suffix.lower() == ".png":
+        return KIND_BITMAP, bitmap.png_to_bmap(data, menu)
+    return KIND_DATA, data
+
+
+def manifest_modules(compiled):
+    """The module count of a compiled manifest, after checking its header."""
+    if len(compiled) < 20 or struct.unpack_from("<II", compiled) != (
+        MANIFEST_MAGIC,
+        MANIFEST_VERSION,
+    ):
+        raise ValueError(f"not a version {MANIFEST_VERSION} manifest")
+    return struct.unpack_from("<I", compiled, 16)[0]
+
+
+def pack_extension(compiled, modules, assets, api, firmware):
+    """The .rvx bytes and its entries in catalog order. `modules` are
+    (name, payload) pairs in manifest order; `assets` are dictionaries with
+    name, kind, data, resident and compress."""
+    if len(modules) != manifest_modules(compiled):
+        raise ValueError(
+            f"the manifest lists {manifest_modules(compiled)} modules, got {len(modules)}"
+        )
+    entries = [
+        {
+            "name": name,
+            "kind": KIND_MODULE,
+            "codec": RAW,
+            "stored": payload,
+            "bytes": len(payload),
+        }
+        for name, payload in modules
+    ]
+    for asset in sorted(assets, key=lambda a: not a["resident"]):
+        data, codec = asset["data"], RAW
+        if asset["compress"]:
+            packed = lz_encode(data)
+            if len(packed) < len(data):
+                data, codec = packed, LZ
+        entries.append(
+            {
+                "name": asset["name"],
+                "kind": asset["kind"],
+                "codec": codec,
+                "stored": data,
+                "bytes": len(asset["data"]),
+                "resident": asset["resident"],
+            }
+        )
+    seen = {}
+    for entry in entries:
+        other = seen.setdefault(fnv1a(entry["name"]), entry)
+        if other is not entry:
+            raise ValueError(
+                f"{entry['name']!r} and {other['name']!r} have the same catalog name"
+            )
+    count, resident = len(modules), sum(a["resident"] for a in assets)
+    # Payloads in load order: main, resident assets, other modules, the rest.
+    order = [
+        0,
+        *range(count, count + resident),
+        *range(1, count),
+        *range(count + resident, len(entries)),
+    ]
+    offset = HEADER.size + len(padded(compiled)) + len(entries) * ENTRY.size
+    for index in order:
+        entries[index]["offset"] = offset
+        offset += len(padded(entries[index]["stored"]))
+    header = HEADER.pack(
+        MAGIC, FORMAT, api, firmware, len(compiled), len(entries), resident
+    )
+    catalog = b"".join(
+        ENTRY.pack(
+            fnv1a(e["name"]),
+            e["kind"],
+            e["codec"],
+            0,
+            0,
+            e["offset"],
+            len(e["stored"]),
+            e["bytes"],
+        )
+        for e in entries
+    )
+    payloads = b"".join(padded(entries[index]["stored"]) for index in order)
+    return header + padded(compiled) + catalog + payloads, entries
+
+
+def unpack(data):
+    """Header and catalog of a .rvx, checked as the core checks them; module
+    entries carry their struct rvx_module fields."""
     if len(data) < HEADER.size:
         raise ValueError("short header")
-    header = dict(zip(FIELDS, HEADER.unpack_from(data)))
+    header = dict(zip(HEADER_FIELDS, HEADER.unpack_from(data)))
     if header["magic"] != MAGIC or header["format"] != FORMAT:
-        raise ValueError("not an rvx v1 image")
-    return header
+        raise ValueError(f"not an rvx format {FORMAT} file")
+    compiled = data[HEADER.size : HEADER.size + header["manifest"]]
+    count = manifest_modules(compiled)
+    at = HEADER.size + ((header["manifest"] + 3) & ~3)
+    end = at + header["entries"] * ENTRY.size
+    if header["entries"] < count or header["resident"] > header["entries"] - count:
+        raise ValueError("catalog does not hold the manifest's modules and residents")
+    if end > len(data):
+        raise ValueError("catalog past the end of the file")
+    entries = []
+    for index in range(header["entries"]):
+        entry = dict(
+            zip(ENTRY_FIELDS, ENTRY.unpack_from(data, at + index * ENTRY.size))
+        )
+        if (entry["kind"] == KIND_MODULE) != (index < count) or entry[
+            "kind"
+        ] > KIND_BITMAP:
+            raise ValueError(f"entry {index} has the wrong kind")
+        if (
+            entry["codec"] > LZ
+            or entry["codec"] == RAW
+            and entry["stored"] != entry["bytes"]
+        ):
+            raise ValueError(f"entry {index} has a bad codec")
+        if (
+            entry["offset"] % 4
+            or entry["offset"] < end
+            or entry["offset"] + entry["stored"] > len(data)
+        ):
+            raise ValueError(f"entry {index} payload outside the file")
+        if index < count:
+            if entry["codec"] != RAW or entry["stored"] < MODULE.size:
+                raise ValueError(f"module {index} is not a raw module payload")
+            module = dict(zip(MODULE_FIELDS, MODULE.unpack_from(data, entry["offset"])))
+            if (
+                MODULE.size
+                + module["text"]
+                + module["data"]
+                + 4 * module["relocations"]
+                != entry["stored"]
+            ):
+                raise ValueError(f"module {index} size differs from its header")
+            entry.update(module)
+        entry["resident"] = count <= index < count + header["resident"]
+        entries.append(entry)
+    return header, entries
 
 
-def pack(prefix, elf, out, api, firmware, module):
+def payload(data, entry):
+    """The decoded bytes of a catalog entry."""
+    stored = data[entry["offset"] : entry["offset"] + entry["stored"]]
+    return stored if entry["codec"] == RAW else lz_decode(stored, entry["bytes"])
+
+
+def read_module(prefix, elf, scratch):
     values = symbols(prefix, elf)
-    raw = out.with_suffix(".bin")
-    run([prefix + "objcopy", "-O", "binary", elf, raw])
-    image = raw.read_bytes()
-    raw.unlink()
-    offsets = relocations(prefix, elf)
-    packed = pack_image(values, image, offsets, api, firmware, module)
+    run([prefix + "objcopy", "-O", "binary", elf, scratch])
+    image = scratch.read_bytes()
+    scratch.unlink()
+    return module_image(values, image, relocations(prefix, elf))
+
+
+def warnings(toml, document):
+    if toml.resolve().parent.name not in ("", document.get("id")):
+        yield f"directory is not named {document.get('id')}"
+    for site in document.get("site", []):
+        yield (
+            f"raw site {site.get('name')} at {site.get('address', 0):#x};"
+            " ask for a core site so others can share it"
+        )
+
+
+def pack(prefix, out, toml, elves, api, firmware):
+    document = tomllib.loads(toml.read_text())
+    for warning in warnings(toml, document):
+        print(f"warning: {warning}", file=sys.stderr)
+    compiled = manifest.compile_manifest(document)
+    names = [module["name"] for module in document["module"]]
+    if len(elves) != len(names):
+        raise ValueError(
+            f"the manifest lists {len(names)} modules, got {len(elves)} ELFs"
+        )
+    scratch = out.with_suffix(".bin")
+    modules = [
+        (name, read_module(prefix, elf, scratch)) for name, elf in zip(names, elves)
+    ]
+    assets = []
+    for asset in manifest.assets(document):
+        kind, data = asset_payload(toml.parent / asset["file"], asset["menu"])
+        assets.append({**asset, "kind": kind, "data": data})
+    packed, entries = pack_extension(compiled, modules, assets, api, firmware)
+    checked_entries = unpack(packed)[1]
     out.write_bytes(packed)
-    header = unpack_header(packed)
-    print(
-        f"{out.name}: text {header['text']}, data {header['data']}, "
-        f"bss {header['bss']}, {header['relocations']} relocations"
-    )
+    for entry, checked in zip(entries, checked_entries):
+        if checked["kind"] == KIND_MODULE:
+            detail = (
+                f"text {checked['text']}, data {checked['data']}, bss {checked['bss']}, "
+                f"{checked['relocations']} relocations"
+            )
+        else:
+            codec = "lz" if checked["codec"] == LZ else "raw"
+            where = "resident" if checked["resident"] else "on disk"
+            detail = f"{KINDS[checked['kind']]}, {where}, {checked['stored']} bytes stored ({codec}), {checked['bytes']} decoded"
+        print(f"{out.name} {entry['name']}: {detail}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("elf", type=Path)
     parser.add_argument("out", type=Path)
+    parser.add_argument("toml", type=Path, metavar="manifest.toml")
+    parser.add_argument("elves", type=Path, nargs="+", metavar="elf")
     parser.add_argument("--prefix", default="arm-elf-eabi-")
     parser.add_argument("--api", required=True, help="core API major.minor")
     parser.add_argument(
@@ -186,16 +507,18 @@ def main():
         type=lambda v: int(v, 0),
         help="firmware build id (RV_FIRMWARE_ID)",
     )
-    parser.add_argument("--module", required=True, help="<extension id>/<module name>")
     args = parser.parse_args()
-    pack(
-        args.prefix,
-        args.elf,
-        args.out,
-        api_word(args.api),
-        args.firmware,
-        fnv1a(args.module),
-    )
+    try:
+        pack(
+            args.prefix,
+            args.out,
+            args.toml,
+            args.elves,
+            api_word(args.api),
+            args.firmware,
+        )
+    except ValueError as error:
+        sys.exit(f"rvx-pack: {error}")
 
 
 if __name__ == "__main__":

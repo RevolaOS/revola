@@ -36,8 +36,8 @@ const char *core_menus_label(uint8_t root, uint32_t n, int *visible, uint32_t *a
 void core_menus_toggle(uint8_t root, uint32_t n);
 /* Redraws the value of every row of `owner` that shows the setting `key`. */
 void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key);
-/* The live entry of the row with this item id, or NULL. */
-const struct rv_entry *core_menus_entry(uint32_t item);
+/* The live entry of the row with this item id and *owner its extension, or NULL. */
+const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner);
 /* 1 when `id` is a Settings row's pane handler id; shows that row in the pane
  * unless `argument` is the support query. */
 int core_menus_pane(uint32_t id, uint32_t argument);

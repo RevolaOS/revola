@@ -46,7 +46,7 @@ static void draw(void *view, void *argument, const int32_t *clip)
     GraphicsContext_ConstructDefault(context);
     View_BindGraphicsContext(view, context);
     View_GetLocalContentRect(view, bounds);
-    core_gfx_begin(context, bounds);
+    core_gfx_begin(context, bounds, s);
     s->declaration->canvas.draw(&core_gfx, bounds[3] - bounds[1], bounds[2] - bounds[0]);
 }
 

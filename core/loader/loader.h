@@ -6,6 +6,8 @@
 #include "osos-2.0.5.h"
 #include <stdint.h>
 
+struct rvx_entry;
+
 /* Owner of the extension whose code was running at the last panic; survives a
  * warm reset so the next boot disables it. Below the companion's context word
  * at the top of IRAM; neither Apple's warm-boot descriptor (IRAM_BASE + 0x3ff00
@@ -30,9 +32,9 @@ enum core_extension_failure {
 struct rv_extension_record {
     struct rv_extension_record *next;
     uint32_t owner;      /* FNV-1a of the manifest id; the settings owner */
-    uint8_t *manifest;   /* manifest.bin as read; strings and module records live here */
+    uint8_t *manifest;   /* the manifest as read; strings and module records live here */
     uint32_t manifest_bytes;
-    char directory[33];  /* the directory entry as the scan returned it */
+    char file[33];       /* the file name as the scan returned it, without .rvx */
     uint8_t failure;
     uint8_t module_count;
     uint8_t pending_unload;
@@ -46,14 +48,19 @@ struct rv_extension_record {
     struct core_hook *hooks; /* core-owned copies of the descriptor's hooks */
     struct rv_screen *setting_screens; /* screens the declared settings open, or NULL */
     struct core_module *modules;
+    /* While the main module is loaded: resident_count catalog entries with
+     * offsets into this block, then their payloads as stored; NULL for none. */
+    struct rvx_entry *resident;
+    uint32_t resident_count;
+    uint32_t entry_count; /* catalog entries in the file */
 };
 
 /* Reads the store state and loads every enabled extension. Runs once the disk
  * is readable, after the settings store loaded. */
 void core_loader_boot(void);
 /* Settings > Extensions: writes the enabled flag; loads now or unloads at the
- * next grace tick. `directory` is the entry name on disk. */
-int core_loader_set_enabled(const char *directory, int enabled);
+ * next grace tick. `file` is the name on disk without .rvx. */
+int core_loader_set_enabled(const char *file, int enabled);
 /* Grace point: frees retired images, unloads what was disabled, ages idle
  * screen modules. */
 void core_loader_tick(void);
@@ -68,12 +75,28 @@ uint32_t core_loader_total_bytes(void);
 
 /* One installed extension as Settings > Extensions lists it. */
 struct core_installed {
-    char directory[33];
+    char file[33];
     char name[23];
     uint32_t owner;
+    uint8_t duplicate; /* another file with this id loads instead */
 };
-/* Scans the directory and reads each manifest's name; entries found. */
+/* Scans the extensions and reads each manifest's name; entries found. */
 uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity);
+
+/* The resident asset `name` (FNV-1a) of `record`: its payload as stored in RAM
+ * and *entry its catalog entry, or NULL. */
+const void *core_loader_resident(const struct rv_extension_record *record, uint32_t name,
+                                 const struct rvx_entry **entry);
+/* The asset `name` decoded into a block counted to `record`, *bytes its size and
+ * *kind its RVX_ kind; NULL when missing, damaged or out of memory. Free it with
+ * core_loader_retire. */
+void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
+                        uint8_t *kind);
+/* Frees a loader block two grace ticks from now, when Apple can no longer be
+ * drawing from it. */
+void core_loader_retire(void *block);
+/* Frees a block of core_loader_asset now. */
+void core_loader_free(struct rv_extension_record *record, void *block);
 /* The record of an enabled extension by owner, NULL when disabled or absent. */
 struct rv_extension_record *core_loader_find(uint32_t owner);
 

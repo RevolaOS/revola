@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""manifest.bin layout and the rules manifest.toml must follow."""
+"""The compiled manifest layout and the rules manifest.toml must follow."""
 
 import struct
 import unittest
@@ -42,7 +42,14 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(len(data), table + bytes_)
         self.assertEqual(
             [strings(data, table, t) for t in texts],
-            ["hello_world", "Hello World", "Says hello", "0.1.0", "Paul", "GPL-3.0-only"],
+            [
+                "hello_world",
+                "Hello World",
+                "Says hello",
+                "0.1.0",
+                "Paul",
+                "GPL-3.0-only",
+            ],
         )
         modules = [
             manifest.MODULE.unpack_from(
@@ -50,16 +57,15 @@ class ManifestTests(unittest.TestCase):
             )
             for i in range(count)
         ]
-        name, file, trigger, screens, first = modules[1]
+        name, trigger, screens, first = modules[1]
         self.assertEqual(
-            (strings(data, table, name), strings(data, table, file), trigger, screens),
-            ("editor", "editor.rvx", 1, 2),
+            (strings(data, table, name), trigger, screens), ("editor", 1, 2)
         )
         self.assertEqual(strings(data, table, first), "editor")
         after = first + len("editor") + 1
         self.assertEqual(strings(data, table, after), "x")
-        self.assertEqual(modules[0][2:4], (0, 0))
-        self.assertEqual(modules[2][2:4], (2, 0))
+        self.assertEqual(modules[0][1:3], (0, 0))
+        self.assertEqual(modules[2][1:3], (2, 0))
 
     def test_enabled_flag(self):
         data = manifest.compile_manifest({**DOCUMENT, "enabled": True})
@@ -77,11 +83,13 @@ class ManifestTests(unittest.TestCase):
         data = manifest.compile_manifest({**DOCUMENT, "site": [site, word]})
         count, sites, bytes_ = manifest.HEADER.unpack_from(data)[4:7]
         self.assertEqual(sites, 2)
-        start = manifest.HEADER.size + count * manifest.MODULE.size
-        table = start + sites * manifest.SITE.size
+        start = manifest.HEADER.size
+        table = start + sites * manifest.SITE.size + count * manifest.MODULE.size
         self.assertEqual(len(data), table + bytes_)
         address, expected, kind, argc, name = manifest.SITE.unpack_from(data, start)
-        self.assertEqual((address, expected, kind, argc), (0x08001000, 0xEB000010, 0, 2))
+        self.assertEqual(
+            (address, expected, kind, argc), (0x08001000, 0xEB000010, 0, 2)
+        )
         self.assertEqual(strings(data, table, name), "clear")
         self.assertEqual(
             manifest.SITE.unpack_from(data, start + manifest.SITE.size)[:4],
@@ -111,13 +119,17 @@ class ManifestTests(unittest.TestCase):
             with self.subTest(name), self.assertRaises(ValueError):
                 manifest.compile_manifest({**DOCUMENT, "site": [{**site, **change}]})
         with self.assertRaises(ValueError):
-            manifest.compile_manifest({**DOCUMENT, "site": [site, {**site, "name": "b"}]})
+            manifest.compile_manifest(
+                {**DOCUMENT, "site": [site, {**site, "name": "b"}]}
+            )
         with self.assertRaises(ValueError):
             manifest.compile_manifest(
                 {
                     **DOCUMENT,
-                    "site": [{**site, "name": f"s{i}", "address": 0x08001000 + 4 * i}
-                             for i in range(9)],
+                    "site": [
+                        {**site, "name": f"s{i}", "address": 0x08001000 + 4 * i}
+                        for i in range(9)
+                    ],
                 }
             )
 
@@ -151,3 +163,53 @@ class ManifestTests(unittest.TestCase):
                 del document["author"]
             with self.subTest(name), self.assertRaises(ValueError):
                 manifest.compile_manifest(document)
+
+    def test_assets_defaults_and_order(self):
+        document = {
+            **DOCUMENT,
+            "asset": [
+                {
+                    "name": "eq-icon",
+                    "file": "assets/eq.png",
+                    "resident": True,
+                    "menu": True,
+                },
+                {"name": "song", "file": "a.mp3", "compress": False},
+            ],
+        }
+        self.assertEqual(
+            manifest.assets(document),
+            [
+                {
+                    "name": "eq-icon",
+                    "file": "assets/eq.png",
+                    "resident": True,
+                    "compress": True,
+                    "menu": True,
+                },
+                {
+                    "name": "song",
+                    "file": "a.mp3",
+                    "resident": False,
+                    "compress": False,
+                    "menu": False,
+                },
+            ],
+        )
+        self.assertEqual(manifest.assets(DOCUMENT), [])
+
+    def test_rejects_invalid_assets(self):
+        good = {"name": "icon", "file": "icon.png"}
+        cases = {
+            "name": [{**good, "name": "Icon"}],
+            "long name": [{**good, "name": "x" * 32}],
+            "repeated": [good, good],
+            "no file": [{"name": "icon"}],
+            "resident not a flag": [{**good, "resident": 1}],
+            "unknown key": [{**good, "kind": "bitmap"}],
+            "uncompressed bitmap": [{**good, "compress": False}],
+            "menu data": [{"name": "song", "file": "a.mp3", "menu": True}],
+        }
+        for name, assets in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.assets({**DOCUMENT, "asset": assets})

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Compile an extension's manifest.toml into the manifest.bin the loader reads.
-
-    manifest manifest.toml manifest.bin
+"""Check an extension's manifest.toml and compile the manifest rvx-pack writes
+into the extension's .rvx.
 
 manifest.toml:
 
-    id = "hello_world"           # [a-z][a-z0-9_-]{0,31}, the directory name
+    id = "hello_world"           # [a-z][a-z0-9_-]{0,31}, the file name before .rvx
     name = "Hello World"
     description = "What it does"
     version = "0.1.0"
@@ -31,24 +30,31 @@ manifest.toml:
     expected = 0xEB001234        # the word there now; the core refuses a mismatch
     argc = 2                     # register arguments, at most 4; 0 for word
 
+    [[asset]]
+    name = "eq-icon"             # [a-z0-9_-]{1,31}
+    file = "assets/eq.png"       # .png becomes a bitmap, anything else is data
+    resident = true              # in RAM, compressed, while the extension is loaded
+    menu = true                  # a menu bitmap: 78 x 121 coverage, drawn in the system colour
+
+    [[asset]]
+    name = "song"
+    file = "song.mp3"
+    compress = false             # data only; keeps it raw so asset_read can seek
+
 Raw sites are for code no core site covers yet; first-party extensions use core
 sites only.
 
 Ships in the SDK tarball, so it depends on nothing outside this file.
 """
 
-import argparse
 import re
 import struct
-import sys
-import tomllib
-from pathlib import Path
 
 MAGIC = 0x464D5652  # RVMF
 VERSION = 2
 FLAG_ENABLED = 1
 HEADER = struct.Struct("<7I6H")
-MODULE = struct.Struct("<HHBBH")
+MODULE = struct.Struct("<HBBH")
 SITE = struct.Struct("<IIBBH")
 SITE_KINDS = {"call": 0, "vtable": 1, "word": 4}  # enum core_site_kind
 MAX_SITES = 8
@@ -58,6 +64,8 @@ TRIGGERS = {"always": 0, "screen": 1, "manual": 2}
 TEXT_FIELDS = ("id", "name", "description", "version", "author", "license")
 ID_PATTERN = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 MODULE_PATTERN = re.compile(r"[a-z0-9_-]+")
+ASSET_PATTERN = re.compile(r"[a-z0-9_-]{1,31}")
+ASSET_KEYS = {"name", "file", "resident", "compress", "menu"}
 LICENSES = {
     "GPL-3.0-only",
     "GPL-3.0-or-later",
@@ -73,7 +81,7 @@ LICENSES = {
     "0BSD",
     "Zlib",
 }
-MAX_MODULES = 15  # main and at most 14 more; the installer uploads 16 files
+MAX_MODULES = 15  # main and at most 14 more
 
 
 class Strings:
@@ -105,8 +113,10 @@ def compile_site(site, strings):
         raise ValueError(f"bad site name {name!r}")
     if kind not in SITE_KINDS:
         raise ValueError(f"site {name}: kind is call, vtable or word, not {kind!r}")
-    if not isinstance(address, int) or address % 4 or not (
-        RUNTIME_BASE <= address < NATIVE_HEAP_BASE
+    if (
+        not isinstance(address, int)
+        or address % 4
+        or not (RUNTIME_BASE <= address < NATIVE_HEAP_BASE)
     ):
         raise ValueError(f"site {name}: address must be a word inside the OSOS image")
     if not isinstance(expected, int) or not 0 <= expected <= 0xFFFFFFFF:
@@ -117,12 +127,14 @@ def compile_site(site, strings):
         raise ValueError(f"site {name}: argc is 0 to 4, and 0 for word")
     for field in ("chain", "mode"):
         if field in site:
-            raise ValueError(f"site {name}: raw sites are exclusive, {field} is not allowed")
+            raise ValueError(
+                f"site {name}: raw sites are exclusive, {field} is not allowed"
+            )
     return SITE.pack(address, expected, SITE_KINDS[kind], argc, strings.add(name))
 
 
 def compile_manifest(document):
-    """manifest.bin bytes for a parsed manifest.toml dictionary."""
+    """The compiled manifest for a parsed manifest.toml dictionary."""
     for field in TEXT_FIELDS:
         if field not in document:
             raise ValueError(f"missing {field}")
@@ -153,14 +165,12 @@ def compile_manifest(document):
         if trigger == "always" and module is not modules[0]:
             raise ValueError(f"module {name}: only main loads always")
         name_offset = strings.add(name)
-        file_offset = strings.add(name + ".rvx")
         screens_offset = strings.add(screens[0]) if screens else 0
         for screen in screens[1:]:
             strings.add(screen)
         records.append(
             MODULE.pack(
                 name_offset,
-                file_offset,
                 TRIGGERS[trigger],
                 len(screens),
                 screens_offset,
@@ -182,25 +192,39 @@ def compile_manifest(document):
         len(strings.data),
         *texts,
     )
-    return header + b"".join(records) + b"".join(site_records) + bytes(strings.data)
+    return header + b"".join(site_records) + b"".join(records) + bytes(strings.data)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("toml", type=Path)
-    parser.add_argument("out", type=Path)
-    args = parser.parse_args()
-    document = tomllib.loads(args.toml.read_text())
-    if args.toml.resolve().parent.name not in ("", document.get("id")):
-        print(f"warning: directory is not named {document.get('id')}", file=sys.stderr)
-    for site in document.get("site", []):
-        print(
-            f"warning: raw site {site.get('name')} at {site.get('address', 0):#x};"
-            " ask for a core site so others can share it",
-            file=sys.stderr,
+def assets(document):
+    """The manifest's assets in declaration order, checked, with defaults filled in."""
+    checked = []
+    for asset in document.get("asset", []):
+        name = asset.get("name", "")
+        if not isinstance(name, str) or not ASSET_PATTERN.fullmatch(name):
+            raise ValueError(f"bad asset name {name!r}")
+        if name in (a["name"] for a in checked):
+            raise ValueError(f"repeated asset name {name!r}")
+        if set(asset) - ASSET_KEYS:
+            raise ValueError(
+                f"asset {name}: unknown keys {sorted(set(asset) - ASSET_KEYS)}"
+            )
+        if not isinstance(asset.get("file"), str) or not asset["file"]:
+            raise ValueError(f"asset {name}: file is a path")
+        for key in ("resident", "compress", "menu"):
+            if not isinstance(asset.get(key, False), bool):
+                raise ValueError(f"asset {name}: {key} is true or false")
+        bitmap = asset["file"].lower().endswith(".png")
+        if bitmap and "compress" in asset:
+            raise ValueError(f"asset {name}: bitmaps are always compressed")
+        if asset.get("menu") and not bitmap:
+            raise ValueError(f"asset {name}: a menu bitmap is a .png")
+        checked.append(
+            {
+                "name": name,
+                "file": asset["file"],
+                "resident": asset.get("resident", False),
+                "compress": asset.get("compress", True),
+                "menu": asset.get("menu", False),
+            }
         )
-    args.out.write_bytes(compile_manifest(document))
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    return checked

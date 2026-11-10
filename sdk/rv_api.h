@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 6
+#define RV_API_MINOR 7
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -144,9 +144,14 @@ enum rv_layout {
     RV_LAYOUT_SPLIT, /* the list on the left, the Settings preview pane on the right */
 };
 
-/* A bitmap in the device's own format, lent by the module while it is loaded.
- * TODO: the SDK tool that makes one from a PNG. */
-struct rv_bitmap;
+/* A bitmap asset of the extension by name, from a PNG in manifest.toml:
+ * `.bitmap = RV_BITMAP("eq-icon")`. Menu bitmaps (an entry's .bitmap) are
+ * assets with `menu = true`: 78 x 121 coverage masks the system draws in its own
+ * colour, like the stock Settings icons; the core decodes only the one shown. */
+struct rv_bitmap {
+    const char *asset;
+};
+#define RV_BITMAP(name) (&(const struct rv_bitmap){(name)})
 
 /* Drawing, for canvas screens. Coordinates count from the top left of the
  * canvas, below the title bar; the canvas is clipped for the extension. */
@@ -180,6 +185,11 @@ struct rv_gfx {
     void (*text)(int x, int y, uint8_t font, rv_color color, const char *utf8);
     int (*measure)(uint8_t font, const char *utf8); /* width in pixels */
     int (*line_height)(uint8_t font);
+    /* A bitmap asset with its top left at (x, y); nothing when it is missing.
+     * The core decodes it on first use and keeps it until the canvas closes. */
+    void (*bitmap)(int x, int y, const struct rv_bitmap *bitmap);
+    /* A BMap the extension made or holds itself. */
+    void (*bmap)(int x, int y, const void *bmap);
 };
 
 enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
@@ -193,8 +203,8 @@ struct rv_input {
 
 /* A screen the core registers for the extension. `name` is what RV_ROW_PUSH,
  * ui_push and a module's manifest trigger call it, local to the extension.
- * Labels, text and bitmaps are read from the module while the screen is open;
- * nothing is copied. */
+ * Labels and text are read from the module while the screen is open; nothing
+ * is copied. */
 struct rv_screen {
     const char *name;
     const char *title;
@@ -252,12 +262,12 @@ struct rv_entry {
 };
 
 /* Where a debugger finds core state in memory. The record offsets are into the
- * loader's per-extension record; `directory` is a NUL-terminated name of at most
- * 32 bytes, `failure` a byte, the others words. */
+ * loader's per-extension record; `file` is the NUL-terminated file name without
+ * .rvx, at most 32 bytes, `failure` a byte, the others words. */
 struct rv_debug_info {
     uint32_t core_build;  /* the core's git revision, 8 hex digits */
     const void *extensions; /* address of the pointer to the first record */
-    uint16_t next, owner, directory, live, peak, failure;
+    uint16_t next, owner, file, live, peak, failure;
     const void *heap;     /* Apple's MainHeap */
 };
 
@@ -321,6 +331,16 @@ struct rv_api {
     void (*ui_invalidate)(rv_handle self);
 
     const struct rv_debug_info *(*debug_info)(void);
+
+    /* Assets from manifest.toml by name. asset_load returns the decoded asset in
+     * a block from alloc, *bytes its size, or NULL when it is missing, damaged or
+     * does not fit; free it with free. A resident asset is copied from RAM.
+     * asset_read copies up to `bytes` from `offset` of an asset stored raw
+     * (compress = false), *got the count; RV_BAD_ARGUMENT for a compressed one,
+     * RV_NOT_FOUND when it is missing or unreadable. */
+    void *(*asset_load)(rv_handle self, const char *name, uint32_t *bytes);
+    int (*asset_read)(rv_handle self, const char *name, uint32_t offset, void *out,
+                      uint32_t bytes, uint32_t *got);
 };
 
 /* Every module exports this. The entry of the main module returns the

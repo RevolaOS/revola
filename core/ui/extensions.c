@@ -91,6 +91,8 @@ static const char *row_text(uint32_t index)
     const struct core_installed *entry = &installed[index - 1];
     out = put_text(out, end, entry->name);
     out = put_text(out, end, ": ");
+    if (entry->duplicate)
+        return put_text(out, end, "Duplicate"), text;
     out = put_text(out, end, state_text(entry->owner));
     struct rv_extension_record *record = core_loader_find(entry->owner);
     if (record && record->failure == CORE_EXTENSION_OK && !record->pending_unload) {
@@ -167,8 +169,10 @@ static uint32_t action(uint32_t controller, uint32_t name, uint32_t argument,
     if (row >= row_count)
         return 0;
     const struct core_installed *entry = &installed[row - 1];
+    if (entry->duplicate)
+        return 1; /* its id's enabled flag belongs to the copy that loads */
     struct rv_extension_record *record = core_loader_find(entry->owner);
-    core_loader_set_enabled(entry->directory, !record || record->pending_unload);
+    core_loader_set_enabled(entry->file, !record || record->pending_unload);
     void *model = FIELD((void *)controller, ScreenController_settings_model, void *);
     void (*notify)(void *, uint32_t, uint32_t) =
         FIELD(FIELD(model, 0, void **), Model_notify_method, void *);

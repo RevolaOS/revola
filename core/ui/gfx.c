@@ -3,14 +3,18 @@
 /* The drawing table a canvas draws with: fills and text through the graphics
  * context the canvas view is drawn with, in canvas coordinates. The fonts are
  * the stock ones, built once on the first use; the colour roles are the stock
- * list colours. TODO: bitmaps, and a colour-role site for themes. */
+ * list colours. Bitmaps are copied from a source context on the BMap, as
+ * BitmapView_Draw does; bitmap assets stay decoded while the canvas is open
+ * (ui/bitmaps.c). TODO: a colour-role site for themes. */
 
 #include "ui/gfx.h"
+#include "ui/bitmaps.h"
 #include "osos-2.0.5.h"
 #include <stddef.h>
 
 static void *context;
 static int32_t top, left;
+static struct core_screen *screen;
 
 /* Stock colours of the list screens, as the emulator shows them; the highlight
  * is the middle of Apple's gradient. */
@@ -84,11 +88,41 @@ static int line_height(uint8_t font)
     return GraphicsContext_GetFontAscent(context) + GraphicsContext_GetFontDescent(context);
 }
 
-const struct rv_gfx core_gfx = {sizeof core_gfx, color, fill, text, measure, line_height};
+/* Copies a BMap to (x, y) through a source context on it. */
+static void draw_bmap(int x, int y, const uint8_t *resource)
+{
+    const int32_t *bounds = (const int32_t *)(resource + BMap_bounds);
+    int32_t rect[4] = {top + y, left + x, top + y + bounds[2] - bounds[0],
+                       left + x + bounds[3] - bounds[1]};
+    uint32_t storage[Bitmap_bytes / 4];
+    uint32_t source[GraphicsContext_bytes / 4];
+    Bitmap_Construct(storage);
+    GraphicsContext_InitFromBitmapResource(source, storage, resource);
+    GraphicsContext_CopyRect(context, source, bounds, rect, 0xff, 0);
+    GraphicsContext_Destroy(source);
+    Bitmap_Destroy(storage);
+}
 
-void core_gfx_begin(void *graphics, const int32_t *bounds)
+static void bitmap(int x, int y, const struct rv_bitmap *asset)
+{
+    const uint8_t *resource = core_bitmap_canvas(screen, asset);
+    if (resource)
+        draw_bmap(x, y, resource);
+}
+
+static void bmap(int x, int y, const void *resource)
+{
+    if (resource && core_bitmap_whole(resource))
+        draw_bmap(x, y, resource);
+}
+
+const struct rv_gfx core_gfx = {sizeof core_gfx, color, fill, text, measure, line_height,
+                                 bitmap, bmap};
+
+void core_gfx_begin(void *graphics, const int32_t *bounds, struct core_screen *canvas)
 {
     context = graphics;
     top = bounds[0];
     left = bounds[1];
+    screen = canvas;
 }

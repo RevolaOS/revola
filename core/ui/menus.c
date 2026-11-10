@@ -140,7 +140,7 @@ static void apply_visibility(struct row *r)
 int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
                         uint32_t count)
 {
-    uint32_t key = core_resource_owner(owner);
+    uint32_t key = core_resource_owner(owner), block = core_resource_block(key);
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_entry *e = &entries[n];
         int root = root_of(e->in);
@@ -148,9 +148,10 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             return RV_BAD_ARGUMENT; /* TODO: containers */
         uint32_t label = core_settings_owner(e->row.label);
         struct row *r = NULL;
+        /* A stale row's owner record is freed; its ids say whose it was. */
         for (uint32_t i = 0; i < MAX_ROWS && !r; i++)
             if (rows[i].stale && rows[i].root == root && rows[i].label == label &&
-                core_resource_owner(rows[i].owner) == key)
+                rows[i].item - block < CORE_RESOURCE_BLOCK_BYTES)
                 r = &rows[i];
         if (r) {
             r->owner = owner;
@@ -273,11 +274,13 @@ void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
     }
 }
 
-const struct rv_entry *core_menus_entry(uint32_t item)
+const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner)
 {
     for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && rows[i].item == item)
+        if (rows[i].entry && rows[i].item == item) {
+            *owner = rows[i].owner;
             return rows[i].entry;
+        }
     return NULL;
 }
 
