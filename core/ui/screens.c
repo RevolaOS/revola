@@ -145,10 +145,9 @@ static int split_from(const struct core_screen *s, void *controller)
 
 static void *bank;
 
-static int build(struct core_screen *s, int split)
+static int build(struct core_screen *s, int split, uint32_t screen)
 {
     uint8_t bit = split ? CORE_BUILT_SPLIT : CORE_BUILT_FULL;
-    uint32_t screen = core_lists_kind(s->declaration->kind) ? core_lists_screen_id(s, split) : s->id;
     uint32_t bytes;
     if (!s->open && core_submenus_stale(s))
         s->built = 0;
@@ -195,9 +194,9 @@ int core_screens_push(struct core_screen *s, void *controller)
     if (s->owner)
         core_loader_screen_pushed(s->declaration->name);
     s->split = (uint8_t)split;
-    if (!build(s, split))
+    uint32_t screen = core_lists_screen_id(s, split);
+    if (!build(s, split, screen))
         return 0;
-    uint32_t screen = core_lists_kind(kind) ? core_lists_screen_id(s, split) : s->id;
     /* A split list shares the status bar, background and pane with Settings,
      * so only its list moves in, as stock half-screen Settings lists do. */
     uint32_t transition = split ? Transition_Standard : Transition_ScreenPush;
