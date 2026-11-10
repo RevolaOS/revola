@@ -156,6 +156,34 @@ static uint32_t chain4(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
 }
 static void *const chains[] = {chain0, chain1, chain2, chain3, chain4};
 
+/* Stand-ins an unbind writes over a handler's place in a list when the shorter
+ * list cannot be allocated: filters that only continue. */
+static uint32_t pass0(const struct core_next *n) { return core_next_call(n, 0, 0, 0, 0); }
+static uint32_t pass1(uint32_t a, const struct core_next *n) { return core_next_call(n, a, 0, 0, 0); }
+static uint32_t pass2(uint32_t a, uint32_t b, const struct core_next *n)
+{
+    return core_next_call(n, a, b, 0, 0);
+}
+static uint32_t pass3(uint32_t a, uint32_t b, uint32_t c, const struct core_next *n)
+{
+    return core_next_call(n, a, b, c, 0);
+}
+static uint32_t pass4(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                      const struct core_next *n, uint32_t e, uint32_t f)
+{
+    return core_next_call6(n, a, b, c, d, e, f);
+}
+static const struct core_hook passes[] = {
+    {0, CORE_HOOK_FILTER, 0, pass0}, {0, CORE_HOOK_FILTER, 0, pass1},
+    {0, CORE_HOOK_FILTER, 0, pass2}, {0, CORE_HOOK_FILTER, 0, pass3},
+    {0, CORE_HOOK_FILTER, 0, pass4},
+};
+
+static int is_pass(const struct core_hook *hook)
+{
+    return hook >= passes && hook < passes + sizeof passes / sizeof passes[0];
+}
+
 /* The uncached alias covers DRAM only; IRAM is uncached and writable already. */
 static volatile uint32_t *writable(uint32_t address)
 {
@@ -287,15 +315,22 @@ int core_hook_unbind(const struct core_hook *hook)
         at++;
     if (at == count)
         return CORE_HOOK_NOT_BOUND;
+    uint32_t kept = 0;
+    for (uint32_t i = 0; i < count; i++)
+        kept += i != at && !is_pass(old->hooks[i]);
     struct hook_list *list = NULL;
-    if (count > 1) {
-        list = core_heap_allocate(NULL, sizeof *list + (count - 1) * sizeof(void *));
-        if (!list)
-            return CORE_HOOK_NO_MEMORY;
+    if (kept) {
+        list = core_heap_allocate(NULL, sizeof *list + kept * sizeof(void *));
+        if (!list) {
+            /* One aligned store: a walk in progress sees the handler or the stand-in.
+             * The caller may retire the hook once this returns. */
+            old->hooks[at] = &passes[row_of(hook->site)->argc & 15];
+            return CORE_HOOK_OK;
+        }
         for (uint32_t i = 0, j = 0; i < count; i++)
-            if (i != at)
+            if (i != at && !is_pass(old->hooks[i]))
                 list->hooks[j++] = old->hooks[i];
-        list->count = count - 1;
+        list->count = kept;
     }
     publish(hook->site, list);
     return CORE_HOOK_OK;

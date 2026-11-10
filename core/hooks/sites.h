@@ -96,6 +96,8 @@ uint32_t core_raw_owner_of(uint32_t address);
 
 void core_sites_init(void);
 int core_hook_bind(const struct core_hook *hook);
+/* Never fails for lack of memory: once it returns OK no new call reaches the
+ * hook, and its storage may be retired. */
 int core_hook_unbind(const struct core_hook *hook);
 /* The bound hook on `site` with this handler, or NULL. */
 const struct core_hook *core_hook_find(uint32_t site, const void *handler);
