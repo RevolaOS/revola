@@ -1,5 +1,5 @@
-id = "hello"
-name = "Hello"
+id = "hello_world"
+name = "Hello World"
 description = "Loader test: two filters on one chainable site"
 version = "0.1.0"
 author = "RevolaOS"

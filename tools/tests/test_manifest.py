@@ -7,8 +7,8 @@ import unittest
 import manifest
 
 DOCUMENT = {
-    "id": "hello",
-    "name": "Hello",
+    "id": "hello_world",
+    "name": "Hello World",
     "description": "Says hello",
     "version": "0.1.0",
     "author": "Paul",
@@ -42,7 +42,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(len(data), table + bytes_)
         self.assertEqual(
             [strings(data, table, t) for t in texts],
-            ["hello", "Hello", "Says hello", "0.1.0", "Paul", "GPL-3.0-only"],
+            ["hello_world", "Hello World", "Says hello", "0.1.0", "Paul", "GPL-3.0-only"],
         )
         modules = [
             manifest.MODULE.unpack_from(

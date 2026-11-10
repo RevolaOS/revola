@@ -6,8 +6,8 @@
 
 manifest.toml:
 
-    id = "hello"                 # [a-z][a-z0-9_-]{0,31}, the directory name
-    name = "Hello"
+    id = "hello_world"           # [a-z][a-z0-9_-]{0,31}, the directory name
+    name = "Hello World"
     description = "What it does"
     version = "0.1.0"
     author = "Who"
