@@ -32,17 +32,17 @@ struct root {
     uint32_t screens[ROOT_SCREENS];
 };
 
-static const struct root roots[RV_ROOT_COUNT] = {
-    [RV_ROOT_MAIN] = {RES_MainMenu_Items, RES_MainMenu_Sleep_Item, {RES_MainMenus_Main_Screen}},
-    [RV_ROOT_MUSIC] = {RES_MusicMenu_Items, RES_MusicMenu_Search_Item, {RES_MainMenus_Music_Screen}},
-    [RV_ROOT_EXTRAS] = {RES_ExtrasMenu_Items, RES_ExtrasMenu_Stopwatch_Item, {RES_ExtrasMenu_Screen}},
-    [RV_ROOT_SETTINGS] = {RES_SettingsMenu_Items, RES_SettingsMenu_Legal_Item,
+static const struct root roots[CORE_MENU_COUNT] = {
+    [RV_MENU_MAIN] = {RES_MainMenu_Items, RES_MainMenu_Sleep_Item, {RES_MainMenus_Main_Screen}},
+    [RV_MENU_MUSIC] = {RES_MusicMenu_Items, RES_MusicMenu_Search_Item, {RES_MainMenus_Music_Screen}},
+    [RV_MENU_EXTRAS] = {RES_ExtrasMenu_Items, RES_ExtrasMenu_Stopwatch_Item, {RES_ExtrasMenu_Screen}},
+    [RV_MENU_SETTINGS] = {RES_SettingsMenu_Items, RES_SettingsMenu_Legal_Item,
                           {RES_SettingsMenu_Main_Screen}},
-    [RV_ROOT_NOWPLAYING_MENU] = {0, 0, {RES_NowPlaying_Screen}},
-    [RV_ROOT_SONG_MENU] = {0, 0, {RES_MediaLists_Songs_Screen, RES_MediaLists_NestedPlaylists_Screen,
+    [RV_MENU_NOW_PLAYING_CONTEXT] = {0, 0, {RES_NowPlaying_Screen}},
+    [RV_MENU_SONG_CONTEXT] = {0, 0, {RES_MediaLists_Songs_Screen, RES_MediaLists_NestedPlaylists_Screen,
                                   RES_MediaLists_Genius_Screen, RES_MediaLists_GeniusPlaylist_Screen}},
-    [RV_ROOT_ALBUM_MENU] = {0, 0, {RES_MediaLists_Albums_Screen}},
-    [RV_ROOT_ARTIST_MENU] = {0, 0, {RES_MediaLists_Artists_Screen}},
+    [RV_MENU_ALBUM_CONTEXT] = {0, 0, {RES_MediaLists_Albums_Screen}},
+    [RV_MENU_ARTIST_CONTEXT] = {0, 0, {RES_MediaLists_Artists_Screen}},
 };
 
 struct row_set *core_menu_sets;
@@ -85,35 +85,12 @@ static void *adopt(uint32_t item, struct rv_extension_record *owner, uint32_t by
 }
 
 
-static const char *const root_names[RV_ROOT_COUNT] = {
-    [RV_ROOT_MAIN] = "main",       [RV_ROOT_MUSIC] = "music",
-    [RV_ROOT_EXTRAS] = "extras",   [RV_ROOT_SETTINGS] = "settings",
-    [RV_ROOT_NOWPLAYING_MENU] = "nowplaying", [RV_ROOT_SONG_MENU] = "song",
-    [RV_ROOT_ALBUM_MENU] = "album", [RV_ROOT_ARTIST_MENU] = "artist",
-};
-
-static int same(const char *a, const char *b)
-{
-    while (*a && *a == *b)
-        a++, b++;
-    return *a == *b;
-}
-
-/* The root an entry names, -1 for none. */
-static int root_of(const char *in)
-{
-    for (int i = 0; in && i < RV_ROOT_COUNT; i++)
-        if (same(in, root_names[i]))
-            return i;
-    return -1;
-}
-
 /* Main and Music rows can be hidden in Settings > Main Menu and Music Menu: bit
- * n of the owner's RV_KEY_MENU_VISIBILITY record is entry n, and without a
- * record an entry shows as its `visible` says. Other rows always show. */
+ * n of the owner's RV_SETTING_KEY_MENU_VISIBILITY record is entry n, and without a
+ * record an entry shows unless it is `hidden`. Other rows always show. */
 static int toggleable(const struct row *r)
 {
-    return r->owner && (r->root == RV_ROOT_MAIN || r->root == RV_ROOT_MUSIC);
+    return r->owner && (r->root == RV_MENU_MAIN || r->root == RV_MENU_MUSIC);
 }
 
 static int shown(const struct row *r)
@@ -123,9 +100,9 @@ static int shown(const struct row *r)
         return 0;
     if (!toggleable(r))
         return 1;
-    if (core_settings_get(r->owner->owner, RV_KEY_MENU_VISIBILITY, &mask, 4) == 4)
+    if (core_settings_get(r->owner->owner, RV_SETTING_KEY_MENU_VISIBILITY, &mask, 4) == 4)
         return mask >> r->index & 1;
-    return r->entry->visible;
+    return !r->entry->hidden;
 }
 
 /* Apple's registry is built before the core runs and never sees the rows the
@@ -154,14 +131,14 @@ static struct row *stale_row(uint32_t key, int root, uint32_t label)
     return NULL;
 }
 
-int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
+int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_entry *entries,
                         uint32_t count)
 {
     uint32_t key = core_resource_owner(owner), fresh = 0;
     for (uint32_t n = 0; n < count; n++) {
-        if (root_of(entries[n].in) < 0)
+        if (entries[n].menu >= CORE_MENU_COUNT)
             return RV_BAD_ARGUMENT;
-        fresh += !stale_row(key, root_of(entries[n].in),
+        fresh += !stale_row(key, entries[n].menu,
                             core_settings_owner(entries[n].row.label));
     }
     struct row_set *set = NULL;
@@ -178,8 +155,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         *tail = set; /* rows keep their registration order */
     }
     for (uint32_t n = 0; n < count; n++) {
-        const struct rv_entry *e = &entries[n];
-        int root = root_of(e->in);
+        const struct rv_menu_entry *e = &entries[n];
+        int root = e->menu;
         uint32_t label = core_settings_owner(e->row.label);
         struct row *r = stale_row(key, root, label);
         if (r) {
@@ -191,7 +168,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             continue;
         }
         /* Item, title source, and for a Settings row its pane handler. */
-        uint32_t item = core_resource_take(key, root == RV_ROOT_SETTINGS ? 3 : 2);
+        uint32_t item = core_resource_take(key, root == RV_MENU_SETTINGS ? 3 : 2);
         if (!item)
             return RV_NO_MEMORY;
         r = &set->rows[set->count++];
@@ -216,10 +193,10 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             core_resource_set(Resource_String, item + 1, e->row.label, n + 1);
             continue;
         }
-        if (root == RV_ROOT_SETTINGS)
+        if (root == RV_MENU_SETTINGS)
             core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
-        if (e->row.kind == RV_ROW_TOGGLE || e->row.kind == RV_ROW_SETTING)
+        if (e->row.kind == RV_ROW_KIND_SETTING)
             core_set_source2(item + 1, item, item + 1, SourceDestination_InlineValue);
         else
             core_set_source(item + 1, item, 1);
@@ -335,7 +312,7 @@ void core_menus_toggle(uint8_t root, uint32_t n)
     EACH_ROW(other)
         if (other->entry && other->owner == r->owner && toggleable(other))
             mask |= (uint32_t)(shown(other) ^ (other == r)) << other->index;
-    core_settings_set(r->owner->owner, RV_KEY_MENU_VISIBILITY, CORE_SETTING_INT, &mask, 4);
+    core_settings_set(r->owner->owner, RV_SETTING_KEY_MENU_VISIBILITY, CORE_SETTING_INT, &mask, 4);
     apply_visibility(r);
 }
 
@@ -344,12 +321,12 @@ void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
     EACH_ROW(r) {
         const struct rv_row *row = r->entry ? &r->entry->row : NULL;
         if (row && r->owner == owner && row->key == key &&
-            (row->kind == RV_ROW_TOGGLE || row->kind == RV_ROW_SETTING))
+            row->kind == RV_ROW_KIND_SETTING)
             core_screens_notify(r->item + 1);
     }
 }
 
-const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner)
+const struct rv_menu_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner)
 {
     EACH_ROW(r)
         if (r->entry && r->item == item) {
@@ -362,7 +339,7 @@ const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_recor
 int core_menus_pane(uint32_t id, uint32_t argument)
 {
     EACH_ROW(r)
-        if (r->entry && r->root == RV_ROOT_SETTINGS && r->item + 2 == id) {
+        if (r->entry && r->root == RV_MENU_SETTINGS && r->item + 2 == id) {
             if (argument != ActionSupportQuery)
                 core_panes_show(r->item);
             return 1;
@@ -402,10 +379,10 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
             if (!row)
                 continue;
             const uint32_t *from = (const uint32_t *)data;
-            if (r->root == RV_ROOT_SETTINGS) {
-                uint8_t kind = r->entry ? r->entry->row.kind : RV_ROW_PUSH;
+            if (r->root == RV_MENU_SETTINGS) {
+                uint8_t kind = r->entry ? r->entry->row.kind : RV_ROW_KIND_PUSH;
                 const uint32_t *prototype = (const uint32_t *)core_lists_prototype(
-                    kind == RV_ROW_TOGGLE || kind == RV_ROW_SETTING);
+                    kind == RV_ROW_KIND_SETTING);
                 if (prototype)
                     from = prototype;
             }
@@ -424,7 +401,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
 
 int core_menus_serves(uint8_t root, uint32_t screen_id)
 {
-    for (uint32_t i = 0; root < RV_ROOT_COUNT && i < ROOT_SCREENS; i++)
+    for (uint32_t i = 0; root < CORE_MENU_COUNT && i < ROOT_SCREENS; i++)
         if (roots[root].screens[i] && roots[root].screens[i] == screen_id)
             return 1;
     return 0;

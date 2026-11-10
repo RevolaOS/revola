@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 15
+#define RV_API_MINOR 16
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -22,7 +22,7 @@
 #define RV_ARM __attribute__((target("arm"), noinline, optimize("no-optimize-sibling-calls")))
 
 /* The loader's record of the extension; passed back to every call. */
-typedef struct rv_extension_record *rv_handle;
+typedef struct rv_extension_record *rv_extension_handle;
 
 enum rv_result {
     RV_OK,
@@ -35,8 +35,8 @@ enum rv_result {
 };
 
 enum rv_hook_mode {
-    RV_HOOK_FILTER,  /* receives `next`; may continue through api->next or short-circuit */
-    RV_HOOK_REPLACE, /* exclusive; never continues */
+    RV_HOOK_MODE_FILTER,  /* receives `next`; may continue through api->hook_next or short-circuit */
+    RV_HOOK_MODE_REPLACE, /* exclusive; never continues */
 };
 
 /* A handler receives the Apple arguments followed by `next` (in the register
@@ -48,30 +48,30 @@ enum rv_hook_mode {
 #define RV_RAW_SITE(index) (0xffffff00u | (index))
 struct rv_hook {
     uint32_t site;
-    uint8_t mode;
-    uint8_t reserved;
-    int16_t priority; /* lower runs first */
     void *handler;
+    int16_t priority; /* lower runs first */
+    uint8_t mode;     /* rv_hook_mode */
+    uint8_t reserved;
 };
 
 enum rv_setting_type {
-    RV_SETTING_BOOL = 1,
-    RV_SETTING_INT = 2,
-    RV_SETTING_STRING = 3,
-    RV_SETTING_BLOB = 4,
+    RV_SETTING_TYPE_BOOL = 1,
+    RV_SETTING_TYPE_INT = 2,
+    RV_SETTING_TYPE_STRING = 3,
+    RV_SETTING_TYPE_BLOB = 4,
 };
 
 /* Keys the core keeps in every extension's settings: the enabled flag, and which
  * of its Main and Music rows are shown (bit n is entry n). */
-#define RV_KEY_ENABLED 0
-#define RV_KEY_MENU_VISIBILITY 0xffff
+#define RV_SETTING_KEY_ENABLED 0
+#define RV_SETTING_KEY_MENU_VISIBILITY 0xffff
 
 /* How an RV_ROW_SETTING row shows an int setting with `labels`. */
 enum rv_setting_style {
-    RV_STYLE_NONE,   /* no row of its own */
-    RV_STYLE_CHOICE, /* a list of the labels; the value is the chosen index */
-    RV_STYLE_SLIDER, /* a bar over the labels; the value is the position */
-    RV_STYLE_MULTI,  /* a checkmark per label; bit n of the value is label n */
+    RV_SETTING_STYLE_NONE,   /* no row of its own */
+    RV_SETTING_STYLE_CHOICE, /* a list of the labels; the value is the chosen index */
+    RV_SETTING_STYLE_SLIDER, /* a bar over the labels; the value is the position */
+    RV_SETTING_STYLE_MULTI,  /* a checkmark per label; bit n of the value is label n */
 };
 
 /* A declared setting: the core applies `fallback` when the store has no record,
@@ -86,16 +86,16 @@ struct rv_setting {
     int32_t minimum;
     int32_t maximum;
     const char *label;
-    const char *const *labels; /* one per value; at most 32 for RV_STYLE_MULTI */
+    const char *const *labels; /* one per value; at most 32 for RV_SETTING_STYLE_MULTI */
     uint32_t label_count;
 };
 
 enum rv_row_kind {
-    RV_ROW_PUSH,    /* opens `screen` */
-    RV_ROW_TOGGLE,  /* flips the bool setting `key`; the row shows On or Off */
-    RV_ROW_ACTION,  /* calls `action` */
-    RV_ROW_SETTING, /* the declared setting `key`: shows its value; flips a bool, opens the
-                       screen of an int with labels */
+    RV_ROW_KIND_PUSH,    /* opens `screen` */
+    RV_ROW_KIND_ACTION,  /* calls `action` */
+    RV_ROW_KIND_SETTING, /* the bool or int setting `key`: shows its value; flips a bool, opens
+                            the screen of an int with labels */
+    RV_ROW_KIND_INFO,    /* shows `label` or `text`; does nothing when chosen */
 };
 
 /* One row of a list screen or an entry in a menu. `text`, when set, gives the
@@ -112,19 +112,19 @@ struct rv_row {
 };
 
 enum rv_screen_kind {
-    RV_SCREEN_LIST,         /* rows from `list` */
-    RV_SCREEN_CHOICE,       /* one checkmark among `choice.labels`; stores the index in
+    RV_SCREEN_KIND_LIST,         /* rows from `list` */
+    RV_SCREEN_KIND_CHOICE,       /* one checkmark among `choice.labels`; stores the index in
                                the int setting `choice.key` and pops */
-    RV_SCREEN_SLIDER,       /* a bar over `choice.labels`; wheel and Previous/Next change
+    RV_SCREEN_KIND_SLIDER,       /* a bar over `choice.labels`; wheel and Previous/Next change
                                the int setting `choice.key` */
-    RV_SCREEN_TEXT,         /* the paragraphs of `text` */
-    RV_SCREEN_CANVAS,       /* the extension draws and reads input */
-    RV_SCREEN_RUNTIME_LIST, /* rows from callbacks, for data known only at run time */
-    RV_SCREEN_MULTI_CHOICE, /* a checkmark per label; bit n of the int setting `choice.key`
+    RV_SCREEN_KIND_TEXT,         /* the paragraphs of `text` */
+    RV_SCREEN_KIND_CANVAS,       /* the extension draws and reads input */
+    RV_SCREEN_KIND_DYNAMIC_LIST, /* rows from callbacks, for data known only at run time */
+    RV_SCREEN_KIND_MULTI_CHOICE, /* a checkmark per label; bit n of the int setting `choice.key`
                                is label n (at most 32), Select flips it */
 };
 
-/* How a list screen (list, choice, multi-choice, runtime list) is laid out.
+/* How a list screen (list, choice, multi-choice, dynamic list) is laid out.
  * Left at AUTO it follows the screen it opens from: split under Settings or a
  * split list, full width elsewhere, as the stock menus do. */
 enum rv_layout {
@@ -134,11 +134,11 @@ enum rv_layout {
 };
 
 /* How a slider or canvas screen opens. */
-enum rv_opening {
-    RV_OPENING_SLIDE,     /* slides in from the right, as Settings > About */
-    RV_OPENING_FROM_PANE, /* opened from a split list, it starts where the preview pane is
+enum rv_transition {
+    RV_TRANSITION_SLIDE,     /* slides in from the right, as Settings > About */
+    RV_TRANSITION_FROM_PANE, /* opened from a split list, it starts where the preview pane is
                              and slides into place, as Extras > Stopwatch; from anywhere
-                             else as RV_OPENING_SLIDE. The whole screen moves, so this
+                             else as RV_TRANSITION_SLIDE. The whole screen moves, so this
                              suits a screen whose picture continues what the pane showed */
 };
 
@@ -211,31 +211,31 @@ struct rv_gfx {
 };
 
 enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
-enum rv_key { RV_KEY_CENTER, RV_KEY_MENU, RV_KEY_PREVIOUS, RV_KEY_NEXT, RV_KEY_PLAY };
+enum rv_button { RV_BUTTON_CENTER, RV_BUTTON_MENU, RV_BUTTON_PREVIOUS, RV_BUTTON_NEXT, RV_BUTTON_PLAY };
 
 struct rv_input {
     uint8_t kind;
-    uint8_t key;   /* rv_key for presses and releases */
-    int16_t delta; /* wheel steps, signed */
+    uint8_t button; /* rv_button for presses and releases */
+    int16_t delta;  /* wheel steps, signed */
 };
 
-/* Where a runtime list row shows its detail. */
+/* Where a dynamic list row shows its detail. */
 enum rv_detail {
     RV_DETAIL_BESIDE,        /* on the right of the label, as a setting's value */
     RV_DETAIL_BELOW,         /* a second line under the label */
     RV_DETAIL_BELOW_SUBMENU, /* a second line, and the row shows it opens a screen */
 };
 
-/* A screen the core registers for the extension. `name` is what RV_ROW_PUSH,
+/* A screen the core registers for the extension. `id` is what RV_ROW_PUSH,
  * ui_push and a module's manifest trigger call it, local to the extension.
  * Labels and text are read from the module while the screen is open; nothing
  * is copied. */
 struct rv_screen {
-    const char *name;
+    const char *id;
     const char *title;
     uint8_t kind;
-    uint8_t layout;  /* rv_layout, list kinds only */
-    uint8_t opening; /* rv_opening, slider and canvas only */
+    uint8_t layout;     /* rv_layout, list kinds only */
+    uint8_t transition; /* rv_transition, slider and canvas only */
     uint8_t reserved[1];
     union {
         struct {
@@ -264,7 +264,7 @@ struct rv_screen {
             const char *(*row)(uint32_t index, const char **detail);
             int (*select)(uint32_t index); /* returns 1 to pop the screen */
             uint8_t detail;                /* rv_detail: where the detail goes */
-        } runtime;
+        } dynamic;
     };
     /* A list in the split layout shows these in the preview pane beside the
      * title: a line of text and an icon on the system's box; NULL shows
@@ -273,22 +273,31 @@ struct rv_screen {
     const struct rv_bitmap *bitmap;
 };
 
-/* A row the extension adds to a menu. `in` names the menu: "main", "music",
- * "extras", "settings", the menu a long press of Select opens on Now Playing
- * ("nowplaying") or on a song, album or artist row ("song", "album",
- * "artist"). `after` is a stock
- * row of that menu from rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under
- * Settings the preview pane shows the label, `caption` as the line below and
- * `bitmap` as the icon while the row is highlighted; either may be NULL, and
- * the pane then shows nothing in its place. The icon sits on the box the
- * system draws behind stock Settings icons unless `plain_icon` is set. Rows
- * under Main and Music appear in Settings > Main Menu and Music Menu,
- * `visible` is their default there. */
-struct rv_entry {
-    const char *in;
-    uint8_t visible;
+/* The menus an entry can add a row to. The context menus are the ones a long
+ * press of Select opens on Now Playing or on a song, album or artist row. */
+enum rv_menu {
+    RV_MENU_MAIN,
+    RV_MENU_MUSIC,
+    RV_MENU_EXTRAS,
+    RV_MENU_SETTINGS,
+    RV_MENU_NOW_PLAYING_CONTEXT,
+    RV_MENU_SONG_CONTEXT,
+    RV_MENU_ALBUM_CONTEXT,
+    RV_MENU_ARTIST_CONTEXT,
+};
+
+/* A row the extension adds to `menu`. `after` is a stock row of that menu from
+ * rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under Settings the preview
+ * pane shows the label, `caption` as the line below and `bitmap` as the icon
+ * while the row is highlighted; either may be NULL, and the pane then shows
+ * nothing in its place. The icon sits on the box the system draws behind stock
+ * Settings icons unless `plain_icon` is set. Rows under Main and Music appear
+ * in Settings > Main Menu and Music Menu, shown unless `hidden` is set. */
+struct rv_menu_entry {
+    uint8_t menu;       /* rv_menu */
+    uint8_t hidden;     /* 1: a Main or Music row starts hidden in Settings > Main/Music Menu */
     uint8_t plain_icon; /* 1: the pane shows `bitmap` without the system's box behind it */
-    uint8_t reserved[2];
+    uint8_t reserved;
     uint32_t after;
     struct rv_row row;
     const char *caption;
@@ -299,6 +308,7 @@ struct rv_entry {
  * loader's per-extension record; `file` is the NUL-terminated file name without
  * .rvx, at most 32 bytes, `failure` a byte, the others words. */
 struct rv_debug_info {
+    uint32_t size;        /* bytes of this record */
     uint32_t core_build;  /* the core's git revision, 8 hex digits */
     const void *extensions; /* address of the pointer to the first record */
     uint16_t next, owner, file, live, peak, failure;
@@ -307,8 +317,8 @@ struct rv_debug_info {
 
 /* Returned by the module entry; everything it points to lives as long as the
  * module is loaded. */
-struct rv_extension {
-    uint32_t size; /* sizeof(struct rv_extension) when built */
+struct rv_descriptor {
+    uint32_t size; /* sizeof(struct rv_descriptor) when built */
     const struct rv_hook *hooks;
     uint32_t hook_count;
     const struct rv_setting *settings;
@@ -316,7 +326,7 @@ struct rv_extension {
     void (*unload)(void); /* before the hooks are unbound; may be NULL */
     const struct rv_screen *screens;
     uint32_t screen_count;
-    const struct rv_entry *entries;
+    const struct rv_menu_entry *entries;
     uint32_t entry_count;
 };
 
@@ -326,38 +336,38 @@ struct rv_api {
 
     /* Bind beyond the descriptor; unbind only what hook_bind bound (the
      * descriptor's hooks are unbound by the loader). */
-    int (*hook_bind)(rv_handle self, const struct rv_hook *hook);
-    int (*hook_unbind)(rv_handle self, const struct rv_hook *hook);
+    int (*hook_bind)(rv_extension_handle self, const struct rv_hook *hook);
+    int (*hook_unbind)(rv_extension_handle self, const struct rv_hook *hook);
     /* Continue a filter chain; unused trailing arguments are 0. */
-    uint32_t (*next)(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+    uint32_t (*hook_next)(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
                      uint32_t e, uint32_t f);
 
     /* Bytes copied, 0 when absent. Values are at most 255 bytes. */
-    uint32_t (*setting_get)(rv_handle self, uint16_t key, void *out, uint32_t capacity);
-    int (*setting_set)(rv_handle self, uint16_t key, uint8_t type, const void *data,
+    uint32_t (*setting_get)(rv_extension_handle self, uint16_t key, void *out, uint32_t capacity);
+    int (*setting_set)(rv_extension_handle self, uint16_t key, uint8_t type, const void *data,
                        uint32_t bytes);
     void (*settings_flush)(void);
 
     /* Zeroed memory from the Apple heap, counted against the extension. */
-    void *(*alloc)(rv_handle self, uint32_t bytes);
-    void (*free)(rv_handle self, void *block);
+    void *(*alloc)(rv_extension_handle self, uint32_t bytes);
+    void (*free)(rv_extension_handle self, void *block);
 
     /* Manual-trigger modules by their index in the manifest. */
-    int (*module_load)(rv_handle self, uint32_t module);
-    void (*module_unload)(rv_handle self, uint32_t module);
+    int (*module_load)(rv_extension_handle self, uint32_t module);
+    void (*module_unload)(rv_extension_handle self, uint32_t module);
 
     /* Kept for the emulator; nothing on the device shows it. */
-    void (*log)(rv_handle self, const char *text);
+    void (*log)(rv_extension_handle self, const char *text);
 
     /* Screens by name. push opens one above the screen whose row, choice or
      * input callback is running (the screen's module loads first; RV_NOT_FOUND
      * for an unknown name, RV_BAD_ARGUMENT outside a callback); pop closes the
      * top screen; refresh redraws rows whose text changed; invalidate redraws an
      * open canvas. */
-    int (*ui_push)(rv_handle self, const char *screen);
-    void (*ui_pop)(rv_handle self);
-    void (*ui_refresh)(rv_handle self, const char *screen);
-    void (*ui_invalidate)(rv_handle self);
+    int (*ui_push)(rv_extension_handle self, const char *screen);
+    void (*ui_pop)(rv_extension_handle self);
+    void (*ui_refresh)(rv_extension_handle self, const char *screen);
+    void (*ui_invalidate)(rv_extension_handle self);
 
     const struct rv_debug_info *(*debug_info)(void);
 
@@ -367,8 +377,8 @@ struct rv_api {
      * asset_read copies up to `bytes` from `offset` of an asset stored raw
      * (compress = false), *got the count; RV_BAD_ARGUMENT for a compressed one,
      * RV_NOT_FOUND when it is missing or unreadable. */
-    void *(*asset_load)(rv_handle self, const char *name, uint32_t *bytes);
-    int (*asset_read)(rv_handle self, const char *name, uint32_t offset, void *out,
+    void *(*asset_load)(rv_extension_handle self, const char *name, uint32_t *bytes);
+    int (*asset_read)(rv_extension_handle self, const char *name, uint32_t offset, void *out,
                       uint32_t bytes, uint32_t *got);
 
     /* Text into `out`, NUL-terminated within `capacity`; the length. A number
@@ -380,6 +390,6 @@ struct rv_api {
 
 /* Every module exports this. The entry of the main module returns the
  * descriptor; on-demand modules may return NULL. */
-typedef const struct rv_extension *(*rv_entry_fn)(const struct rv_api *api, rv_handle self);
+typedef const struct rv_descriptor *(*rv_module_entry_fn)(const struct rv_api *api, rv_extension_handle self);
 
 #endif

@@ -74,10 +74,10 @@ void core_screens_setting_changed(struct rv_extension_record *owner, uint16_t ke
     for (uint32_t i = 0; i < open_count; i++) {
         struct core_screen *s = open[i].screen;
         const struct rv_screen *d = s ? s->declaration : NULL;
-        if (!d || s->owner != owner || d->kind != RV_SCREEN_LIST)
+        if (!d || s->owner != owner || d->kind != RV_SCREEN_KIND_LIST)
             continue;
         for (uint32_t r = 0; r < d->list.count; r++)
-            if ((d->list.rows[r].kind == RV_ROW_TOGGLE || d->list.rows[r].kind == RV_ROW_SETTING) &&
+            if (d->list.rows[r].kind == RV_ROW_KIND_SETTING &&
                 d->list.rows[r].key == key)
                 core_screens_notify(CORE_SCREEN_ROWS(s) + 2 * r + 1);
     }
@@ -121,10 +121,10 @@ static void screen_left(void *controller)
             core_bitmaps_screen_closed(s);
         if (!s->open && !s->owner)
             core_extensions_closed(s);
-        if (s->owner && s->declaration)
-            core_loader_screen_popped(s->declaration->name);
-        if (s->declaration && s->declaration->kind == RV_SCREEN_CANVAS &&
-            !core_screens_top(RV_SCREEN_CANVAS))
+        if (s->owner && s->declaration && s->declaration->id)
+            core_loader_screen_popped(s->declaration->id);
+        if (s->declaration && s->declaration->kind == RV_SCREEN_KIND_CANVAS &&
+            !core_screens_top(RV_SCREEN_KIND_CANVAS))
             popped_canvas = s;
         return;
     }
@@ -169,19 +169,19 @@ static int build(struct core_screen *s, int split, uint32_t screen)
         return 1;
     int built = 0;
     switch (s->declaration->kind) {
-    case RV_SCREEN_LIST:
-    case RV_SCREEN_CHOICE:
-    case RV_SCREEN_MULTI_CHOICE:
-    case RV_SCREEN_RUNTIME_LIST:
+    case RV_SCREEN_KIND_LIST:
+    case RV_SCREEN_KIND_CHOICE:
+    case RV_SCREEN_KIND_MULTI_CHOICE:
+    case RV_SCREEN_KIND_DYNAMIC_LIST:
         built = core_clone_list(s, split);
         break;
-    case RV_SCREEN_TEXT:
+    case RV_SCREEN_KIND_TEXT:
         built = core_clone_text(s);
         break;
-    case RV_SCREEN_SLIDER:
+    case RV_SCREEN_KIND_SLIDER:
         built = core_clone_slider(s);
         break;
-    case RV_SCREEN_CANVAS:
+    case RV_SCREEN_KIND_CANVAS:
         built = core_clone_canvas(s);
         break;
     default:
@@ -196,9 +196,9 @@ static int build(struct core_screen *s, int split, uint32_t screen)
 static uint32_t template_of(uint8_t kind)
 {
     switch (kind) {
-    case RV_SCREEN_SLIDER:
+    case RV_SCREEN_KIND_SLIDER:
         return core_template_slider;
-    case RV_SCREEN_CANVAS:
+    case RV_SCREEN_KIND_CANVAS:
         return core_template_canvas;
     default:
         return 0;
@@ -223,7 +223,7 @@ static uint32_t opening(const struct core_screen *s, uint8_t kind)
         return Transition_Standard;
     if (!template)
         return Transition_ScreenPush;
-    int pane = s->declaration->opening == RV_OPENING_FROM_PANE && from == LayoutKind_SplitList;
+    int pane = s->declaration->transition == RV_TRANSITION_FROM_PANE && from == LayoutKind_SplitList;
     core_clone_set_style(s->id + 1, template,
                          pane ? core_templates_enter_style(RES_Stopwatch_Template, LayoutKind_SplitList)
                               : -1);
@@ -233,13 +233,13 @@ static uint32_t opening(const struct core_screen *s, uint8_t kind)
 int core_screens_push(struct core_screen *s, void *controller)
 {
     uint8_t kind = s->declaration->kind;
-    int input = kind == RV_SCREEN_SLIDER || kind == RV_SCREEN_CANVAS;
+    int input = kind == RV_SCREEN_KIND_SLIDER || kind == RV_SCREEN_KIND_CANVAS;
     int split = core_lists_kind(kind) && split_from(s, controller);
     if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
     popped_canvas = NULL;
-    if (s->owner)
-        core_loader_screen_pushed(s->declaration->name);
+    if (s->owner && s->declaration->id)
+        core_loader_screen_pushed(s->declaration->id);
     s->split = (uint8_t)split;
     uint32_t screen = core_lists_screen_id(s, split);
     if (!build(s, split, screen))

@@ -548,7 +548,7 @@ static void release_raw_sites(struct rv_extension_record *record)
         core_raw_release(record->raw_sites[--record->raw_count]);
 }
 
-static struct rv_extension_record *valid_handle(rv_handle self)
+static struct rv_extension_record *valid_handle(rv_extension_handle self)
 {
     for (struct rv_extension_record *r = core_extensions; r; r = r->next)
         if (r == self)
@@ -614,13 +614,14 @@ static int result_of(int core_result)
 static int valid_row(const struct rv_row *row)
 {
     switch (row->kind) {
-    case RV_ROW_PUSH:
+    case RV_ROW_KIND_PUSH:
         return row->label && row->screen;
-    case RV_ROW_TOGGLE:
-    case RV_ROW_SETTING:
-        return row->label && row->key != RV_KEY_ENABLED && row->key != RV_KEY_MENU_VISIBILITY;
-    case RV_ROW_ACTION:
-        return row->label && (row->action || row->text);
+    case RV_ROW_KIND_SETTING:
+        return row->label && row->key != RV_SETTING_KEY_ENABLED && row->key != RV_SETTING_KEY_MENU_VISIBILITY;
+    case RV_ROW_KIND_ACTION:
+        return row->label && row->action;
+    case RV_ROW_KIND_INFO:
+        return row->label != NULL;
     default:
         return 0;
     }
@@ -628,41 +629,41 @@ static int valid_row(const struct rv_row *row)
 
 static int valid_screen(const struct rv_screen *s)
 {
-    if (!s->name || !s->title || s->layout > RV_LAYOUT_SPLIT || s->opening > RV_OPENING_FROM_PANE)
+    if (!s->id || !s->title || s->layout > RV_LAYOUT_SPLIT || s->transition > RV_TRANSITION_FROM_PANE)
         return 0;
     switch (s->kind) {
-    case RV_SCREEN_LIST:
+    case RV_SCREEN_KIND_LIST:
         for (uint32_t i = 0; i < s->list.count; i++)
             if (!valid_row(&s->list.rows[i]))
                 return 0;
         return s->list.rows || !s->list.count;
-    case RV_SCREEN_CHOICE:
-    case RV_SCREEN_SLIDER:
-    case RV_SCREEN_MULTI_CHOICE:
+    case RV_SCREEN_KIND_CHOICE:
+    case RV_SCREEN_KIND_SLIDER:
+    case RV_SCREEN_KIND_MULTI_CHOICE:
         return s->choice.labels && s->choice.count &&
-               (s->kind != RV_SCREEN_MULTI_CHOICE || s->choice.count <= 32);
-    case RV_SCREEN_TEXT:
+               (s->kind != RV_SCREEN_KIND_MULTI_CHOICE || s->choice.count <= 32);
+    case RV_SCREEN_KIND_TEXT:
         return s->text.paragraphs || !s->text.count;
-    case RV_SCREEN_CANVAS:
+    case RV_SCREEN_KIND_CANVAS:
         return s->canvas.draw != NULL;
-    case RV_SCREEN_RUNTIME_LIST:
-        return s->runtime.count && s->runtime.row && s->runtime.detail <= RV_DETAIL_BELOW_SUBMENU;
+    case RV_SCREEN_KIND_DYNAMIC_LIST:
+        return s->dynamic.count && s->dynamic.row && s->dynamic.detail <= RV_DETAIL_BELOW_SUBMENU;
     default:
         return 0;
     }
 }
 
-static int valid_descriptor(const struct rv_extension *d)
+static int valid_descriptor(const struct rv_descriptor *d)
 {
     for (uint32_t i = 0; i < d->hook_count; i++)
-        if (d->hooks[i].mode > RV_HOOK_REPLACE || d->hooks[i].reserved)
+        if (d->hooks[i].mode > RV_HOOK_MODE_REPLACE || d->hooks[i].reserved)
             return 0;
     for (uint32_t i = 0; i < d->setting_count; i++) {
         const struct rv_setting *setting = &d->settings[i];
-        if (setting->key == RV_KEY_ENABLED || setting->key == RV_KEY_MENU_VISIBILITY ||
-            setting->type < RV_SETTING_BOOL || setting->type > RV_SETTING_BLOB ||
-            setting->style > RV_STYLE_MULTI ||
-            (setting->style == RV_STYLE_MULTI && setting->label_count > 32))
+        if (setting->key == RV_SETTING_KEY_ENABLED || setting->key == RV_SETTING_KEY_MENU_VISIBILITY ||
+            setting->type < RV_SETTING_TYPE_BOOL || setting->type > RV_SETTING_TYPE_BLOB ||
+            setting->style > RV_SETTING_STYLE_MULTI ||
+            (setting->style == RV_SETTING_STYLE_MULTI && setting->label_count > 32))
             return 0;
         for (uint32_t j = 0; j < i; j++)
             if (d->settings[j].key == setting->key)
@@ -672,11 +673,11 @@ static int valid_descriptor(const struct rv_extension *d)
         if (!valid_screen(&d->screens[i]))
             return 0;
         for (uint32_t j = 0; j < i; j++)
-            if (fnv1a(d->screens[j].name) == fnv1a(d->screens[i].name))
+            if (fnv1a(d->screens[j].id) == fnv1a(d->screens[i].id))
                 return 0;
     }
     for (uint32_t i = 0; i < d->entry_count; i++)
-        if (!d->entries[i].in || !valid_row(&d->entries[i].row))
+        if (d->entries[i].menu > RV_MENU_ARTIST_CONTEXT || !valid_row(&d->entries[i].row))
             return 0;
     return 1;
 }
@@ -698,7 +699,7 @@ static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *
             record->conflict_site = hooks[i].site;
         } else {
             copies[i].site = (uint8_t)site;
-            copies[i].mode = hooks[i].mode == RV_HOOK_REPLACE ? CORE_HOOK_REPLACE : CORE_HOOK_FILTER;
+            copies[i].mode = hooks[i].mode == RV_HOOK_MODE_REPLACE ? CORE_HOOK_REPLACE : CORE_HOOK_FILTER;
             copies[i].priority = hooks[i].priority;
             copies[i].handler = hooks[i].handler;
             int bound = core_hook_bind(&copies[i]);
@@ -718,7 +719,7 @@ static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *
     return 1;
 }
 
-static int api_hook_bind(rv_handle self, const struct rv_hook *hook)
+static int api_hook_bind(rv_extension_handle self, const struct rv_hook *hook)
 {
     struct rv_extension_record *record = valid_handle(self);
     int site = record ? site_index(record, hook->site) : -1;
@@ -728,7 +729,7 @@ static int api_hook_bind(rv_handle self, const struct rv_hook *hook)
     if (!copy)
         return RV_NO_MEMORY;
     copy->site = (uint8_t)site;
-    copy->mode = hook->mode == RV_HOOK_REPLACE ? CORE_HOOK_REPLACE : CORE_HOOK_FILTER;
+    copy->mode = hook->mode == RV_HOOK_MODE_REPLACE ? CORE_HOOK_REPLACE : CORE_HOOK_FILTER;
     copy->priority = hook->priority;
     copy->handler = hook->handler;
     int bound = core_hook_bind(copy);
@@ -740,7 +741,7 @@ static int api_hook_bind(rv_handle self, const struct rv_hook *hook)
     return RV_OK;
 }
 
-static int api_hook_unbind(rv_handle self, const struct rv_hook *hook)
+static int api_hook_unbind(rv_extension_handle self, const struct rv_hook *hook)
 {
     struct rv_extension_record *record = valid_handle(self);
     int site = record ? site_index(record, hook->site) : -1;
@@ -764,28 +765,28 @@ static uint32_t api_next(const void *next, uint32_t a, uint32_t b, uint32_t c, u
     return core_next_call6(next, a, b, c, d, e, f);
 }
 
-static uint32_t api_setting_get(rv_handle self, uint16_t key, void *out, uint32_t capacity)
+static uint32_t api_setting_get(rv_extension_handle self, uint16_t key, void *out, uint32_t capacity)
 {
     struct rv_extension_record *record = valid_handle(self);
     return record ? core_settings_get(record->owner, key, out, capacity) : 0;
 }
 
-static int api_setting_set(rv_handle self, uint16_t key, uint8_t type, const void *data,
+static int api_setting_set(rv_extension_handle self, uint16_t key, uint8_t type, const void *data,
                            uint32_t bytes)
 {
     struct rv_extension_record *record = valid_handle(self);
-    if (!record || key == RV_KEY_ENABLED)
+    if (!record || key == RV_SETTING_KEY_ENABLED)
         return RV_BAD_ARGUMENT;
     return core_settings_set(record->owner, key, type, data, bytes) ? RV_NO_MEMORY : RV_OK;
 }
 
-static void *api_alloc(rv_handle self, uint32_t bytes)
+static void *api_alloc(rv_extension_handle self, uint32_t bytes)
 {
     struct rv_extension_record *record = valid_handle(self);
     return record ? allocate(record, bytes) : NULL;
 }
 
-static void api_free(rv_handle self, void *block)
+static void api_free(rv_extension_handle self, void *block)
 {
     struct rv_extension_record *record = valid_handle(self);
     if (record && block)
@@ -795,7 +796,7 @@ static void api_free(rv_handle self, void *block)
 static int load_module(struct rv_extension_record *record, uint32_t index);
 static void unload_module(struct rv_extension_record *record, uint32_t index);
 
-static int api_module_load(rv_handle self, uint32_t module)
+static int api_module_load(rv_extension_handle self, uint32_t module)
 {
     struct rv_extension_record *record = valid_handle(self);
     if (!record || module == 0 || module >= record->module_count ||
@@ -806,7 +807,7 @@ static int api_module_load(rv_handle self, uint32_t module)
     return load_module(record, module) ? RV_OK : RV_NOT_FOUND;
 }
 
-static void api_module_unload(rv_handle self, uint32_t module)
+static void api_module_unload(rv_extension_handle self, uint32_t module)
 {
     struct rv_extension_record *record = valid_handle(self);
     if (record && module && module < record->module_count &&
@@ -815,7 +816,7 @@ static void api_module_unload(rv_handle self, uint32_t module)
 }
 
 
-static int api_ui_push(rv_handle self, const char *screen)
+static int api_ui_push(rv_extension_handle self, const char *screen)
 {
     struct rv_extension_record *record = valid_handle(self);
     struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
@@ -826,13 +827,13 @@ static int api_ui_push(rv_handle self, const char *screen)
     return core_screens_push(s, core_screens_caller) ? RV_OK : RV_NO_MEMORY;
 }
 
-static void api_ui_pop(rv_handle self)
+static void api_ui_pop(rv_extension_handle self)
 {
     if (valid_handle(self))
         core_screens_pop();
 }
 
-static void api_ui_refresh(rv_handle self, const char *screen)
+static void api_ui_refresh(rv_extension_handle self, const char *screen)
 {
     struct rv_extension_record *record = valid_handle(self);
     struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
@@ -840,13 +841,13 @@ static void api_ui_refresh(rv_handle self, const char *screen)
         core_screens_refresh(s);
 }
 
-static void api_ui_invalidate(rv_handle self)
+static void api_ui_invalidate(rv_extension_handle self)
 {
     if (valid_handle(self))
         core_screens_invalidate();
 }
 
-static void *api_asset_load(rv_handle self, const char *name, uint32_t *bytes)
+static void *api_asset_load(rv_extension_handle self, const char *name, uint32_t *bytes)
 {
     struct rv_extension_record *record = valid_handle(self);
     uint32_t size = 0;
@@ -857,7 +858,7 @@ static void *api_asset_load(rv_handle self, const char *name, uint32_t *bytes)
     return block;
 }
 
-static int api_asset_read(rv_handle self, const char *name, uint32_t offset, void *out,
+static int api_asset_read(rv_extension_handle self, const char *name, uint32_t offset, void *out,
                           uint32_t bytes, uint32_t *got)
 {
     struct rv_extension_record *record = valid_handle(self);
@@ -891,6 +892,7 @@ static int api_asset_read(rv_handle self, const char *name, uint32_t offset, voi
 }
 
 static struct rv_debug_info debug = {
+    sizeof debug,
     CORE_BUILD_ID,
     &core_extensions,
     offsetof(struct rv_extension_record, next),
@@ -911,7 +913,7 @@ static const struct rv_debug_info *api_debug_info(void)
 
 const char *core_loader_last_log;
 
-static void api_log(rv_handle self, const char *line)
+static void api_log(rv_extension_handle self, const char *line)
 {
     (void)self;
     core_loader_last_log = line;
@@ -938,12 +940,12 @@ static const struct rv_api api = {
 
 /* Modules */
 
-static const struct rv_extension *enter(struct rv_extension_record *record, void *image,
+static const struct rv_descriptor *enter(struct rv_extension_record *record, void *image,
                                         uint32_t entry)
 {
-    rv_entry_fn fn = (rv_entry_fn)((uint32_t)image + entry);
+    rv_module_entry_fn fn = (rv_module_entry_fn)((uint32_t)image + entry);
     core_panic_extension = record->owner;
-    const struct rv_extension *descriptor = fn(&api, record);
+    const struct rv_descriptor *descriptor = fn(&api, record);
     core_panic_extension = 0;
     return descriptor;
 }
@@ -1021,7 +1023,7 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     module->bytes = code_bytes + header.bss_bytes;
     module->loaded = 1;
     module->idle = 0;
-    const struct rv_extension *descriptor = enter(record, image, header.entry);
+    const struct rv_descriptor *descriptor = enter(record, image, header.entry);
     if (index == 0) {
         if (!descriptor || descriptor->size != sizeof *descriptor ||
             !valid_descriptor(descriptor)) {
@@ -1066,7 +1068,7 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     if (!module->loaded)
         return;
     if (index == 0 && record->descriptor) {
-        const struct rv_extension *descriptor = record->descriptor;
+        const struct rv_descriptor *descriptor = record->descriptor;
         if (descriptor->unload) {
             core_panic_extension = record->owner;
             descriptor->unload();
@@ -1118,7 +1120,7 @@ static struct rv_extension_record *load_extension(const char *file)
         return NULL;
     const struct manifest_header *header = (const struct manifest_header *)buffer;
     uint32_t owner = fnv1a(strings(buffer) + header->text[0]);
-    if (!core_settings_get_int(owner, RV_KEY_ENABLED, header->flags & MANIFEST_ENABLED))
+    if (!core_settings_get_int(owner, RV_SETTING_KEY_ENABLED, header->flags & MANIFEST_ENABLED))
         return NULL;
     uint32_t record_bytes = sizeof(struct rv_extension_record) +
                             header->module_count * sizeof(struct core_module) + bytes;
@@ -1305,7 +1307,7 @@ void core_loader_boot(void)
     uint32_t crashed = CORE_CRASH_SCRATCH;
     if (crashed) {
         CORE_CRASH_SCRATCH = 0;
-        core_settings_set_int(crashed, RV_KEY_ENABLED, 0);
+        core_settings_set_int(crashed, RV_SETTING_KEY_ENABLED, 0);
         core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, (int32_t)crashed);
     }
     core_loader_crashed = (uint32_t)core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);
@@ -1338,7 +1340,7 @@ int core_loader_set_enabled(const char *file, int enabled)
         const struct manifest_header *header = (const struct manifest_header *)buffer;
         owner = fnv1a(strings(buffer) + header->text[0]);
     }
-    core_settings_set_int(owner, RV_KEY_ENABLED, enabled != 0);
+    core_settings_set_int(owner, RV_SETTING_KEY_ENABLED, enabled != 0);
     if (enabled && owner == core_loader_crashed) {
         core_loader_crashed = 0;
         core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);

@@ -13,7 +13,7 @@ SYMBOLS = {
     "__data_start": 0x40,
     "__data_end": 0x50,
     "__bss_end": 0x58,
-    "rvx_entry": 0x11,
+    "rv_module_entry": 0x11,
 }
 DOCUMENT = {
     "id": "eq",
@@ -139,11 +139,11 @@ class RvxTests(unittest.TestCase):
         cases = {
             "unaligned relocation": (SYMBOLS, [0x42]),
             "relocation past the image": (SYMBOLS, [0x4D]),
-            "entry in data": ({**SYMBOLS, "rvx_entry": 0x51}, []),
+            "entry in data": ({**SYMBOLS, "rv_module_entry": 0x51}, []),
             "bss before data": ({**SYMBOLS, "__bss_end": 0x4C}, []),
             "unaligned data": ({**SYMBOLS, "__data_start": 0x42}, []),
             "missing symbol": (
-                {k: v for k, v in SYMBOLS.items() if k != "rvx_entry"},
+                {k: v for k, v in SYMBOLS.items() if k != "rv_module_entry"},
                 [],
             ),
         }

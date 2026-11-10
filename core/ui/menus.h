@@ -5,21 +5,11 @@
 #include "loader/loader.h"
 #include "rv_api.h"
 
-/* The native menus an entry names in rv_entry.in. */
-enum rv_root {
-    RV_ROOT_MAIN,            /* "main" */
-    RV_ROOT_MUSIC,           /* "music" */
-    RV_ROOT_EXTRAS,          /* "extras" */
-    RV_ROOT_SETTINGS,        /* "settings" */
-    RV_ROOT_NOWPLAYING_MENU, /* "nowplaying": the Now Playing context menu */
-    RV_ROOT_SONG_MENU,       /* "song": the song list context menus */
-    RV_ROOT_ALBUM_MENU,      /* "album" */
-    RV_ROOT_ARTIST_MENU,     /* "artist" */
-    RV_ROOT_COUNT,
-};
+/* The menus of rv_menu, as an array bound. */
+#define CORE_MENU_COUNT (RV_MENU_ARTIST_CONTEXT + 1)
 
 /* Registers the descriptor's entries as rows of the native menus. */
-int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
+int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_entry *entries,
                         uint32_t count);
 /* Hides the owner's rows and frees their records; the row data Apple keeps
  * pointers to is parked for the owner's next load. 0 when the heap had no room
@@ -39,7 +29,7 @@ void core_menus_toggle(uint8_t root, uint32_t n);
 /* Redraws the value of every row of `owner` that shows the setting `key`. */
 void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key);
 /* The live entry of the row with this item id and *owner its extension, or NULL. */
-const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner);
+const struct rv_menu_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner);
 /* 1 when `id` is a Settings row's pane handler id; shows that row in the pane
  * unless `argument` is the support query. */
 int core_menus_pane(uint32_t id, uint32_t argument);

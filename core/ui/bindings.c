@@ -36,7 +36,7 @@ static void write_bindings(struct core_writer *w, uint32_t screen_id)
         }
         core_write_event(w, name, handler, NULL, NULL, 0);
         count++;
-        if (r->root != RV_ROOT_SETTINGS)
+        if (r->root != RV_MENU_SETTINGS)
             continue;
         /* The preview pane: the row's pane handler, then the shared layout. */
         static const char *const layout[] = {core_panes_layout_name};

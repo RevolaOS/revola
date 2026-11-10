@@ -174,7 +174,7 @@ void core_panes_show(uint32_t item)
 
 /* The box behind an icon, or a transparent pixel for a row without one: an
  * image view keeps its last bitmap when it is answered NULL. */
-static const void *box_for(const struct rv_entry *e)
+static const void *box_for(const struct rv_menu_entry *e)
 {
     static uint32_t clear[(BMap_payload + 4) / 4];
     if (e->bitmap && !e->plain_icon)
@@ -193,7 +193,7 @@ static const void *box_for(const struct rv_entry *e)
 
 int core_panes_property(uint32_t type, uint32_t id, uint32_t out)
 {
-    const struct rv_entry *e;
+    const struct rv_menu_entry *e;
     struct rv_extension_record *owner;
     if (!layout || id - CAPTION >= 4 || !(e = core_menus_entry(current, &owner)))
         return 0;

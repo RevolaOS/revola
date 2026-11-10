@@ -2,11 +2,11 @@
 
 /* Extension module layout: linked at 0, text, rodata, data and bss in one
  * segment so only absolute relocations remain for rvx-pack; the loader adds the
- * load address to each. rvx_entry is the module entry (rv_entry_fn). */
-ENTRY(rvx_entry)
+ * load address to each. rv_module_entry is the module entry (rv_module_entry_fn). */
+ENTRY(rv_module_entry)
 SECTIONS {
     . = 0;
-    .text : { *(.text.rvx_entry) *(.text*) *(.rodata*) }
+    .text : { *(.text.rv_module_entry) *(.text*) *(.rodata*) }
     . = ALIGN(4);
     __data_start = .;
     .data : { *(.data*) }

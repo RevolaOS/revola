@@ -46,12 +46,19 @@ static struct core_screen *stale_record(uint32_t key, uint32_t name, uint32_t id
     return NULL;
 }
 
+/* What tells a screen's record apart across reloads: its id, or for the
+ * screens settings make, which have none, the title. */
+static uint32_t screen_key(const struct rv_screen *d)
+{
+    return core_settings_owner(d->id ? d->id : d->title);
+}
+
 int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
                           uint32_t count)
 {
     uint32_t key = core_resource_owner(owner), fresh = 0;
     for (uint32_t n = 0; n < count; n++)
-        fresh += !stale_record(key, core_settings_owner(screens[n].name),
+        fresh += !stale_record(key, screen_key(&screens[n]),
                                core_clone_ids(&screens[n]));
     struct screen_set *set = NULL;
     if (fresh) {
@@ -68,7 +75,7 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
     }
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_screen *d = &screens[n];
-        uint32_t name = core_settings_owner(d->name), ids = core_clone_ids(d);
+        uint32_t name = screen_key(d), ids = core_clone_ids(d);
         struct core_screen *s = stale_record(key, name, ids);
         if (!s) {
             uint32_t id = core_resource_take(key, ids);
@@ -106,14 +113,15 @@ void core_screens_release(struct rv_extension_record *owner)
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name)
 {
     EACH_SCREEN(s)
-        if (s->declaration && s->owner == owner && same(s->declaration->name, name))
+        if (s->declaration && s->declaration->id && s->owner == owner &&
+            same(s->declaration->id, name))
             return s;
     return NULL;
 }
 
 const struct rv_setting *core_screens_setting(struct rv_extension_record *owner, uint16_t key)
 {
-    const struct rv_extension *d = owner ? owner->descriptor : NULL;
+    const struct rv_descriptor *d = owner ? owner->descriptor : NULL;
     for (uint32_t i = 0; d && i < d->setting_count; i++)
         if (d->settings[i].key == key)
             return &d->settings[i];
@@ -128,18 +136,18 @@ int32_t core_screens_setting_value(struct rv_extension_record *owner, uint16_t k
 }
 
 /* A setting with labels and a style edits as a screen of that style, titled
- * and named by its label. */
+ * by its label. It has no id: only its setting's rows open it. */
 static uint8_t setting_screen_kind(const struct rv_setting *setting)
 {
-    if (setting->type != RV_SETTING_INT || !setting->labels || !setting->label_count)
+    if (setting->type != RV_SETTING_TYPE_INT || !setting->labels || !setting->label_count)
         return 0xff;
     switch (setting->style) {
-    case RV_STYLE_CHOICE:
-        return RV_SCREEN_CHOICE;
-    case RV_STYLE_SLIDER:
-        return RV_SCREEN_SLIDER;
-    case RV_STYLE_MULTI:
-        return RV_SCREEN_MULTI_CHOICE;
+    case RV_SETTING_STYLE_CHOICE:
+        return RV_SCREEN_KIND_CHOICE;
+    case RV_SETTING_STYLE_SLIDER:
+        return RV_SCREEN_KIND_SLIDER;
+    case RV_SETTING_STYLE_MULTI:
+        return RV_SCREEN_KIND_MULTI_CHOICE;
     default:
         return 0xff;
     }
@@ -155,7 +163,7 @@ uint32_t core_screens_from_settings(const struct rv_setting *settings, uint32_t 
             continue;
         if (out) {
             struct rv_screen *s = &out[n];
-            s->name = s->title = settings[i].label;
+            s->title = settings[i].label;
             s->kind = kind;
             s->layout = RV_LAYOUT_AUTO;
             s->choice.key = settings[i].key;
@@ -171,8 +179,8 @@ struct core_screen *core_screens_find_setting(struct rv_extension_record *owner,
 {
     EACH_SCREEN(s) {
         const struct rv_screen *d = s->declaration;
-        if (d && s->owner == owner && d->kind != RV_SCREEN_LIST && d->kind != RV_SCREEN_TEXT &&
-            d->kind != RV_SCREEN_CANVAS && d->kind != RV_SCREEN_RUNTIME_LIST && d->choice.key == key)
+        if (d && s->owner == owner && d->kind != RV_SCREEN_KIND_LIST && d->kind != RV_SCREEN_KIND_TEXT &&
+            d->kind != RV_SCREEN_KIND_CANVAS && d->kind != RV_SCREEN_KIND_DYNAMIC_LIST && d->choice.key == key)
             return s;
     }
     return NULL;

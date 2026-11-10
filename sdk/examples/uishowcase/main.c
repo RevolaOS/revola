@@ -14,7 +14,7 @@
 #include "rv_ui.h"
 
 static const struct rv_api *api;
-static rv_handle self;
+static rv_extension_handle self;
 
 /* Settings: one of each kind. */
 #define KEY_FLAG 1
@@ -27,7 +27,7 @@ static const char *const volumes[] = {"Mute", "Quiet", "Normal", "Loud", "Max"};
 static const char *const days[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 
 static const struct rv_setting settings[] = {
-    RV_SETTING_FLAG(KEY_FLAG, "Flag", 0),
+    RV_SETTING_BOOL(KEY_FLAG, "Flag", 0),
     RV_SETTING_CHOICE(KEY_CHOICE, "Choice", 1, seasons),
     RV_SETTING_SLIDER(KEY_SLIDER, "Slider", 2, volumes),
     RV_SETTING_MULTI(KEY_MULTI, "Multi-choice", 0x1f, days),
@@ -42,7 +42,7 @@ static void count_up(void)
     presses++;
 }
 
-/* Rows, and the screen calls an action may make: ui_push by name, ui_pop. */
+/* Rows, and the screen calls an action may make: ui_push by id, ui_pop. */
 static void push_from_action(void)
 {
     api->ui_push(self, "text");
@@ -53,16 +53,24 @@ static void pop_from_action(void)
     api->ui_pop(self);
 }
 
+/* An info row's text, drawn each time the row is. */
+static const char *presses_text(void)
+{
+    static char text[24];
+    rv_format(text, sizeof text, "Info: %lu presses", presses);
+    return text;
+}
+
 static const struct rv_row row_rows[] = {
-    RV_PUSH("Push", "text"),
-    RV_TOGGLE("Toggle", KEY_FLAG),
-    RV_ACTION("Action: count up", count_up),
-    RV_ACTION("Action: push a screen", push_from_action),
-    RV_ACTION("Action: pop this list", pop_from_action),
-    RV_SETTING("Setting: flag", KEY_FLAG),
-    RV_SETTING("Setting: choice", KEY_CHOICE),
-    RV_SETTING("Setting: slider", KEY_SLIDER),
-    RV_SETTING("Setting: multi", KEY_MULTI),
+    RV_ROW_PUSH("Push", "text"),
+    RV_ROW_ACTION("Action: count up", count_up),
+    RV_ROW_ACTION("Action: push a screen", push_from_action),
+    RV_ROW_ACTION("Action: pop this list", pop_from_action),
+    RV_ROW_SETTING("Setting: flag", KEY_FLAG),
+    RV_ROW_SETTING("Setting: choice", KEY_CHOICE),
+    RV_ROW_SETTING("Setting: slider", KEY_SLIDER),
+    RV_ROW_SETTING("Setting: multi", KEY_MULTI),
+    RV_ROW_INFO("Info", presses_text),
 };
 
 /* Screens. */
@@ -174,13 +182,13 @@ static int canvas_input(const struct rv_input *input)
         last_input = input->delta > 0 ? "Wheel forward" : "Wheel back";
         box_left += input->delta * 8;
         box_left = box_left < 0 ? 0 : box_left > 280 ? 280 : box_left;
-    } else if (input->key == RV_KEY_MENU) {
+    } else if (input->button == RV_BUTTON_MENU) {
         api->free(self, disc);
         disc = 0;
         return 0; /* left to the system, which pops the canvas */
     } else if (input->kind == RV_INPUT_PRESS) {
-        last_input = keys[input->key];
-        if (input->key == RV_KEY_CENTER)
+        last_input = keys[input->button];
+        if (input->button == RV_BUTTON_CENTER)
             box_red ^= 1;
     } else {
         return 1; /* releases change nothing */
@@ -210,7 +218,7 @@ static void page_draw(const struct rv_gfx *g, int width, int height)
 static int page_input(const struct rv_input *input)
 {
     if (input->kind != RV_INPUT_WHEEL)
-        return input->key != RV_KEY_MENU; /* Menu pops the page */
+        return input->button != RV_BUTTON_MENU; /* Menu pops the page */
     page_row += input->delta > 0 ? 1 : -1;
     page_row = page_row < 0 ? 0 : page_row > 2 ? 2 : page_row;
     api->ui_invalidate(self);
@@ -235,14 +243,14 @@ static void card_draw(const struct rv_gfx *g, int width, int height)
 
 static int card_input(const struct rv_input *input)
 {
-    if (input->kind == RV_INPUT_WHEEL || input->key != RV_KEY_MENU)
+    if (input->kind == RV_INPUT_WHEEL || input->button != RV_BUTTON_MENU)
         return 1;
     api->free(self, disc);
     disc = 0;
     return 0; /* Menu pops the card */
 }
 
-/* Counter: a runtime list whose rows change, redrawn with ui_refresh. */
+/* Counter: a dynamic list whose rows change, redrawn with ui_refresh. */
 static uint32_t counter_count(void)
 {
     return 3;
@@ -277,19 +285,20 @@ static int counter_select(uint32_t index)
 }
 
 /* The choice, slider and multi-choice screens are the ones the core makes from
- * the settings, named by their labels. List screens follow their parent's
- * layout unless .layout says otherwise; the two runtime lists force one each. */
+ * the settings; their setting rows open them. List screens follow their
+ * parent's layout unless .layout says otherwise; the two dynamic lists force
+ * one each. */
 static const struct rv_row screen_rows[] = {
-    RV_PUSH("Text page", "text"),
-    RV_PUSH("Choice", "Choice"),
-    RV_PUSH("Slider", "Slider"),
-    RV_PUSH("Multi-choice", "Multi-choice"),
-    RV_PUSH("Runtime list, full", "runtime"),
-    RV_PUSH("Runtime list, split", "stacked"),
-    RV_PUSH("Counter, refreshed", "counter"),
-    RV_PUSH("Canvas", "canvas"),
-    RV_PUSH("Page canvas", "page"),
-    RV_PUSH("Card canvas", "card"),
+    RV_ROW_PUSH("Text page", "text"),
+    RV_ROW_SETTING("Choice", KEY_CHOICE),
+    RV_ROW_SETTING("Slider", KEY_SLIDER),
+    RV_ROW_SETTING("Multi-choice", KEY_MULTI),
+    RV_ROW_PUSH("Dynamic list, full", "dynamic"),
+    RV_ROW_PUSH("Dynamic list, split", "stacked"),
+    RV_ROW_PUSH("Counter, refreshed", "counter"),
+    RV_ROW_PUSH("Canvas", "canvas"),
+    RV_ROW_PUSH("Page canvas", "page"),
+    RV_ROW_PUSH("Card canvas", "card"),
 };
 
 /* Entries. */
@@ -302,47 +311,45 @@ static const char *const entries_text[] = {
 };
 
 static const struct rv_row menu_rows[] = {
-    RV_PUSH("Rows", "rows"),
-    RV_PUSH("Screens", "screens"),
-    RV_PUSH("Entries", "entries"),
+    RV_ROW_PUSH("Rows", "rows"),
+    RV_ROW_PUSH("Screens", "screens"),
+    RV_ROW_PUSH("Entries", "entries"),
 };
 
 static const struct rv_screen screens[] = {
-    RV_LIST("menu", "UI Showcase", menu_rows),
-    RV_LIST("rows", "Rows", row_rows),
-    RV_LIST("screens", "Screens", screen_rows),
-    RV_TEXT("text", "Text page", text_page),
-    RV_RUNTIME_LIST("runtime", "Runtime list", moon_count, moon_row, moon_select,
-                    .layout = RV_LAYOUT_FULL),
-    RV_RUNTIME_LIST("stacked", "Stacked", moon_count, moon_row, moon_select,
-                    .layout = RV_LAYOUT_SPLIT, .runtime.detail = RV_DETAIL_BELOW),
-    RV_RUNTIME_LIST("counter", "Counter", counter_count, counter_row, counter_select),
-    RV_CANVAS("canvas", "Canvas", canvas_draw, canvas_input),
-    RV_CANVAS("page", "Page", page_draw, page_input),
-    RV_CANVAS("card", "Card", card_draw, card_input, .opening = RV_OPENING_FROM_PANE),
-    RV_TEXT("entries", "Entries", entries_text),
+    RV_SCREEN_LIST("menu", "UI Showcase", menu_rows),
+    RV_SCREEN_LIST("rows", "Rows", row_rows),
+    RV_SCREEN_LIST("screens", "Screens", screen_rows),
+    RV_SCREEN_TEXT("text", "Text page", text_page),
+    RV_SCREEN_DYNAMIC_LIST("dynamic", "Dynamic list", moon_count, moon_row, moon_select,
+                           .layout = RV_LAYOUT_FULL),
+    RV_SCREEN_DYNAMIC_LIST("stacked", "Stacked", moon_count, moon_row, moon_select,
+                           .layout = RV_LAYOUT_SPLIT, .dynamic.detail = RV_DETAIL_BELOW),
+    RV_SCREEN_DYNAMIC_LIST("counter", "Counter", counter_count, counter_row, counter_select),
+    RV_SCREEN_CANVAS("canvas", "Canvas", canvas_draw, canvas_input),
+    RV_SCREEN_CANVAS("page", "Page", page_draw, page_input),
+    RV_SCREEN_CANVAS("card", "Card", card_draw, card_input, .transition = RV_TRANSITION_FROM_PANE),
+    RV_SCREEN_TEXT("entries", "Entries", entries_text),
 };
 
-static const struct rv_entry entries[] = {
-    RV_ENTRY("settings", RV_SETTINGS_LEGAL, RV_PUSH("UI Showcase", "menu"),
+static const struct rv_menu_entry entries[] = {
+    RV_MENU_ENTRY(RV_MENU_SETTINGS, RV_SETTINGS_LEGAL, RV_ROW_PUSH("UI Showcase", "menu"),
              .caption = "Every SDK screen", .bitmap = RV_BITMAP("pane")),
-    RV_ENTRY("main", RV_MAIN_EXTRAS, RV_PUSH("UI Showcase", "menu")),
-    /* Hidden by default; spelt out because RV_ENTRY sets .visible = 1 and
-     * -Werror=override-init refuses a second initializer. */
-    {.in = "music", .visible = 0, .row = RV_PUSH("UI Showcase", "menu")},
-    RV_ENTRY("extras", 0, RV_PUSH("UI Showcase", "menu")),
-    RV_ENTRY("nowplaying", 0, RV_ACTION("Count up", count_up)),
-    RV_ENTRY("song", 0, RV_ACTION("Count up", count_up)),
-    RV_ENTRY("album", 0, RV_ACTION("Count up", count_up)),
-    RV_ENTRY("artist", 0, RV_ACTION("Count up", count_up)),
+    RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_EXTRAS, RV_ROW_PUSH("UI Showcase", "menu")),
+    RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .hidden = 1),
+    RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("UI Showcase", "menu")),
+    RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
+    RV_MENU_ENTRY(RV_MENU_SONG_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
+    RV_MENU_ENTRY(RV_MENU_ALBUM_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
+    RV_MENU_ENTRY(RV_MENU_ARTIST_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
 };
 
-static const struct rv_extension extension = {
+static const struct rv_descriptor extension = {
     .size = sizeof extension, RV_SETTINGS(settings),
     RV_SCREENS(screens), RV_ENTRIES(entries), .unload = unload,
 };
 
-const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)
+const struct rv_descriptor *rv_module_entry(const struct rv_api *core, rv_extension_handle handle)
 {
     api = core;
     self = handle;

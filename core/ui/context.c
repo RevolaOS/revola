@@ -15,13 +15,13 @@ static uint8_t context_root(uint32_t site)
 {
     switch (site) {
     case CORE_SITE_NowPlaying_CancelAppend_call:
-        return RV_ROOT_NOWPLAYING_MENU;
+        return RV_MENU_NOW_PLAYING_CONTEXT;
     case CORE_SITE_Artists_CancelAppend_call:
-        return RV_ROOT_ARTIST_MENU;
+        return RV_MENU_ARTIST_CONTEXT;
     case CORE_SITE_Albums_CancelAppend_call:
-        return RV_ROOT_ALBUM_MENU;
+        return RV_MENU_ALBUM_CONTEXT;
     default:
-        return RV_ROOT_SONG_MENU;
+        return RV_MENU_SONG_CONTEXT;
     }
 }
 

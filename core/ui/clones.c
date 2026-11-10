@@ -33,19 +33,19 @@ static void set(uint32_t type, uint32_t id, const void *data, uint32_t bytes)
 uint32_t core_clone_ids(const struct rv_screen *d)
 {
     switch (d->kind) {
-    case RV_SCREEN_LIST:
+    case RV_SCREEN_KIND_LIST:
         /* screen, layout, title, items, 4 for layout clones, 2 per row, then the
          * split layout's screen, layout and 5 clones */
         return 8 + 2 * d->list.count + CORE_LIST_SPLIT_IDS;
-    case RV_SCREEN_TEXT:
+    case RV_SCREEN_KIND_TEXT:
         /* screen, layout, title, 5 for layout clones, one source per paragraph */
         return 8 + (d->text.count < CORE_MAX_PARAGRAPHS ? d->text.count : CORE_MAX_PARAGRAPHS);
-    case RV_SCREEN_SLIDER:
+    case RV_SCREEN_KIND_SLIDER:
         /* screen, layout, title, 5 for layout clones, the bar's and the value's source */
         return 10;
-    case RV_SCREEN_CHOICE:
-    case RV_SCREEN_MULTI_CHOICE:
-    case RV_SCREEN_RUNTIME_LIST:
+    case RV_SCREEN_KIND_CHOICE:
+    case RV_SCREEN_KIND_MULTI_CHOICE:
+    case RV_SCREEN_KIND_DYNAMIC_LIST:
         /* screen, layout, title, items, 4 for layout clones, the row and its source,
          * then the split layout's ids */
         return 10 + CORE_LIST_SPLIT_IDS;

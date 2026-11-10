@@ -45,7 +45,7 @@ struct rv_extension_record {
                                the core's records of its UI and Apple's copies of them */
     uint32_t peak;
     uint32_t hooks_bound;
-    const struct rv_extension *descriptor;
+    const struct rv_descriptor *descriptor;
     struct core_hook *hooks; /* core-owned copies of the descriptor's hooks */
     struct rv_screen *setting_screens; /* screens the declared settings open, or NULL */
     struct core_module *modules;

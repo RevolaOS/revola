@@ -28,6 +28,6 @@ uint32_t rv_format(char *out, uint32_t capacity, const char *format, ...)
 uint32_t rv_vformat(char *out, uint32_t capacity, const char *format, va_list args);
 
 /* A duration as a track time: "3:07" under an hour, "1:02:03" from one. */
-uint32_t rv_format_time(char *out, uint32_t capacity, uint32_t seconds);
+uint32_t rv_format_duration(char *out, uint32_t capacity, uint32_t seconds);
 
 #endif

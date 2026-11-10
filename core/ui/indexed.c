@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* The rows a choice, multi-choice or runtime list's one row expands into. As
+/* The rows a choice, multi-choice or dynamic list's one row expands into. As
  * the last model-backed row of its list it becomes as many rows as its title
  * property's Property_Count, and each asks the Settings model's indexed
  * property for its label, detail, style and checkmark by index. All of them
@@ -37,9 +37,9 @@ static uint32_t owner_of(const struct core_screen *s)
 static uint32_t row_count(const struct core_screen *s)
 {
     const struct rv_screen *d = s->declaration;
-    if (d->kind == RV_SCREEN_RUNTIME_LIST)
-        return d->runtime.count ? d->runtime.count() : 0;
-    return d->kind == RV_SCREEN_MULTI_CHOICE && d->choice.count > 32 ? 32 : d->choice.count;
+    if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST)
+        return d->dynamic.count ? d->dynamic.count() : 0;
+    return d->kind == RV_SCREEN_KIND_MULTI_CHOICE && d->choice.count > 32 ? 32 : d->choice.count;
 }
 
 static int32_t setting(const struct core_screen *s)
@@ -53,8 +53,8 @@ static const uint32_t submenu_styles[2] = {MenuRowStyle_TwoLineSubmenu, 0};
 
 static int submenu_rows(const struct core_screen *s)
 {
-    return s->declaration->kind == RV_SCREEN_RUNTIME_LIST &&
-           s->declaration->runtime.detail == RV_DETAIL_BELOW_SUBMENU;
+    return s->declaration->kind == RV_SCREEN_KIND_DYNAMIC_LIST &&
+           s->declaration->dynamic.detail == RV_DETAIL_BELOW_SUBMENU;
 }
 
 int core_indexed_property(struct core_screen *s, uint32_t type, uint32_t id, uint32_t out)
@@ -63,7 +63,7 @@ int core_indexed_property(struct core_screen *s, uint32_t type, uint32_t id, uin
         return 0;
     if (type == Property_Count)
         *(uint32_t *)out = row_count(s);
-    else if (type == Property_LayoutSet && s->declaration->kind == RV_SCREEN_MULTI_CHOICE)
+    else if (type == Property_LayoutSet && s->declaration->kind == RV_SCREEN_KIND_MULTI_CHOICE)
         *(const uint32_t **)out = check_styles;
     else if (type == Property_LayoutSet && submenu_rows(s))
         *(const uint32_t **)out = submenu_styles;
@@ -102,9 +102,9 @@ static int row_answer(const struct core_screen *s, uint32_t type, uint32_t prope
     int title = property == CORE_SCREEN_ROWS(s);
     if (index >= row_count(s))
         return 0;
-    if (d->kind == RV_SCREEN_RUNTIME_LIST) {
+    if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST) {
         const char *detail = NULL;
-        const char *label = d->runtime.row ? d->runtime.row(index, &detail) : NULL;
+        const char *label = d->dynamic.row ? d->dynamic.row(index, &detail) : NULL;
         const char *text = title ? label : detail;
         if (type == Property_Layout && title && submenu_rows(s)) {
             *out = MenuRowStyle_TwoLineSubmenu;
@@ -119,9 +119,9 @@ static int row_answer(const struct core_screen *s, uint32_t type, uint32_t prope
         return 0;
     if (type == Property_String)
         *out = (uintptr_t)d->choice.labels[index];
-    else if (type == Property_Layout && d->kind == RV_SCREEN_MULTI_CHOICE)
+    else if (type == Property_Layout && d->kind == RV_SCREEN_KIND_MULTI_CHOICE)
         *out = MenuRowStyle_CheckIndented;
-    else if (type == Property_Bitmap && d->kind == RV_SCREEN_MULTI_CHOICE)
+    else if (type == Property_Bitmap && d->kind == RV_SCREEN_KIND_MULTI_CHOICE)
         *out = (uint32_t)setting(s) >> index & 1 ? (uintptr_t)checkmark(index) : 0;
     else
         return 0;
@@ -197,7 +197,7 @@ static uint32_t choice_activate(void *controller, uint32_t entering)
 
 int core_indexed_prepare(struct core_screen *s)
 {
-    if (s->declaration->kind != RV_SCREEN_CHOICE || choice_vtable)
+    if (s->declaration->kind != RV_SCREEN_KIND_CHOICE || choice_vtable)
         return 1;
     choice_vtable = core_controller_vtable(SettingsMenuListController_vtable,
                                            ScreenController_activate_method, choice_activate,
@@ -207,7 +207,7 @@ int core_indexed_prepare(struct core_screen *s)
 
 void core_indexed_attach(struct core_screen *s, void *controller)
 {
-    if (s->declaration->kind == RV_SCREEN_CHOICE)
+    if (s->declaration->kind == RV_SCREEN_KIND_CHOICE)
         core_controller_attach(controller, choice_vtable);
 }
 
@@ -218,17 +218,17 @@ void core_indexed_chosen(struct core_screen *s)
     if (index >= row_count(s))
         return;
     switch (d->kind) {
-    case RV_SCREEN_CHOICE:
+    case RV_SCREEN_KIND_CHOICE:
         core_settings_set_int(owner_of(s), d->choice.key, (int32_t)index);
         core_screens_setting_changed(s->owner, d->choice.key);
         core_screens_pop();
         break;
-    case RV_SCREEN_MULTI_CHOICE:
+    case RV_SCREEN_KIND_MULTI_CHOICE:
         core_settings_set_int(owner_of(s), d->choice.key, setting(s) ^ (int32_t)(1u << index));
         core_screens_notify(CORE_SCREEN_ROWS(s));
         break;
     default:
-        if (d->runtime.select && d->runtime.select(index))
+        if (d->dynamic.select && d->dynamic.select(index))
             core_screens_pop();
         break;
     }

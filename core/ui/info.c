@@ -47,13 +47,13 @@ static const char *const paragraphs[] = {
 static const struct rv_bitmap icon = {"extensions"};
 
 static const struct rv_screen screen = {
-    .name = "core.info", .title = "RevolaOS Info", .kind = RV_SCREEN_TEXT,
+    .id = "core.info", .title = "RevolaOS Info", .kind = RV_SCREEN_KIND_TEXT,
     .text = {paragraphs, sizeof paragraphs / sizeof paragraphs[0]},
 };
 
-static const struct rv_entry entry = {
-    .in = "settings", .visible = 1, .after = RES_SettingsMenu_Legal_Item,
-    .row = {.label = "RevolaOS Info", .kind = RV_ROW_PUSH, .screen = "core.info"},
+static const struct rv_menu_entry entry = {
+    .menu = RV_MENU_SETTINGS, .after = RES_SettingsMenu_Legal_Item,
+    .row = {.label = "RevolaOS Info", .kind = RV_ROW_KIND_PUSH, .screen = "core.info"},
     .caption = heading + sizeof "RevolaOS",
     .bitmap = &icon,
 };

@@ -206,7 +206,7 @@ uint32_t rv_format(char *out, uint32_t capacity, const char *format, ...)
     return length;
 }
 
-uint32_t rv_format_time(char *out, uint32_t capacity, uint32_t seconds)
+uint32_t rv_format_duration(char *out, uint32_t capacity, uint32_t seconds)
 {
     uint32_t minutes = seconds / 60;
     if (minutes < 60)

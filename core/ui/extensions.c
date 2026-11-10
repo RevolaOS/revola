@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* Settings > Extensions, built from the same declarations an extension uses: a
- * Settings entry opens a runtime list with a Usage row (usage.c) and one row
+ * Settings entry opens a dynamic list with a Usage row (usage.c) and one row
  * per installed extension with its state. Select on an extension opens its
  * page, a canvas with the manifest's description and the loader's figures,
  * whose Enabled line Select flips. The installed list is read from disk when
@@ -253,7 +253,7 @@ static void page_draw(const struct rv_gfx *g, int width, int height)
 
 static int page_input(const struct rv_input *input)
 {
-    if (!page || !listed || input->key != RV_KEY_CENTER)
+    if (!page || !listed || input->button != RV_BUTTON_CENTER)
         return 0; /* Menu pops the page; the other keys are the system's */
     if (input->kind == RV_INPUT_PRESS) {
         const struct core_installed *e = &listed[page->index];
@@ -267,17 +267,17 @@ static int page_input(const struct rv_input *input)
 }
 
 static const struct rv_screen screens[] = {
-    {.name = "core.extensions", .title = "Extensions", .kind = RV_SCREEN_RUNTIME_LIST,
-     .runtime = {.count = list_count, .row = list_row, .select = list_select,
+    {.id = "core.extensions", .title = "Extensions", .kind = RV_SCREEN_KIND_DYNAMIC_LIST,
+     .dynamic = {.count = list_count, .row = list_row, .select = list_select,
                  .detail = RV_DETAIL_BELOW_SUBMENU},
      .caption = meter, .bitmap = &extensions_icon},
-    {.name = "core.extension", .title = title, .kind = RV_SCREEN_CANVAS,
+    {.id = "core.extension", .title = title, .kind = RV_SCREEN_KIND_CANVAS,
      .canvas = {.draw = page_draw, .input = page_input}},
 };
 
-static const struct rv_entry entry = {
-    .in = "settings", .visible = 1, .after = RES_SettingsMenu_Legal_Item,
-    .row = {.label = "Extensions", .kind = RV_ROW_PUSH, .screen = "core.extensions"},
+static const struct rv_menu_entry entry = {
+    .menu = RV_MENU_SETTINGS, .after = RES_SettingsMenu_Legal_Item,
+    .row = {.label = "Extensions", .kind = RV_ROW_KIND_PUSH, .screen = "core.extensions"},
     .caption = "Manage Extensions",
     .bitmap = &extensions_icon,
 };

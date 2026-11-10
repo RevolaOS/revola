@@ -17,7 +17,7 @@
 
 struct row {
     struct rv_extension_record *owner;
-    const struct rv_entry *entry; /* NULL while stale: the owner's image is gone */
+    const struct rv_menu_entry *entry; /* NULL while stale: the owner's image is gone */
     uint32_t item;                /* resource id; item + 1 is the title source or label string */
     uint32_t label;               /* FNV-1a of the label, to find the row again after a reload */
     uint32_t after;               /* the stock row it follows; 0 for a context menu */

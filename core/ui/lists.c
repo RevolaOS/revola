@@ -4,7 +4,7 @@
  * (full width) or the Settings > Main Menu layout (split, the list beside the
  * preview pane), with an ITEM table. A plain list has one row per declared row:
  * Legal-row copies, Sound Check's for toggles. A choice, multi-choice or
- * runtime list has one row that expands into one row per entry (indexed.c):
+ * dynamic list has one row that expands into one row per entry (indexed.c):
  * a copy of the Settings > EQ row, the Main Menu row (checkmarks) or the Sound
  * Check row (a detail beside the label, or under it in the two-line style). */
 
@@ -94,15 +94,15 @@ const uint8_t *core_lists_prototype(int value)
 static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *value)
 {
     const struct rv_screen *d = s->declaration;
-    uint8_t row_kind = d->kind == RV_SCREEN_LIST ? d->list.rows[i].kind : 0;
-    *value = d->kind == RV_SCREEN_RUNTIME_LIST || (d->kind == RV_SCREEN_LIST &&
-             (row_kind == RV_ROW_TOGGLE || row_kind == RV_ROW_SETTING));
+    uint8_t row_kind = d->kind == RV_SCREEN_KIND_LIST ? d->list.rows[i].kind : 0;
+    *value = d->kind == RV_SCREEN_KIND_DYNAMIC_LIST || (d->kind == RV_SCREEN_KIND_LIST &&
+             row_kind == RV_ROW_KIND_SETTING);
     if (*value)
         return core_lists_prototype(1);
     switch (d->kind) {
-    case RV_SCREEN_CHOICE:
+    case RV_SCREEN_KIND_CHOICE:
         return stock_row(RES_Settings_EQ_Items, RES_Settings_EQ_Item);
-    case RV_SCREEN_MULTI_CHOICE:
+    case RV_SCREEN_KIND_MULTI_CHOICE:
         return stock_row(RES_Settings_MainMenu_Items, RES_Settings_MainMenu_Item);
     default:
         return core_lists_prototype(0);
@@ -124,10 +124,10 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
         const uint8_t *row = prototype(s, i, &value);
         if (!row)
             return 0;
-        /* A runtime list with the detail below draws the inline value under the
+        /* A dynamic list with the detail below draws the inline value under the
          * label; with a chevron the model gives the style (indexed.c), as the
          * chevron shows only for a style the model answers. */
-        uint8_t detail = d->kind == RV_SCREEN_RUNTIME_LIST ? d->runtime.detail : RV_DETAIL_BESIDE;
+        uint8_t detail = d->kind == RV_SCREEN_KIND_DYNAMIC_LIST ? d->dynamic.detail : RV_DETAIL_BESIDE;
         uint32_t words[6] = {MenuRow_id, item, MenuRow_title, source, MenuRow_style,
                              detail == RV_DETAIL_BELOW_SUBMENU ? MenuRowStyle_ModelLayout
                                                                : MenuRowStyle_TwoLine};
@@ -138,7 +138,7 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
         core_write_block_end(&w, begin);
         if (value)
             core_set_source2(source, item, source, SourceDestination_InlineValue);
-        else if (d->kind == RV_SCREEN_MULTI_CHOICE)
+        else if (d->kind == RV_SCREEN_KIND_MULTI_CHOICE)
             core_set_source2(source, item, item, SourceDestination_RowBitmap);
         else
             core_set_source(source, item, 1);

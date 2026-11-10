@@ -31,10 +31,10 @@ struct toggle_screen {
 };
 
 static struct toggle_screen screens[2] = {
-    {RV_ROOT_MAIN, "HandleMainMenu", SettingsModel_ToggleMainMenuItem, RES_Settings_MainMenu_Item,
+    {RV_MENU_MAIN, "HandleMainMenu", SettingsModel_ToggleMainMenuItem, RES_Settings_MainMenu_Item,
      MainMenuSettings_row_count,
      (const uint8_t *)MainMenuSettingsRows, 0},
-    {RV_ROOT_MUSIC, "HandleMusicMenu", SettingsModel_ToggleMusicMenuItem,
+    {RV_MENU_MUSIC, "HandleMusicMenu", SettingsModel_ToggleMusicMenuItem,
      RES_Settings_MusicMenu_Item, MusicMenuSettings_row_count,
      (const uint8_t *)MusicMenuSettingsRows, 0},
 };

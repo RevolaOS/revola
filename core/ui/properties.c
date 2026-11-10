@@ -57,7 +57,7 @@ void core_screens_refresh(struct core_screen *s)
 static const struct rv_row *screen_row(struct core_screen *s, uint32_t id, uint32_t *item)
 {
     uint32_t rows = CORE_SCREEN_ROWS(s);
-    if (s->declaration->kind != RV_SCREEN_LIST || id < rows ||
+    if (s->declaration->kind != RV_SCREEN_KIND_LIST || id < rows ||
         (id - rows) / 2 >= s->declaration->list.count)
         return NULL;
     *item = rows + (id - rows) / 2 * 2;
@@ -69,12 +69,12 @@ static const struct rv_row *screen_row(struct core_screen *s, uint32_t id, uint3
 static const char *row_text(struct rv_extension_record *owner, const struct rv_row *row,
                             int value)
 {
-    if (!value || (row->kind != RV_ROW_TOGGLE && row->kind != RV_ROW_SETTING))
+    if (!value || row->kind != RV_ROW_KIND_SETTING)
         return core_row_label(row);
     const struct rv_setting *setting = core_screens_setting(owner, row->key);
     int32_t v = core_screens_setting_value(owner, row->key);
     if (setting && setting->labels) {
-        if (setting->style == RV_STYLE_MULTI || (uint32_t)v >= setting->label_count)
+        if (setting->style == RV_SETTING_STYLE_MULTI || (uint32_t)v >= setting->label_count)
             return "";
         return setting->labels[v];
     }
@@ -97,7 +97,7 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
     }
     if (!s && !row)
         return core_panes_property(type, id, out) ? 1 : core_next_call(next, model, type, id, out);
-    if (s && s->declaration->kind == RV_SCREEN_SLIDER && id >= CORE_SCREEN_ROWS(s))
+    if (s && s->declaration->kind == RV_SCREEN_KIND_SLIDER && id >= CORE_SCREEN_ROWS(s))
         return core_slider_property(s, type, id, out) ? 1 : core_next_call(next, model, type, id, out);
     if (s && core_indexed_property(s, type, id, out))
         return 1;
@@ -116,7 +116,7 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
         text = row_text(owner, row, id == item + 1);
     else if (id == s->id + 2)
         text = s->declaration->title;
-    else if (s->declaration->kind == RV_SCREEN_TEXT && id >= CORE_SCREEN_ROWS(s))
+    else if (s->declaration->kind == RV_SCREEN_KIND_TEXT && id >= CORE_SCREEN_ROWS(s))
         text = s->declaration->text.paragraphs[id - CORE_SCREEN_ROWS(s)];
     else
         return core_next_call(next, model, type, id, out);
@@ -153,7 +153,7 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     struct core_screen *s = core_screens_of_id(item);
     struct rv_extension_record *owner = s ? s->owner : NULL;
     const struct rv_row *row = s ? screen_row(s, item, &found) : core_menus_row(item, &owner, &found);
-    uint8_t kind = s ? s->declaration->kind : RV_SCREEN_LIST;
+    uint8_t kind = s ? s->declaration->kind : RV_SCREEN_KIND_LIST;
     int indexed = core_lists_indexed(kind);
     if (!row && !indexed)
         return 0;
@@ -167,14 +167,13 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     }
     struct core_screen *target;
     switch (row->kind) {
-    case RV_ROW_PUSH:
+    case RV_ROW_KIND_PUSH:
         target = core_screens_find(owner, row->screen);
         if (target)
             core_screens_push(target, controller);
         break;
-    case RV_ROW_TOGGLE:
-    case RV_ROW_SETTING:
-        target = row->kind == RV_ROW_SETTING ? core_screens_find_setting(owner, row->key) : NULL;
+    case RV_ROW_KIND_SETTING:
+        target = core_screens_find_setting(owner, row->key);
         if (target) {
             core_screens_push(target, controller);
             break;
@@ -183,7 +182,7 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
                               !core_screens_setting_value(owner, row->key));
         core_screens_setting_changed(owner, row->key);
         break;
-    case RV_ROW_ACTION:
+    case RV_ROW_KIND_ACTION:
         if (row->action)
             row->action();
         break;

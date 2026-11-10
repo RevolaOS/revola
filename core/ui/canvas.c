@@ -35,7 +35,7 @@ static uint32_t wheel[WheelAccumulator_bytes / 4];
 
 static void draw(void *view, void *argument, const int32_t *clip)
 {
-    struct core_screen *s = core_screens_top(RV_SCREEN_CANVAS);
+    struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
     if (!s)
         s = core_screens_popped_canvas();
     if (!s || !s->declaration || !s->declaration->canvas.draw) {
@@ -67,7 +67,7 @@ static void *create(void *owner, void *parent, void *event_target, const void *d
 
 void core_canvas_invalidate(void)
 {
-    if (canvas_view && core_screens_top(RV_SCREEN_CANVAS))
+    if (canvas_view && core_screens_top(RV_SCREEN_KIND_CANVAS))
         View_InvalidateRect(UI_GetRootView(), (const int32_t *)((uint8_t *)canvas_view + View_bounds));
 }
 
@@ -120,15 +120,15 @@ static int key_of(uint32_t key)
 {
     switch (key) {
     case UIKey_Center:
-        return RV_KEY_CENTER;
+        return RV_BUTTON_CENTER;
     case UIKey_Menu:
-        return RV_KEY_MENU;
+        return RV_BUTTON_MENU;
     case UIKey_Previous:
-        return RV_KEY_PREVIOUS;
+        return RV_BUTTON_PREVIOUS;
     case UIKey_Next:
-        return RV_KEY_NEXT;
+        return RV_BUTTON_NEXT;
     case UIKey_Play:
-        return RV_KEY_PLAY;
+        return RV_BUTTON_PLAY;
     default:
         return -1;
     }
@@ -145,7 +145,7 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
                                                    WheelEvent_GetSpeed(event));
         if (!steps)
             return 1;
-        if (d->kind == RV_SCREEN_SLIDER) {
+        if (d->kind == RV_SCREEN_KIND_SLIDER) {
             slide(s, steps);
             return 1;
         }
@@ -155,15 +155,15 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
         int key = key_of(ButtonEvent_GetUIKeyCode(event));
         if (key < 0)
             return 0;
-        if (d->kind == RV_SCREEN_SLIDER) {
-            if (key != RV_KEY_PREVIOUS && key != RV_KEY_NEXT)
+        if (d->kind == RV_SCREEN_KIND_SLIDER) {
+            if (key != RV_BUTTON_PREVIOUS && key != RV_BUTTON_NEXT)
                 return 0;
             if (kind == InputEvent_ButtonDown)
-                slide(s, key == RV_KEY_NEXT ? 1 : -1);
+                slide(s, key == RV_BUTTON_NEXT ? 1 : -1);
             return 1;
         }
         in.kind = kind == InputEvent_ButtonDown ? RV_INPUT_PRESS : RV_INPUT_RELEASE;
-        in.key = (uint8_t)key;
+        in.button = (uint8_t)key;
     } else {
         return 0;
     }

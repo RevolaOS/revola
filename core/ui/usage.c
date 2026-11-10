@@ -166,11 +166,11 @@ static void draw(const struct rv_gfx *g, int width, int height)
 
 static int input(const struct rv_input *in)
 {
-    return in->key != RV_KEY_MENU && in->kind == RV_INPUT_RELEASE; /* Menu pops it */
+    return in->button != RV_BUTTON_MENU && in->kind == RV_INPUT_RELEASE; /* Menu pops it */
 }
 
 static const struct rv_screen screen = {
-    .name = "core.usage", .title = "Memory Usage", .kind = RV_SCREEN_CANVAS,
+    .id = "core.usage", .title = "Memory Usage", .kind = RV_SCREEN_KIND_CANVAS,
     .canvas = {.draw = draw, .input = input},
 };
 
