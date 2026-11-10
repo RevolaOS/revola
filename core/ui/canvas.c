@@ -28,7 +28,7 @@ static void *view_vtable[(CxxVtable_prefix_bytes + View_vtable_bytes) / 4];
  * canvas view; this is the one last drawn, the one on screen. */
 static void *canvas_view;
 static void **controller_vtable;
-static core_event_handler handle_event;
+static int (*handle_event)(void *controller, void *event);
 static uint32_t wheel[WheelAccumulator_bytes / 4];
 
 /* View */
@@ -181,7 +181,8 @@ static int event(void *controller, void *event)
 int core_canvas_prepare(void)
 {
     if (!controller_vtable)
-        controller_vtable = core_controller_vtable(ScreenController_vtable, event, &handle_event);
+        controller_vtable = core_controller_vtable(ScreenController_vtable, ScreenController_event_method,
+                                                   event, (void **)&handle_event);
     return controller_vtable != NULL;
 }
 

@@ -153,7 +153,8 @@ static uint32_t list_view(const struct core_screen *s)
     return notes_view;
 }
 
-/* Highlights the current choice, as Settings > EQ does once its layout is shown. */
+/* Highlights the current choice. The Settings list controller builds its list
+ * while it activates, so the row is selected right after that. */
 static void select_current(const struct core_screen *s)
 {
     void *model = UI_GetSelectionModel();
@@ -170,25 +171,24 @@ static void select_current(const struct core_screen *s)
 }
 
 static void **choice_vtable;
-static core_event_handler list_event_original;
+static uint32_t (*activate_original)(void *controller, uint32_t entering);
 
-static int list_event(void *controller, void *event)
+static uint32_t choice_activate(void *controller, uint32_t entering)
 {
+    uint32_t result = activate_original(controller, entering);
     struct core_screen *s = core_screens_of_controller(controller);
-    uint32_t kind = FIELD(event, InputEvent_kind, uint32_t);
-    if (s && s->declaration && kind == Event_Notification &&
-        FIELD(FIELD(event, Event_notification, void *), Notification_code, uint32_t) ==
-            Notification_LayoutShown)
+    if (entering && s && s->declaration)
         select_current(s);
-    return list_event_original(controller, event);
+    return result;
 }
 
 int core_indexed_prepare(struct core_screen *s)
 {
     if (s->declaration->kind != RV_SCREEN_CHOICE || choice_vtable)
         return 1;
-    choice_vtable = core_controller_vtable(SettingsMenuListController_vtable, list_event,
-                                           &list_event_original);
+    choice_vtable = core_controller_vtable(SettingsMenuListController_vtable,
+                                           ScreenController_activate_method, choice_activate,
+                                           (void **)&activate_original);
     return choice_vtable != NULL;
 }
 

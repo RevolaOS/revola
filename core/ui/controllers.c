@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Controllers the runtime creates get a copy of their class vtable whose event
- * slot sees events first, so Apple's controllers of the same class pay nothing.
+/* Controllers the runtime creates get a copy of their class vtable with one
+ * slot replaced, so Apple's controllers of the same class pay nothing.
  * Copies are made on the first push that needs one and kept for the boot. */
 
 #include "ui/controllers.h"
@@ -11,8 +11,8 @@
 
 #define PREFIX_WORDS (CxxVtable_prefix_bytes / 4)
 
-void **core_controller_vtable(void *const *vtable, core_event_handler handler,
-                              core_event_handler *original)
+void **core_controller_vtable(void *const *vtable, uint32_t method, void *handler,
+                              void **original)
 {
     uint32_t words = (CxxVtable_prefix_bytes + ScreenController_vtable_bytes) / 4;
     void **copy = Heap_AllocateZeroed(words * 4);
@@ -26,9 +26,9 @@ void **core_controller_vtable(void *const *vtable, core_event_handler handler,
         if (core_sites[site].kind == CORE_SITE_VTABLE && slot < words)
             copy[slot] = (void *)core_site_stubs[site];
     }
-    uint32_t slot = PREFIX_WORDS + ScreenController_event_method / 4;
-    *original = (core_event_handler)copy[slot];
-    copy[slot] = (void *)handler;
+    uint32_t slot = PREFIX_WORDS + method / 4;
+    *original = copy[slot];
+    copy[slot] = handler;
     return copy;
 }
 
