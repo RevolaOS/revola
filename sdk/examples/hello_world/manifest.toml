@@ -4,7 +4,7 @@ description = "Adds a Hello World page to Settings. Used to test RevolaOS."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.0"
+api = "1.19"
 enabled = true
 
 [[module]]

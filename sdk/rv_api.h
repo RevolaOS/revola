@@ -1,19 +1,28 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* The core services an extension may call. The table is append-only: a module
- * built against an older minor version finds every function it knows at the same
- * offset, and checks `size` before using a newer one. The major version changes
- * when an existing entry changes meaning. Apple functions are not here; modules
- * call them directly through the symbols header and linker script of the OSOS
- * build named by RV_FIRMWARE_ID. */
+/* The core services an extension may call, and the structs it declares itself
+ * with. Within a major version the rv_api and rv_gfx tables only grow at the
+ * end: a module built against an older minor finds every entry it knows at the
+ * same offset and tests a newer one with RV_HAS before calling it. The structs
+ * an extension fills in (descriptor, hooks, settings, screens, rows, entries)
+ * keep their layout. The manifest's `api` names the minor a module needs, and
+ * an older core leaves the extension off. The major changes when an entry or
+ * a layout changes meaning. Apple functions are not here; modules call them
+ * directly through the symbols header and linker script of the OSOS build
+ * named by RV_FIRMWARE_ID. */
 
 #ifndef RV_API_H
 #define RV_API_H
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 18
+#define RV_API_MINOR 19
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
+
+/* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
+ * `field`: RV_HAS(api, format_size). */
+#define RV_HAS(table, field)                                                                   \
+    ((table)->size >= __builtin_offsetof(__typeof__(*(table)), field) + sizeof((table)->field))
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
  * state and for calls into Apple routines that return with `mov pc, lr`; the
@@ -178,8 +187,8 @@ enum rv_font { RV_FONT_TITLE, RV_FONT_TEXT, RV_FONT_LARGE, RV_FONT_COUNT };
 /* The height of a row drawn by rv_gfx.row, as the stock list rows. */
 #define RV_GFX_ROW_HEIGHT 25
 
-/* What a canvas draws with. Valid inside the draw callback only. Append-only
- * like rv_api: check `size` before using a newer entry. */
+/* What a canvas draws with. Valid inside the draw callback only. Grows like
+ * rv_api: test a newer entry with RV_HAS. */
 struct rv_gfx {
     uint32_t size;
     rv_color (*color)(uint8_t role);

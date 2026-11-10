@@ -4,7 +4,7 @@ description = "Shows every kind of screen and row an extension can add."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.11"
+api = "1.19"
 enabled = true
 stability = "beta"
 
