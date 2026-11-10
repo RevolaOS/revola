@@ -37,8 +37,11 @@ static uint32_t owner_of(const struct core_screen *s)
 static uint32_t row_count(const struct core_screen *s)
 {
     const struct rv_screen *d = s->declaration;
-    if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST)
-        return d->dynamic.count ? d->dynamic.count() : 0;
+    if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST) {
+        struct rv_context ctx;
+        core_screens_context(s, &ctx);
+        return d->dynamic.count ? d->dynamic.count(&ctx) : 0;
+    }
     return d->kind == RV_SCREEN_KIND_MULTI_CHOICE && d->choice.count > 32 ? 32 : d->choice.count;
 }
 
@@ -104,7 +107,9 @@ static int row_answer(const struct core_screen *s, uint32_t type, uint32_t prope
         return 0;
     if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST) {
         const char *detail = NULL;
-        const char *label = d->dynamic.row ? d->dynamic.row(index, &detail) : NULL;
+        struct rv_context ctx;
+        core_screens_context(s, &ctx);
+        const char *label = d->dynamic.row ? d->dynamic.row(&ctx, index, &detail) : NULL;
         const char *text = title ? label : detail;
         if (type == Property_Layout && title && submenu_rows(s)) {
             *out = MenuRowStyle_TwoLineSubmenu;
@@ -221,16 +226,20 @@ void core_indexed_chosen(struct core_screen *s)
     case RV_SCREEN_KIND_CHOICE:
         core_settings_set_int(owner_of(s), d->choice.key, (int32_t)index);
         core_screens_setting_changed(s->owner, d->choice.key);
-        core_screens_pop();
+        core_screens_pop(s->owner);
         break;
     case RV_SCREEN_KIND_MULTI_CHOICE:
         core_settings_set_int(owner_of(s), d->choice.key, setting(s) ^ (int32_t)(1u << index));
         core_screens_notify(CORE_SCREEN_ROWS(s));
+        core_screens_setting_changed(s->owner, d->choice.key);
         break;
-    default:
-        if (d->dynamic.select && d->dynamic.select(index))
-            core_screens_pop();
+    default: {
+        struct rv_context ctx;
+        core_screens_context(s, &ctx);
+        if (d->dynamic.select && d->dynamic.select(&ctx, index))
+            core_screens_pop(s->owner);
         break;
+    }
     }
 }
 

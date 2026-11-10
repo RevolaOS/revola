@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 20
+#define RV_API_MINOR 21
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -109,6 +109,21 @@ enum rv_row_kind {
     RV_ROW_KIND_INFO,    /* shows `label` or `text`; does nothing when chosen */
 };
 
+/* What every UI callback receives: where it runs. `controller` is the Apple
+ * controller of the screen or menu, for Apple calls. `arg` is what ui_push
+ * passed for this screen, NULL for a screen a row opened. In a context menu's
+ * action, `item` is the MediaItem (struct MediaItem of the symbols header) of
+ * the song the menu opened on, NULL for an album or artist, and `row` the
+ * model row the menu opened on (-1 for an album or artist list's "All" row);
+ * elsewhere `item` is NULL and `row` -1. Valid during the callback only. */
+struct rv_context {
+    rv_extension_handle self;
+    void *controller;
+    void *arg;
+    const void *item;
+    int32_t row;
+};
+
 /* One row of a list screen or an entry in a menu. `text`, when set, gives the
  * label each time the row is drawn, for a value that changes; `label` still
  * names the row and is what a context menu shows. */
@@ -118,8 +133,8 @@ struct rv_row {
     uint8_t reserved;
     uint16_t key;
     const char *screen;
-    void (*action)(void);
-    const char *(*text)(void);
+    void (*action)(const struct rv_context *ctx);
+    const char *(*text)(const struct rv_context *ctx);
 };
 
 enum rv_screen_kind {
@@ -266,14 +281,16 @@ struct rv_screen {
         struct {
             /* Draws the canvas, `width` by `height` pixels; input returns 1 when
              * consumed, 0 to leave the key to the system. */
-            void (*draw)(const struct rv_gfx *gfx, int width, int height);
-            int (*input)(const struct rv_input *input);
+            void (*draw)(const struct rv_context *ctx, const struct rv_gfx *gfx, int width,
+                         int height);
+            int (*input)(const struct rv_context *ctx, const struct rv_input *input);
         } canvas;
         struct {
-            uint32_t (*count)(void);
+            uint32_t (*count)(const struct rv_context *ctx);
             /* Row `index`; a detail text goes to *detail (NULL for none). */
-            const char *(*row)(uint32_t index, const char **detail);
-            int (*select)(uint32_t index); /* returns 1 to pop the screen */
+            const char *(*row)(const struct rv_context *ctx, uint32_t index,
+                               const char **detail);
+            int (*select)(const struct rv_context *ctx, uint32_t index); /* 1 pops the screen */
             uint8_t detail;                /* rv_detail: where the detail goes */
         } dynamic;
     };
@@ -282,6 +299,12 @@ struct rv_screen {
      * nothing. */
     const char *caption;
     const struct rv_bitmap *bitmap;
+    /* After the screen was pushed, and after it closed for good: for a canvas
+     * after the last draw of its slide-out, so what it draws with can be freed
+     * there. Either may be NULL. Not called when the extension unloads under
+     * an open screen; unload covers that. */
+    void (*opened)(const struct rv_context *ctx);
+    void (*closed)(const struct rv_context *ctx);
 };
 
 /* The menus an entry can add a row to. The context menus are the ones a long
@@ -388,12 +411,13 @@ struct rv_api {
     /* Kept for the emulator; nothing on the device shows it. */
     void (*log)(rv_extension_handle self, const char *text);
 
-    /* Screens by id. push opens one above the screen whose row, choice or
-     * input callback is running (the screen's module loads first; RV_NOT_FOUND
-     * for an unknown id, RV_BAD_ARGUMENT outside a callback); pop closes the
-     * top screen; refresh redraws rows whose text changed; invalidate redraws the
-     * canvas on top when it is the extension's. */
-    int (*ui_push)(rv_extension_handle self, const char *screen);
+    /* Screens by id, from code on the UI task: rows, timers, hooks there.
+     * ui_push opens one above the top screen, loading the screen's module
+     * first; `arg` reaches the screen's callbacks as ctx->arg. RV_NOT_FOUND
+     * for an unknown id. ui_pop closes the top screen when it is the
+     * extension's; refresh redraws rows whose text changed; invalidate redraws
+     * the canvas on top when it is the extension's. */
+    int (*ui_push)(rv_extension_handle self, const char *screen, void *arg);
     void (*ui_pop)(rv_extension_handle self);
     void (*ui_refresh)(rv_extension_handle self, const char *screen);
     void (*ui_invalidate)(rv_extension_handle self);

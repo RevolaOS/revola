@@ -36,7 +36,8 @@ static uint32_t wheel[WheelAccumulator_bytes / 4];
 static void draw(void *view, void *argument, const int32_t *clip)
 {
     struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
-    if (!s)
+    int leaving = !s;
+    if (leaving)
         s = core_screens_popped_canvas();
     if (!s || !s->declaration || !s->declaration->canvas.draw) {
         View_Draw(view, argument, clip);
@@ -49,7 +50,11 @@ static void draw(void *view, void *argument, const int32_t *clip)
     View_BindGraphicsContext(view, context);
     View_GetLocalContentRect(view, bounds);
     core_gfx_begin(context, bounds, s);
-    s->declaration->canvas.draw(&core_gfx, bounds[3] - bounds[1], bounds[2] - bounds[0]);
+    struct rv_context ctx;
+    core_screens_context(s, &ctx);
+    s->declaration->canvas.draw(&ctx, &core_gfx, bounds[3] - bounds[1], bounds[2] - bounds[0]);
+    if (leaving)
+        core_screens_closed(); /* that was the last draw */
 }
 
 static void *create(void *owner, void *parent, void *event_target, const void *descriptor)
@@ -167,7 +172,9 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
     } else {
         return 0;
     }
-    return d->canvas.input && d->canvas.input(&in);
+    struct rv_context ctx;
+    core_screens_context(s, &ctx);
+    return d->canvas.input && d->canvas.input(&ctx, &in);
 }
 
 static int event(void *controller, void *event)

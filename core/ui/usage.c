@@ -149,8 +149,9 @@ static void draw_legend(const struct rv_gfx *g, int width, const uint32_t *bytes
 
 static const struct rv_bitmap icon = {"extensions"};
 
-static void draw(const struct rv_gfx *g, int width, int height)
+static void draw(const struct rv_context *ctx, const struct rv_gfx *g, int width, int height)
 {
+    (void)ctx;
     uint32_t bytes[PARTS];
     char used[24], available[24];
     measure_parts(bytes);
@@ -164,8 +165,9 @@ static void draw(const struct rv_gfx *g, int width, int height)
     draw_legend(g, width, bytes);
 }
 
-static int input(const struct rv_input *in)
+static int input(const struct rv_context *ctx, const struct rv_input *in)
 {
+    (void)ctx;
     return in->button != RV_BUTTON_MENU && in->kind == RV_INPUT_RELEASE; /* Menu pops it */
 }
 

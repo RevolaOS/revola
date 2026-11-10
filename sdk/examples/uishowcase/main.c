@@ -3,7 +3,7 @@
 /* Every UI declaration of the SDK behind a row that names it: the row kinds
  * with the screen calls of rv_api, the screen kinds with their layouts, and the
  * menus an entry can appear in. Open it from Settings, Main, Music (after
- * Settings > Music Menu turns it on) or Extras. It declares eleven screens and
+ * Settings > Music Menu turns it on) or Extras. It declares twelve screens and
  * the core makes three more from the settings. Its assets are in
  * manifest.toml: the pane icon, the canvas bitmap and a note the canvas reads
  * back and draws. */
@@ -41,26 +41,61 @@ static const struct rv_setting settings[] = {
  * shows the total. */
 static uint32_t presses;
 
-static void count_up(void)
+/* What the last context menu action was handed: the model row and whether
+ * it was on a song. */
+static char context_seen[32] = "Context: none yet";
+
+static void count_up(const struct rv_context *ctx)
 {
     presses++;
+    rv_format(context_seen, sizeof context_seen, "Context: row %ld, %s", (long)ctx->row,
+              ctx->item ? "a song" : "no song");
+}
+
+static const char *context_text(const struct rv_context *ctx)
+{
+    (void)ctx;
+    return context_seen;
 }
 
 /* Rows, and the screen calls an action may make: ui_push by id, ui_pop. */
-static void push_from_action(void)
+static void push_from_action(const struct rv_context *ctx)
 {
-    api->ui_push(self, "text");
+    (void)ctx;
+    api->ui_push(self, "text", 0);
 }
 
-static void pop_from_action(void)
+/* ui_push hands its argument to the pushed screen's callbacks as ctx->arg. */
+static void push_with_argument(const struct rv_context *ctx)
 {
+    (void)ctx;
+    api->ui_push(self, "argument", "Hello from the row");
+}
+
+static uint32_t argument_count(const struct rv_context *ctx)
+{
+    (void)ctx;
+    return 1;
+}
+
+static const char *argument_row(const struct rv_context *ctx, uint32_t index, const char **detail)
+{
+    (void)index;
+    *detail = "Passed by the push"; /* the list font draws no '>' */
+    return ctx->arg;
+}
+
+static void pop_from_action(const struct rv_context *ctx)
+{
+    (void)ctx;
     api->ui_pop(self);
 }
 
 /* Info rows' text, drawn each time the row is: the presses, and the last
  * setting setting_changed reported. */
-static const char *presses_text(void)
+static const char *presses_text(const struct rv_context *ctx)
 {
+    (void)ctx;
     static char text[24];
     rv_format(text, sizeof text, "Info: %lu presses", presses);
     return text;
@@ -73,8 +108,9 @@ static void setting_changed(uint16_t key)
     last_changed = key;
 }
 
-static const char *changed_text(void)
+static const char *changed_text(const struct rv_context *ctx)
 {
+    (void)ctx;
     static char text[24];
     if (last_changed < 0)
         return "Changed: nothing yet";
@@ -86,6 +122,7 @@ static const struct rv_row row_rows[] = {
     RV_ROW_PUSH("Push", "text"),
     RV_ROW_ACTION("Action: count up", count_up),
     RV_ROW_ACTION("Action: push a screen", push_from_action),
+    RV_ROW_ACTION("Action: push with an argument", push_with_argument),
     RV_ROW_ACTION("Action: pop this list", pop_from_action),
     RV_ROW_SETTING("Setting: flag", KEY_FLAG),
     RV_ROW_SETTING("Setting: choice", KEY_CHOICE),
@@ -93,6 +130,7 @@ static const struct rv_row row_rows[] = {
     RV_ROW_SETTING("Setting: multi", KEY_MULTI),
     RV_ROW_INFO("Info", presses_text),
     RV_ROW_INFO("Changed", changed_text),
+    RV_ROW_INFO("Context", context_text),
 };
 
 /* Screens. */
@@ -108,26 +146,29 @@ static const char *const moons[][2] = {
     {"Europa", "Jupiter"}, {"Titan", "Saturn"}, {"Triton", "Neptune"},
 };
 
-static uint32_t moon_count(void)
+static uint32_t moon_count(const struct rv_context *ctx)
 {
+    (void)ctx;
     return RV_COUNT(moons);
 }
 
-static const char *moon_row(uint32_t index, const char **detail)
+static const char *moon_row(const struct rv_context *ctx, uint32_t index, const char **detail)
 {
+    (void)ctx;
     *detail = moons[index][1];
     return moons[index][0];
 }
 
-static int moon_select(uint32_t index)
+static int moon_select(const struct rv_context *ctx, uint32_t index)
 {
+    (void)ctx;
     return index + 1 == RV_COUNT(moons); /* the last row pops */
 }
 
 /* Canvas: swatches of the colour roles, a line in each font, a box the wheel
  * moves and Select recolours, a bitmap drawn by name and the same bitmap from
- * the extension's own copy (loaded on the first draw, freed when Menu closes
- * the canvas), what asset_load and asset_read returned, and the last input in
+ * the extension's own copy (loaded on the first draw, freed by .closed once
+ * the canvas closed), what asset_load and asset_read returned, and the last input in
  * the corner. */
 static int box_left = 120;
 static uint8_t box_red;
@@ -163,8 +204,9 @@ static void unload(void)
     api->free(self, disc); /* the canvas may be open */
 }
 
-static void canvas_draw(const struct rv_gfx *g, int width, int height)
+static void canvas_draw(const struct rv_context *ctx, const struct rv_gfx *g, int width, int height)
 {
+    (void)ctx;
     static const char *const fonts[RV_FONT_COUNT] = {"Title font", "Text font", "Large font"};
     struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
     g->fill(&all, g->color(RV_COLOR_BACKGROUND));
@@ -197,16 +239,15 @@ static void canvas_draw(const struct rv_gfx *g, int width, int height)
             g->color(RV_COLOR_HIGHLIGHT), last_input);
 }
 
-static int canvas_input(const struct rv_input *input)
+static int canvas_input(const struct rv_context *ctx, const struct rv_input *input)
 {
+    (void)ctx;
     static const char *const keys[] = {"Center", "Menu", "Previous", "Next", "Play"};
     if (input->kind == RV_INPUT_WHEEL) {
         last_input = input->delta > 0 ? "Wheel forward" : "Wheel back";
         box_left += input->delta * 8;
         box_left = box_left < 0 ? 0 : box_left > 280 ? 280 : box_left;
     } else if (input->button == RV_BUTTON_MENU) {
-        api->free(self, disc);
-        disc = 0;
         return 0; /* left to the system, which pops the canvas */
     } else if (input->kind == RV_INPUT_PRESS) {
         last_input = keys[input->button];
@@ -222,8 +263,9 @@ static int canvas_input(const struct rv_input *input)
 /* Page: a wrapped paragraph over list rows, the wheel moves the highlight. */
 static int page_row;
 
-static void page_draw(const struct rv_gfx *g, int width, int height)
+static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int width, int height)
 {
+    (void)ctx;
     static const char *const labels[] = {"First", "Second", "Third"};
     struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
     g->fill(&all, g->color(RV_COLOR_BACKGROUND));
@@ -237,8 +279,9 @@ static void page_draw(const struct rv_gfx *g, int width, int height)
                i == page_row);
 }
 
-static int page_input(const struct rv_input *input)
+static int page_input(const struct rv_context *ctx, const struct rv_input *input)
 {
+    (void)ctx;
     if (input->kind != RV_INPUT_WHEEL)
         return input->button != RV_BUTTON_MENU; /* Menu pops the page */
     page_row += input->delta > 0 ? 1 : -1;
@@ -249,8 +292,9 @@ static int page_input(const struct rv_input *input)
 
 /* Card: the Settings > About card with the pane icon and formatted figures,
  * then the disc bitmap cut to its top half and tiled across the width. */
-static void card_draw(const struct rv_gfx *g, int width, int height)
+static void card_draw(const struct rv_context *ctx, const struct rv_gfx *g, int width, int height)
 {
+    (void)ctx;
     char number[16], size[16];
     api->format_number(number, sizeof number, 1234567);
     api->format_size(size, sizeof size, 6 * 1024 + 100);
@@ -263,23 +307,31 @@ static void card_draw(const struct rv_gfx *g, int width, int height)
     }
 }
 
-static int card_input(const struct rv_input *input)
+static int card_input(const struct rv_context *ctx, const struct rv_input *input)
 {
-    if (input->kind == RV_INPUT_WHEEL || input->button != RV_BUTTON_MENU)
-        return 1;
+    (void)ctx;
+    return input->kind == RV_INPUT_WHEEL || input->button != RV_BUTTON_MENU; /* Menu pops it */
+}
+
+/* The two canvases that draw the disc copy free it once they closed, after
+ * the last draw of the slide-out. */
+static void release_disc(const struct rv_context *ctx)
+{
+    (void)ctx;
     api->free(self, disc);
     disc = 0;
-    return 0; /* Menu pops the card */
 }
 
 /* Counter: a dynamic list whose rows change, redrawn with ui_refresh. */
-static uint32_t counter_count(void)
+static uint32_t counter_count(const struct rv_context *ctx)
 {
+    (void)ctx;
     return 3;
 }
 
-static const char *counter_row(uint32_t index, const char **detail)
+static const char *counter_row(const struct rv_context *ctx, uint32_t index, const char **detail)
 {
+    (void)ctx;
     static char digits[12];
     *detail = 0;
     switch (index) {
@@ -294,8 +346,9 @@ static const char *counter_row(uint32_t index, const char **detail)
     }
 }
 
-static int counter_select(uint32_t index)
+static int counter_select(const struct rv_context *ctx, uint32_t index)
 {
+    (void)ctx;
     if (index == 2) {
         presses = 0;
         return 1;
@@ -348,9 +401,12 @@ static const struct rv_screen screens[] = {
     RV_SCREEN_DYNAMIC_LIST("stacked", "Stacked", moon_count, moon_row, moon_select,
                            .layout = RV_LAYOUT_SPLIT, .dynamic.detail = RV_DETAIL_BELOW),
     RV_SCREEN_DYNAMIC_LIST("counter", "Counter", counter_count, counter_row, counter_select),
-    RV_SCREEN_CANVAS("canvas", "Canvas", canvas_draw, canvas_input),
+    RV_SCREEN_CANVAS("canvas", "Canvas", canvas_draw, canvas_input, .closed = release_disc),
     RV_SCREEN_CANVAS("page", "Page", page_draw, page_input),
-    RV_SCREEN_CANVAS("card", "Card", card_draw, card_input, .transition = RV_TRANSITION_FROM_PANE),
+    RV_SCREEN_CANVAS("card", "Card", card_draw, card_input, .transition = RV_TRANSITION_FROM_PANE,
+                     .closed = release_disc),
+    RV_SCREEN_DYNAMIC_LIST("argument", "Argument", argument_count, argument_row, 0,
+                           .dynamic.detail = RV_DETAIL_BELOW),
     RV_SCREEN_TEXT("entries", "Entries", entries_text),
 };
 

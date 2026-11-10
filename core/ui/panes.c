@@ -202,7 +202,7 @@ int core_panes_property(uint32_t type, uint32_t id, uint32_t out)
     else if (id == BOX && type == Property_Bitmap)
         *(const void **)out = box_for(e);
     else if (id == CAPTION && type == Property_String)
-        *(const char **)out = core_row_label(&e->row);
+        *(const char **)out = core_row_label(&e->row, owner, NULL);
     else if (id == DETAIL && type == Property_String)
         *(const char **)out = e->caption ? e->caption : "";
     else

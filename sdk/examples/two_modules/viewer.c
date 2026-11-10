@@ -21,8 +21,9 @@ static void tick(void *arg)
     api->ui_invalidate(self);
 }
 
-static void draw(const struct rv_gfx *g, int width, int height)
+static void draw(const struct rv_context *ctx, const struct rv_gfx *g, int width, int height)
 {
+    (void)ctx;
     struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
     g->fill(&all, g->color(RV_COLOR_BACKGROUND));
     g->text(10, 10, RV_FONT_TITLE, g->color(RV_COLOR_TEXT), "Viewer module");
@@ -32,8 +33,9 @@ static void draw(const struct rv_gfx *g, int width, int height)
     g->text(10, 40 + g->line_height(RV_FONT_TEXT), RV_FONT_TEXT, g->color(RV_COLOR_DIM), line);
 }
 
-static int input(const struct rv_input *in)
+static int input(const struct rv_context *ctx, const struct rv_input *in)
 {
+    (void)ctx;
     return in->kind != RV_INPUT_WHEEL && in->button != RV_BUTTON_MENU;
 }
 

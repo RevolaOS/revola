@@ -90,6 +90,13 @@ SITE(NestedPlaylists_DispatchAction_entry, SITE_NestedPlaylists_DispatchAction_e
 SITE(Genius_DispatchAction_entry, SITE_Genius_DispatchAction_entry, ENTRY,
      REPLAY(Genius_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
 
+/* Every media list controller opens its context menu here: (controller). The
+ * highlighted row is the selection's then. Only the two dispatchers on the UI
+ * task call it. */
+SITE(MediaListController_HandleShowContextualMenu_entry,
+     SITE_MediaListController_HandleShowContextualMenu_entry, ENTRY,
+     REPLAY(MediaListController_HandleShowContextualMenu_entry), 0xe92d4010, 0xe1a04000, 1, 1, 0)
+
 /* The Cancel row of each context menu: (items, label, action, flags). A handler
  * appends its rows first, then the Cancel row through next. */
 #define CANCEL_APPEND(name)                                                                      \

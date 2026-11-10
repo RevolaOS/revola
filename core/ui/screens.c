@@ -36,8 +36,68 @@ void *core_screens_caller;
 static struct {
     void *controller;
     struct core_screen *screen;
+    void *arg; /* what ui_push passed */
 } open[MAX_OPEN];
 static uint32_t open_count;
+
+/* A popped screen whose closed callback waits: a canvas draws once more after
+ * its controller deactivated, so its callback runs after that draw, or at the
+ * next push or grace tick when no draw comes. */
+static struct {
+    struct core_screen *screen;
+    void *controller;
+    void *arg;
+} closing;
+
+void core_screens_context(const struct core_screen *s, struct rv_context *ctx)
+{
+    ctx->self = s ? s->owner : NULL;
+    ctx->controller = NULL;
+    ctx->arg = NULL;
+    ctx->item = NULL;
+    ctx->row = -1;
+    for (uint32_t i = open_count; s && i-- > 0;)
+        if (open[i].screen == s) {
+            ctx->controller = open[i].controller;
+            ctx->arg = open[i].arg;
+            return;
+        }
+    if (s && closing.screen == s) {
+        ctx->controller = closing.controller;
+        ctx->arg = closing.arg;
+    }
+}
+
+static struct core_screen *popped_canvas;
+
+const char *core_row_label(const struct rv_row *row, struct rv_extension_record *owner,
+                           const struct core_screen *screen)
+{
+    if (!row->text)
+        return row->label;
+    struct rv_context ctx;
+    core_screens_context(screen, &ctx);
+    ctx.self = owner;
+    const char *text = row->text(&ctx);
+    return text ? text : row->label;
+}
+
+void core_screens_closed(void)
+{
+    struct core_screen *s = closing.screen;
+    closing.screen = NULL;
+    if (s && s == popped_canvas)
+        popped_canvas = NULL; /* its callbacks may have freed what it draws with */
+    if (!s || !s->declaration || !s->declaration->closed)
+        return;
+    struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1};
+    s->declaration->closed(&ctx);
+}
+
+void *core_screens_top_controller(void)
+{
+    return *(void **)((uint8_t *)Navigator_Get() + Navigator_top_controller);
+}
 
 struct core_screen *core_screens_of_controller(void *controller)
 {
@@ -58,6 +118,8 @@ uint32_t core_screens_abandon(struct rv_extension_record *owner)
         open[i].screen = NULL;
         abandoned++;
     }
+    if (closing.screen && closing.screen->owner == owner)
+        closing.screen = NULL;
     return abandoned;
 }
 
@@ -95,10 +157,10 @@ struct core_screen *core_screens_top(uint8_t kind)
     return NULL;
 }
 
-/* The canvas popped last while no other canvas stays open, until the next
- * push. A pop deactivates the controller before the transition draws the
- * leaving screen once more, into the copy that slides out. */
-static struct core_screen *popped_canvas;
+/* popped_canvas: the canvas popped last while no other canvas stays open,
+ * until the next push or its closed callback. A pop deactivates the
+ * controller before the transition draws the leaving screen once more, into
+ * the copy that slides out. */
 
 struct core_screen *core_screens_popped_canvas(void)
 {
@@ -111,11 +173,16 @@ static void screen_left(void *controller)
         if (open[i].controller != controller)
             continue;
         struct core_screen *s = open[i].screen;
+        void *arg = open[i].arg;
         open_count--;
         for (uint32_t j = i; j < open_count; j++)
             open[j] = open[j + 1];
         if (!s)
             return;
+        core_screens_closed(); /* an earlier one still waiting */
+        closing.screen = s;
+        closing.controller = controller;
+        closing.arg = arg;
         if (s->open)
             s->open--;
         if (!s->open)
@@ -127,6 +194,8 @@ static void screen_left(void *controller)
         if (s->declaration && s->declaration->kind == RV_SCREEN_KIND_CANVAS &&
             !core_screens_top(RV_SCREEN_KIND_CANVAS))
             popped_canvas = s;
+        if (popped_canvas != s)
+            core_screens_closed();
         return;
     }
 }
@@ -231,7 +300,7 @@ static uint32_t opening(const struct core_screen *s, uint8_t kind)
     return from == LayoutKind_FullScreen ? Transition_ScreenPush : Transition_Standard;
 }
 
-int core_screens_push(struct core_screen *s, void *controller)
+int core_screens_push(struct core_screen *s, void *controller, void *arg)
 {
     uint8_t kind = s->declaration->kind;
     int input = kind == RV_SCREEN_KIND_SLIDER || kind == RV_SCREEN_KIND_CANVAS;
@@ -239,6 +308,7 @@ int core_screens_push(struct core_screen *s, void *controller)
     if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
     popped_canvas = NULL;
+    core_screens_closed();
     s->split = (uint8_t)split;
     uint32_t screen = core_lists_screen_id(s, split);
     if (!build(s, split, screen))
@@ -253,6 +323,7 @@ int core_screens_push(struct core_screen *s, void *controller)
     core_indexed_attach(s, created);
     open[open_count].controller = created;
     open[open_count].screen = s;
+    open[open_count].arg = arg;
     open_count++;
     s->open++;
     if (s->owner && s->declaration->id)
@@ -260,12 +331,18 @@ int core_screens_push(struct core_screen *s, void *controller)
     void (*push)(void *, void *) =
         FIELD(FIELD(controller, 0, void **), ScreenController_push_method, void *);
     push(controller, created);
+    if (s->declaration->opened) {
+        struct rv_context ctx = {s->owner, created, arg, NULL, -1};
+        s->declaration->opened(&ctx);
+    }
     return 1;
 }
 
-void core_screens_pop(void)
+void core_screens_pop(struct rv_extension_record *owner)
 {
-    Navigator_PopTop(0x10);
+    struct core_screen *s = core_screens_of_controller(core_screens_top_controller());
+    if (s && s->owner == owner)
+        Navigator_PopTop(0x10);
 }
 
 void core_screens_invalidate(struct rv_extension_record *owner)

@@ -43,5 +43,9 @@ int core_menus_context_row(uint8_t root, uint32_t n, uint32_t *label, void **han
 void core_menus_init(void *bank);
 /* Context menu rows; called by core_menus_init. */
 void core_context_init(void);
+/* For an action in context menu `menu` dispatched to `controller`: the item
+ * the menu opened on, read into `item` (MediaItem_bytes), or NULL, and in
+ * *row the list's model row, -1 when none. */
+const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row);
 
 #endif

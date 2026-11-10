@@ -881,21 +881,23 @@ static void api_module_unload(rv_extension_handle self, uint32_t module)
 }
 
 
-static int api_ui_push(rv_extension_handle self, const char *screen)
+static int api_ui_push(rv_extension_handle self, const char *screen, void *arg)
 {
     struct rv_extension_record *record = valid_handle(self);
-    if (!record || !core_screens_caller)
+    if (!record || !screen)
         return RV_BAD_ARGUMENT;
     struct core_screen *s = core_loader_screen(record, screen);
     if (!s)
         return RV_NOT_FOUND;
-    return core_screens_push(s, core_screens_caller) ? RV_OK : RV_NO_MEMORY;
+    void *from = core_screens_caller ? core_screens_caller : core_screens_top_controller();
+    return core_screens_push(s, from, arg) ? RV_OK : RV_NO_MEMORY;
 }
 
 static void api_ui_pop(rv_extension_handle self)
 {
-    if (valid_handle(self))
-        core_screens_pop();
+    struct rv_extension_record *record = valid_handle(self);
+    if (record)
+        core_screens_pop(record);
 }
 
 static void api_ui_refresh(rv_extension_handle self, const char *screen)

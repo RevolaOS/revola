@@ -61,15 +61,24 @@ struct core_screen *core_screens_of_controller(void *controller);
 /* The most recently pushed open screen of a kind, or NULL. */
 struct core_screen *core_screens_top(uint8_t kind);
 /* The canvas just popped, while its leaving copy may still be drawn; NULL once
- * another screen is pushed or while another canvas is open. */
+ * another screen is pushed, its closed callback ran, or while another canvas is
+ * open. */
 struct core_screen *core_screens_popped_canvas(void);
-/* Opens a screen on top of `controller`'s screen; loads its module first. */
-int core_screens_push(struct core_screen *screen, void *controller);
+/* Pushes `screen` through `controller`'s push method, which lands on top of
+ * the navigator whichever controller it is; `arg` is ctx->arg. */
+int core_screens_push(struct core_screen *screen, void *controller, void *arg);
+/* The ctx of a callback of `screen`: its owner, controller and push arg. */
+void core_screens_context(const struct core_screen *screen, struct rv_context *ctx);
+/* Runs the closed callback of the screen popped last, if it still waits:
+ * after a popped canvas's last draw, at the next push and at the grace tick. */
+void core_screens_closed(void);
+/* The navigator's top controller. */
+void *core_screens_top_controller(void);
 /* The controller whose row, choice or input callback is running; NULL outside
- * one. What api->ui_push pushes above. */
+ * one. A split list opened from it takes its layout. */
 extern void *core_screens_caller;
-/* Pops the top screen. */
-void core_screens_pop(void);
+/* Pops the top screen when `owner` declared it. */
+void core_screens_pop(struct rv_extension_record *owner);
 /* Redraws the canvas on top when `owner` declared it. */
 void core_screens_invalidate(struct rv_extension_record *owner);
 /* The Settings model, as last seen on the property slot. */
@@ -86,12 +95,10 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
 uint32_t core_screens_action_filter(uint32_t controller, uint32_t name, uint32_t argument,
                                     const struct core_next *next);
 
-/* The label a row shows now: its text callback's, else its label. */
-static inline const char *core_row_label(const struct rv_row *row)
-{
-    const char *text = row->text ? row->text() : 0;
-    return text ? text : row->label;
-}
+/* The label a row of `owner` shows now, on `screen` (NULL for a menu entry):
+ * its text callback's, else its label. */
+const char *core_row_label(const struct rv_row *row, struct rv_extension_record *owner,
+                           const struct core_screen *screen);
 
 void core_screens_init(void *bank);
 

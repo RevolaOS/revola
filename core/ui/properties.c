@@ -67,13 +67,13 @@ static const struct rv_row *screen_row(struct core_screen *s, uint32_t id, uint3
 /* A setting row's value: the chosen label of a setting with labels (nothing
  * for a multi-choice), else On or Off. An info row has the value row's
  * layout, for its lack of a chevron, and no value. */
-static const char *row_text(struct rv_extension_record *owner, const struct rv_row *row,
-                            int value)
+static const char *row_text(struct rv_extension_record *owner, const struct core_screen *s,
+                            const struct rv_row *row, int value)
 {
     if (value && row->kind == RV_ROW_KIND_INFO)
         return "";
     if (!value || row->kind != RV_ROW_KIND_SETTING)
-        return core_row_label(row);
+        return core_row_label(row, owner, s);
     const struct rv_setting *setting = core_screens_setting(owner, row->key);
     int32_t v = core_screens_setting_value(owner, row->key);
     if (setting && setting->labels) {
@@ -116,7 +116,7 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
         return core_next_call(next, model, type, id, out);
     const char *text;
     if (row)
-        text = row_text(owner, row, id == item + 1);
+        text = row_text(owner, s, row, id == item + 1);
     else if (id == s->id + 2)
         text = s->declaration->title;
     else if (s->declaration->kind == RV_SCREEN_KIND_TEXT && id >= CORE_SCREEN_ROWS(s))
@@ -173,12 +173,12 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     case RV_ROW_KIND_PUSH:
         target = core_loader_screen(owner, row->screen);
         if (target)
-            core_screens_push(target, controller);
+            core_screens_push(target, controller, NULL);
         break;
     case RV_ROW_KIND_SETTING:
         target = core_screens_find_setting(owner, row->key);
         if (target) {
-            core_screens_push(target, controller);
+            core_screens_push(target, controller, NULL);
             break;
         }
         core_settings_set_int(settings_owner(owner), row->key,
@@ -186,8 +186,19 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
         core_screens_setting_changed(owner, row->key);
         break;
     case RV_ROW_KIND_ACTION:
-        if (row->action)
-            row->action();
+        if (row->action) {
+            struct rv_context ctx;
+            uint32_t item[MediaItem_bytes / 4];
+            core_screens_context(s, &ctx);
+            ctx.self = owner;
+            ctx.controller = controller;
+            if (!s) {
+                const struct rv_menu_entry *e =
+                    (const void *)((const uint8_t *)row - offsetof(struct rv_menu_entry, row));
+                ctx.item = core_context_item(e->menu, controller, item, &ctx.row);
+            }
+            row->action(&ctx);
+        }
         break;
     default:
         break;

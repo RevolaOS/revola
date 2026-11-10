@@ -76,8 +76,9 @@ static void update_meter(void)
 }
 
 /* Row 0 is Usage, then one row per installed extension. */
-static uint32_t list_count(void)
+static uint32_t list_count(const struct rv_context *ctx)
 {
+    (void)ctx;
     /* Apple still asks while the list slides away: read it only while open,
      * or it would stay until the list opens again. */
     struct core_screen *s = core_screens_find(NULL, "core.extensions");
@@ -89,8 +90,9 @@ static uint32_t list_count(void)
     return 1 + listed_count;
 }
 
-static const char *list_row(uint32_t index, const char **detail)
+static const char *list_row(const struct rv_context *ctx, uint32_t index, const char **detail)
 {
+    (void)ctx;
     if (index == 0) {
         *detail = core_usage_active(line, line + sizeof line);
         return "Usage";
@@ -111,12 +113,13 @@ static const char *list_row(uint32_t index, const char **detail)
     return e->name;
 }
 
-static int list_select(uint32_t index)
+static int list_select(const struct rv_context *ctx, uint32_t index)
 {
+    (void)ctx;
     if (index == 0) {
         struct core_screen *usage = core_screens_find(NULL, "core.usage");
         if (usage)
-            core_screens_push(usage, core_screens_caller);
+            core_screens_push(usage, core_screens_caller, NULL);
         return 0;
     }
     if (!listed || index > listed_count || page)
@@ -129,7 +132,7 @@ static int list_select(uint32_t index)
     page->manifest_bytes = core_loader_manifest(e->file, page->manifest);
     core_put_text(title, title + sizeof title, e->name);
     struct core_screen *s = core_screens_find(NULL, "core.extension");
-    if (!s || !core_screens_push(s, core_screens_caller)) {
+    if (!s || !core_screens_push(s, core_screens_caller, NULL)) {
         core_heap_free(NULL, page, sizeof *page);
         page = NULL;
     }
@@ -215,8 +218,10 @@ static void stability_pill(const struct rv_gfx *g, int width, int y)
     g->text(x + 6, y + 1, RV_FONT_TEXT, 0xffffffffu, name);
 }
 
-static void page_draw(const struct rv_gfx *g, int width, int height)
+static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int width,
+                      int height)
 {
+    (void)ctx;
     struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
     g->fill(&all, g->color(RV_COLOR_BACKGROUND));
     if (!page || !listed)
@@ -252,8 +257,9 @@ static void page_draw(const struct rv_gfx *g, int width, int height)
     g->row(rows + RV_GFX_ROW_HEIGHT, width, "Enabled", enabled(record) ? "On" : "Off", 1);
 }
 
-static int page_input(const struct rv_input *input)
+static int page_input(const struct rv_context *ctx, const struct rv_input *input)
 {
+    (void)ctx;
     if (!page || !listed || input->button != RV_BUTTON_CENTER)
         return 0; /* Menu pops the page; the other keys are the system's */
     if (input->kind == RV_INPUT_PRESS) {
