@@ -200,8 +200,8 @@ static void screen_left(void *controller)
             core_bitmaps_screen_closed(s);
         if (!s->open && !s->owner)
             core_extensions_closed(s);
-        if (s->owner && s->declaration && s->declaration->id)
-            core_loader_screen_popped(s->owner, s->declaration->id);
+        if (s->owner)
+            core_loader_screen_popped(s->owner, s->module);
         if (s->declaration && s->declaration->kind == RV_SCREEN_KIND_CANVAS &&
             !core_screens_top(RV_SCREEN_KIND_CANVAS))
             popped_canvas = s;
@@ -338,8 +338,8 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
     open[open_count].selected = 0;
     open_count++;
     s->open++;
-    if (s->owner && s->declaration->id)
-        core_loader_screen_pushed(s->owner, s->declaration->id);
+    if (s->owner)
+        core_loader_screen_pushed(s->owner, s->module);
     void (*push)(void *, void *) =
         FIELD(FIELD(controller, 0, void **), ScreenController_push_method, void *);
     push(controller, created);

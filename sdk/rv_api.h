@@ -421,7 +421,8 @@ struct rv_api {
     void *(*alloc)(rv_extension_handle self, uint32_t bytes);
     void (*free)(rv_extension_handle self, void *block);
 
-    /* Manual-trigger modules by their index in the manifest. */
+    /* Manual-trigger modules by their index in the manifest. module_unload
+     * waits until none of the module's screens is open. */
     int (*module_load)(rv_extension_handle self, uint32_t module);
     void (*module_unload)(rv_extension_handle self, uint32_t module);
 

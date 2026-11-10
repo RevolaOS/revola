@@ -69,9 +69,10 @@ void core_loader_tick(void);
 /* The screen `id` of `record` (NULL: the core's), loading the screen module
  * that declares it first; NULL when there is none. */
 struct core_screen *core_loader_screen(struct rv_extension_record *record, const char *id);
-/* Screen modules stay loaded while one of their screens is on the stack. */
-void core_loader_screen_pushed(struct rv_extension_record *record, const char *id);
-void core_loader_screen_popped(struct rv_extension_record *record, const char *id);
+/* A module other than the main one stays loaded while one of its screens is
+ * on the stack. */
+void core_loader_screen_pushed(struct rv_extension_record *record, uint8_t module);
+void core_loader_screen_popped(struct rv_extension_record *record, uint8_t module);
 /* Owner of the extension whose image or raw site stub contains `address`, 0
  * when none. */
 uint32_t core_loader_owner_of(uint32_t address);

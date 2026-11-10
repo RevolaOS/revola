@@ -17,7 +17,6 @@
 struct screen_set {
     struct screen_set *next;
     uint32_t key; /* core_resource_owner of the owner */
-    uint8_t module; /* the owner's module that declared them */
     uint32_t count;
     uint32_t bytes;
     struct core_screen screens[];
@@ -68,7 +67,6 @@ int core_screens_register(struct rv_extension_record *owner, uint8_t module,
         if (!set)
             return RV_NO_MEMORY;
         set->key = key;
-        set->module = module;
         set->bytes = bytes;
         struct screen_set **tail = &sets;
         while (*tail)
@@ -91,6 +89,7 @@ int core_screens_register(struct rv_extension_record *owner, uint8_t module,
         s->owner = owner;
         s->declaration = d;
         s->stale = 0;
+        s->module = module;
     }
     return RV_OK;
 }
@@ -116,10 +115,11 @@ void core_screens_retire_module(struct rv_extension_record *owner, uint8_t modul
 {
     uint32_t key = core_resource_owner(owner);
     for (struct screen_set *set = sets; set; set = set->next)
-        for (uint32_t i = 0; set->key == key && set->module == module && i < set->count; i++) {
-            set->screens[i].declaration = NULL;
-            set->screens[i].stale = 1;
-        }
+        for (uint32_t i = 0; set->key == key && i < set->count; i++)
+            if (set->screens[i].declaration && set->screens[i].module == module) {
+                set->screens[i].declaration = NULL;
+                set->screens[i].stale = 1;
+            }
 }
 
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name)

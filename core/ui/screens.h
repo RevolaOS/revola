@@ -20,6 +20,7 @@ struct core_screen {
     uint8_t built;                       /* CORE_BUILT_* bits */
     uint8_t split;                       /* the layout of the last push, list kinds */
     uint8_t stale;
+    uint8_t module;                      /* the owner's module that declares it */
 };
 /* A list screen has clones for both layouts, built on first use. */
 #define CORE_BUILT_FULL 1
@@ -32,7 +33,8 @@ struct core_screen {
 int core_screens_register(struct rv_extension_record *owner, uint8_t module,
                           const struct rv_screen *screens, uint32_t count);
 /* An on-demand module unloads: its screens become stale records that keep
- * their ids for its next load. None of them is open. */
+ * their ids for its next load. The loader unloads a module only while none of
+ * them is open. */
 void core_screens_retire_module(struct rv_extension_record *owner, uint8_t module);
 /* Frees the owner's records; its open controllers stay up without a screen. */
 void core_screens_release(struct rv_extension_record *owner);

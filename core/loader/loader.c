@@ -92,7 +92,8 @@ struct core_module {
     struct core_hook *hooks;                /* core-owned copies of its descriptor's hooks */
     uint8_t loaded;
     uint8_t idle;         /* ticks without an open screen */
-    uint8_t screens_open; /* declared screens on the navigation stack */
+    uint8_t screens_open; /* its screens on the navigation stack */
+    uint8_t unload_pending; /* module_unload asked while a screen was open */
 };
 
 /* Header of every loader block. `owner` becomes the retire link once retired. */
@@ -874,6 +875,7 @@ static int api_module_load(rv_extension_handle self, uint32_t module)
     if (!record || module == 0 || module >= record->module_count ||
         module_record(record, module)->trigger != TRIGGER_MANUAL)
         return RV_BAD_ARGUMENT;
+    record->modules[module].unload_pending = 0;
     if (record->modules[module].loaded)
         return RV_OK;
     return load_module(record, module) ? RV_OK : RV_NOT_FOUND;
@@ -882,8 +884,12 @@ static int api_module_load(rv_extension_handle self, uint32_t module)
 static void api_module_unload(rv_extension_handle self, uint32_t module)
 {
     struct rv_extension_record *record = valid_handle(self);
-    if (record && module && module < record->module_count &&
-        module_record(record, module)->trigger == TRIGGER_MANUAL)
+    if (!record || !module || module >= record->module_count ||
+        module_record(record, module)->trigger != TRIGGER_MANUAL)
+        return;
+    if (record->modules[module].screens_open)
+        record->modules[module].unload_pending = 1; /* the grace tick unloads it */
+    else
         unload_module(record, module);
 }
 
@@ -1288,6 +1294,7 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     retire(module->image);
     module->image = NULL;
     module->loaded = 0;
+    module->unload_pending = 0;
 }
 
 /* Extensions */
@@ -1562,10 +1569,11 @@ void core_loader_tick(void)
         }
         for (uint32_t i = 1; i < r->module_count; i++) {
             struct core_module *module = &r->modules[i];
-            if (!module->loaded || module->screens_open ||
-                module_record(r, i)->trigger != TRIGGER_SCREEN)
+            if (!module->loaded || module->screens_open)
                 continue;
-            if (++module->idle >= IDLE_TICKS)
+            if (module->unload_pending)
+                unload_module(r, i);
+            else if (module_record(r, i)->trigger == TRIGGER_SCREEN && ++module->idle >= IDLE_TICKS)
                 unload_module(r, i);
         }
     }
@@ -1595,20 +1603,18 @@ struct core_screen *core_loader_screen(struct rv_extension_record *record, const
     return s;
 }
 
-void core_loader_screen_pushed(struct rv_extension_record *record, const char *id)
+void core_loader_screen_pushed(struct rv_extension_record *record, uint8_t module)
 {
-    uint32_t i = screen_module(record, id);
-    if (i) {
-        record->modules[i].screens_open++;
-        record->modules[i].idle = 0;
+    if (module && module < record->module_count) {
+        record->modules[module].screens_open++;
+        record->modules[module].idle = 0;
     }
 }
 
-void core_loader_screen_popped(struct rv_extension_record *record, const char *id)
+void core_loader_screen_popped(struct rv_extension_record *record, uint8_t module)
 {
-    uint32_t i = screen_module(record, id);
-    if (i && record->modules[i].screens_open)
-        record->modules[i].screens_open--;
+    if (module && module < record->module_count && record->modules[module].screens_open)
+        record->modules[module].screens_open--;
 }
 
 uint32_t core_loader_owner_of(uint32_t address)
