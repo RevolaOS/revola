@@ -84,6 +84,10 @@ LICENSES = {
     "Zlib",
 }
 MAX_MODULES = 15  # main and at most 14 more
+MAX_BYTES = 1024  # CORE_MANIFEST_MAX
+MANIFEST_KEYS = {*TEXT_FIELDS, "api", "enabled", "stability", "module", "site", "asset"}
+MODULE_KEYS = {"name", "trigger", "screens"}
+SITE_KEYS = {"name", "address", "kind", "expected", "argc"}
 
 
 class Strings:
@@ -101,8 +105,10 @@ class Strings:
 
 
 def api_word(version):
-    major, minor = (int(part) for part in str(version).split("."))
-    return major << 16 | minor
+    match = re.fullmatch(r"(\d+)\.(\d+)", str(version))
+    if not match or int(match[1]) > 0xFFFF or int(match[2]) > 0xFFFF:
+        raise ValueError(f"api is major.minor, not {version!r}")
+    return int(match[1]) << 16 | int(match[2])
 
 
 def compile_site(site, strings):
@@ -132,14 +138,21 @@ def compile_site(site, strings):
             raise ValueError(
                 f"site {name}: raw sites are exclusive, {field} is not allowed"
             )
+    if set(site) - SITE_KEYS:
+        raise ValueError(f"site {name}: unknown keys {sorted(set(site) - SITE_KEYS)}")
     return SITE.pack(address, expected, SITE_KINDS[kind], argc, strings.add(name))
 
 
 def compile_manifest(document):
     """The compiled manifest for a parsed manifest.toml dictionary."""
+    unknown = set(document) - MANIFEST_KEYS
+    if unknown:
+        raise ValueError(f"unknown keys {sorted(unknown)}")
     for field in TEXT_FIELDS:
-        if field not in document:
+        if not isinstance(document.get(field), str):
             raise ValueError(f"missing {field}")
+    if not isinstance(document.get("enabled", True), bool):
+        raise ValueError("enabled is true or false")
     if not ID_PATTERN.fullmatch(document["id"]):
         raise ValueError(f"bad id {document['id']!r}")
     if document["license"] not in LICENSES:
@@ -157,6 +170,14 @@ def compile_manifest(document):
         name = module.get("name", "")
         trigger = module.get("trigger", "")
         screens = module.get("screens", [])
+        if set(module) - MODULE_KEYS:
+            raise ValueError(
+                f"module {name}: unknown keys {sorted(set(module) - MODULE_KEYS)}"
+            )
+        if not isinstance(screens, list) or not all(
+            isinstance(screen, str) and screen for screen in screens
+        ):
+            raise ValueError(f"module {name}: screens is a list of screen ids")
         if not MODULE_PATTERN.fullmatch(name) or name in names:
             raise ValueError(f"bad or repeated module name {name!r}")
         names.add(name)
@@ -195,7 +216,12 @@ def compile_manifest(document):
         len(strings.data),
         *texts,
     )
-    return header + b"".join(site_records) + b"".join(records) + bytes(strings.data)
+    compiled = header + b"".join(site_records) + b"".join(records) + bytes(strings.data)
+    if len(compiled) > MAX_BYTES:
+        raise ValueError(
+            f"the compiled manifest is {len(compiled)} bytes, the core reads {MAX_BYTES}"
+        )
+    return compiled
 
 
 def stability_bits(document):

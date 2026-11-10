@@ -169,6 +169,15 @@ class ManifestTests(unittest.TestCase):
             "module name": {
                 "module": [main, {"name": "Bad Name", "trigger": "manual"}]
             },
+            "api minor too large": {"api": "1.65536"},
+            "api not major.minor": {"api": "1"},
+            "enabled as text": {"enabled": "false"},
+            "unknown key": {"homepage": "https://example.org"},
+            "unknown module key": {"module": [{**main, "lazy": True}]},
+            "screens as text": {
+                "module": [main, {"name": "b", "trigger": "screen", "screens": "s"}]
+            },
+            "too large": {"description": "x" * 1100},
         }
         for name, change in cases.items():
             document = {**DOCUMENT, **change}
