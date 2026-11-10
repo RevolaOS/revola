@@ -161,11 +161,16 @@ void ResourceBank_SetResource(void *bank, uint32_t type, uint32_t id, const void
 void *ResourceBank_GetResource(void *bank, uint32_t type, uint32_t id, uint32_t *out_bytes);
 const void *ResourceBank_FirstResource(void *bank, uint32_t type, uint32_t *id, uint32_t *bytes);
 const void *ResourceBank_NextResource(void *bank, uint32_t *id, uint32_t *bytes);
+void ResourceBank_RemoveHeapResource(void *bank, uint32_t type, uint32_t id);
+void *ResourceBank_Destroy(void *bank);
+int ResourceOverrides_Find(void *map, uint32_t type, uint32_t id, uint32_t **entry);
+int ResourceOverrides_EraseEntry(void *map, uint32_t type, const uint32_t *entry);
 uint32_t *ResourceNames_FindOrInsertSlot(void *map, const void *name);
 void ResourceBlockList_AppendBorrowedBlock(void *list, const void *data, uint32_t bytes, uint32_t metadata);
 char *ResourceService_GetString(void *service, uint32_t id);
 void *ResourceService_GetBitmap(void *service, uint32_t id);
 void *UI_GetResourceBank(void);
+void UI_SetResourceBank(void *bank);
 void *UI_GetResourceService(void);
 uint32_t ResourceName_GetId(void *name);
 void *Heap_AllocateZeroed(uint32_t byte_count);
@@ -232,6 +237,12 @@ int StringCache_ReadToken(void *cache, uint32_t token, void *destination, uint32
 int StringCache_ReleaseToken(void *cache, uint32_t token);
 int StringCache_GetTokenView(void *cache, uint32_t token, void **data, uint32_t *bytes);
 void MenuList_RebuildVisibleItems(void *menu_list, void *view, int refresh_subscriptions);
+int MenuList_SetItemTable(void *menu_list, uint32_t table_id, void *view);
+void MenuItems_RegisterResourceType(uint32_t type);
+void UI_ShowContextMenuItems(void *controller, void *items);
+void *ContextMenuModel_Get(void);
+void UI_LoadLayoutInstances(void *layout);
+void *UI_GetLayoutManager(void);
 int MenuList_QueryProperty(void *menu_list, uint32_t type, uint32_t property, uint32_t *out);
 void *ControllerRegistry_InvokeScreenFactory(void *registry, const char *class_name, const char *controller_name, uint32_t screen_id, uint32_t layout_id, uint32_t transition);
 void *UI_FindServiceById(uint32_t service_id);
@@ -520,12 +531,17 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_ResourceBank_GetResource 0x08111d74
 #define ADDR_ResourceBank_FirstResource 0x081120f4
 #define ADDR_ResourceBank_NextResource 0x08112000
+#define ADDR_ResourceBank_RemoveHeapResource 0x08111fbc
+#define ADDR_ResourceBank_Destroy 0x081124a4
+#define ADDR_ResourceOverrides_Find 0x0812252c
+#define ADDR_ResourceOverrides_EraseEntry 0x08122574
 #define ADDR_ResourceNames_FindOrInsertSlot 0x083d242c
 #define ADDR_ResourceBlockList_AppendBorrowedBlock 0x0817a7ec
 #define ADDR_ResourceBlockList_Load 0x0817a82c
 #define ADDR_ResourceService_GetString 0x08268d94
 #define ADDR_ResourceService_GetBitmap 0x08268d84
 #define ADDR_UI_GetResourceBank 0x0819579c
+#define ADDR_UI_SetResourceBank 0x081957c0
 #define ADDR_UI_GetResourceService 0x08268d34
 #define ADDR_UI_InitResourceProviders 0x081c7e68
 #define ADDR_UI_InitializeViewTemplates 0x081af5b4
@@ -609,6 +625,13 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_StringCache_ReleaseToken 0x080bb0c8
 #define ADDR_StringCache_GetTokenView 0x08093598
 #define ADDR_MenuList_RebuildVisibleItems 0x081946fc
+#define ADDR_MenuList_SetItemTable 0x08194d1c
+#define ADDR_MenuItems_RegisterResourceType 0x08194df0
+#define ADDR_UI_ShowContextMenuItems 0x08129d78
+#define ADDR_ContextMenuModel_Get 0x081debd0
+#define ADDR_UI_LoadLayoutInstances 0x081d64cc
+#define ADDR_ContextMenuController_DispatchAction 0x081de6f8
+#define ADDR_UI_GetLayoutManager 0x081747ec
 #define ADDR_MenuList_QueryProperty 0x08194c2c
 #define ADDR_ControllerRegistry_InvokeScreenFactory 0x081d5a40
 #define ADDR_UI_FindServiceById 0x081c7d44
@@ -701,6 +724,8 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_UI_GetRootOwner 0x0813e204
 #define ADDR_TextView_DrawString 0x082883f8
 #define ADDR_TextView_DrawTextLayout 0x082872f8
+#define ADDR_MenuList_RestoreState 0x0827d77c
+#define ADDR_MenuList_SelectRow 0x0827d1b4
 #define ADDR_USB_HandleSetupPacket 0x0828a404
 #define ADDR_USB_DispatchControlRead 0x0828a7d4
 #define ADDR_USB_HandleVendorDeviceRead 0x0828a27c
@@ -1089,6 +1114,14 @@ extern void *const MenuListModel_vtable[];
 #define ResourceBlock_bytes 0x0
 #define ResourceBlock_kind 0x4
 #define ResourceBlock_data 0x8
+#define ResourceBlockList_type 0x8
+#define ResourceBlockList_id 0xc
+#define ResourceBank_kind 0x0
+#define ResourceBank_rom_index 0x4
+#define ResourceBank_overrides 0x18
+#define ResourceOverride_length 0x0
+#define ResourceOverride_data 0x4
+#define ResourceOverride_bytes 0x8
 #define Preferences_object 0x378
 #define Preferences_get_method 0xdc
 #define Preferences_set_method 0xd4
@@ -1158,11 +1191,13 @@ extern void *const MenuListModel_vtable[];
 #define MenuRow_visible 0x64
 #define MenuRow_title 0x68
 #define MenuRow_title_from_model 0x94
+#define Layout_screen_list_record 0x4
 #define Layout_id 0x8
 #define Layout_instances 0x10
 #define Layout_instances_end 0x14
 #define Layout_events 0x38
 #define Layout_screen 0x58
+#define Layout_kind 0xc
 #define LayoutInstance_id 0x8
 #define LayoutScreen_id 0x4
 #define ResourceScreenController_screen_definition 0xb0
@@ -1205,6 +1240,10 @@ extern void *const MenuListModel_vtable[];
 #define ControlRange_minimum 0x4
 #define ControlRange_maximum 0x8
 #define ControlRange_bytes 0xc
+#define MenuList_item_blocks 0x18
+#define LayoutManager_screen 0x20
+#define LayoutManager_layout 0x28
+#define ContextMenuModel_items 0x18
 #define ContextMenuItem_item 0x0
 #define ContextMenuItem_action 0x4
 #define ContextMenuItem_flags 0x8
@@ -1213,6 +1252,9 @@ extern void *const MenuListModel_vtable[];
 #define Navigator_top_controller 0x4
 #define TextView_context 0xa4
 #define TextView_text 0xf8
+#define ScreenLayoutEntry_layout 0x0
+#define ScreenLayoutEntry_kind 0x4
+#define ScreenLayoutEntry_refresh 0x8
 #define USBDevice_controller 0x34
 #define USBDevice_interfaces 0x38
 #define USBDevice_configuration_set 0x5c
@@ -1249,6 +1291,7 @@ extern void *const MenuListModel_vtable[];
 #define BMapFormat_Mask4 0x4
 #define BMapFormat_Mask8 0x8
 #define BMapFormat_Indexed8 0x64
+#define BMapFormat_Indexed16 0x65
 #define BMapFormat_RGB565 0x565
 #define BMapFormat_BGRA8888 0x1888
 #define WheelButton_Center 0x1
@@ -1293,6 +1336,8 @@ extern void *const MenuListModel_vtable[];
 #define Resource_TMLT 0x544d4c54
 #define Resource_String 0x53747220
 #define Resource_VSlt 0x56536c74
+#define ResourceBankKind_Heap 0x1
+#define ResourceBankKind_Rom 0x2
 #define MainMenuSettings_row_count 0x22
 #define MusicMenuSettings_row_count 0xd
 #define StringInputStream_ResourceMode 0xc
@@ -1352,6 +1397,7 @@ extern void *const MenuListModel_vtable[];
 #define ViewType_Progress 0x70676f67
 #define ViewType_Text 0x74657874
 #define UITask_stack_bytes 0x20000
+#define Transition_Instant 0x6
 
 #define RES_Settings_Off_String 0x0dad0bda
 #define RES_Settings_On_String 0x0dad0bdb
@@ -1402,6 +1448,8 @@ extern void *const MenuListModel_vtable[];
 #define RES_Settings_MainMenu_Items 0x00000042
 #define RES_SettingsPreview_Template 0x0dad0c2e
 #define RES_SettingsPreview_Caption_Text 0x0dad0618
+#define RES_SettingsPreview_Background_View 0x0dad0c2f
+#define RES_SettingsPreview_Background_Image 0x0dad0bf5
 #define RES_Settings_Brightness_Screen 0x0dad0c98
 #define RES_Settings_Brightness_Screen_Default 0x0dad0c99
 #define RES_Settings_Brightness_Template 0x0dad0c5a
