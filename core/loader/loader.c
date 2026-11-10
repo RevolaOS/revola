@@ -24,6 +24,7 @@
 #include "ui/resources.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
+#include "timer.h"
 #include "rv_api.h"
 #include "loader/rvx.h"
 #include "ui/screens.h"
@@ -907,8 +908,9 @@ static void api_ui_refresh(rv_extension_handle self, const char *screen)
 
 static void api_ui_invalidate(rv_extension_handle self)
 {
-    if (valid_handle(self))
-        core_screens_invalidate();
+    struct rv_extension_record *record = valid_handle(self);
+    if (record)
+        core_screens_invalidate(record);
 }
 
 static void *api_asset_load(rv_extension_handle self, const char *name, uint32_t *bytes)
@@ -993,6 +995,20 @@ static uint32_t api_format_size(char *out, uint32_t capacity, uint32_t bytes)
     return out && capacity ? (uint32_t)(core_format_size(out, out + capacity, bytes) - out) : 0;
 }
 
+static struct rv_timer *api_timer_start(rv_extension_handle self, uint32_t ms, int repeat,
+                                        void (*callback)(void *arg), void *arg)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_timer_start(record, ms, repeat, callback, arg) : NULL;
+}
+
+static void api_timer_stop(rv_extension_handle self, struct rv_timer *timer)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (record && timer)
+        core_timer_stop(record, timer);
+}
+
 static const struct rv_api api = {
     .size = sizeof api,
     .version = RV_API_VERSION,
@@ -1018,6 +1034,8 @@ static const struct rv_api api = {
     .asset_read = api_asset_read,
     .format_number = api_format_number,
     .format_size = api_format_size,
+    .timer_start = api_timer_start,
+    .timer_stop = api_timer_stop,
 };
 
 /* Modules */
@@ -1153,6 +1171,8 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     struct core_module *module = &record->modules[index];
     if (!module->loaded)
         return;
+    core_timer_stop_code(record, index ? module->image : NULL,
+                         (uint8_t *)module->image + module->bytes);
     const struct rv_descriptor *descriptor = module->descriptor;
     if (descriptor && descriptor->unload) {
         core_panic_extension = record->owner;

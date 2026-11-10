@@ -268,9 +268,11 @@ void core_screens_pop(void)
     Navigator_PopTop(0x10);
 }
 
-void core_screens_invalidate(void)
+void core_screens_invalidate(struct rv_extension_record *owner)
 {
-    core_canvas_invalidate();
+    struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
+    if (s && s->owner == owner)
+        core_canvas_invalidate();
 }
 
 static const struct core_hook hooks[] = {

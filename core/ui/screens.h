@@ -70,8 +70,8 @@ int core_screens_push(struct core_screen *screen, void *controller);
 extern void *core_screens_caller;
 /* Pops the top screen. */
 void core_screens_pop(void);
-/* Redraws an open canvas. */
-void core_screens_invalidate(void);
+/* Redraws the canvas on top when `owner` declared it. */
+void core_screens_invalidate(struct rv_extension_record *owner);
 /* The Settings model, as last seen on the property slot. */
 void *core_screens_settings_model(void);
 /* Tells the Settings model a property's text changed, so its views redraw. */

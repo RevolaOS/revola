@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 19
+#define RV_API_MINOR 20
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -32,6 +32,7 @@
 
 /* The loader's record of the extension; passed back to every call. */
 typedef struct rv_extension_record *rv_extension_handle;
+struct rv_timer;
 
 enum rv_result {
     RV_OK,
@@ -387,11 +388,11 @@ struct rv_api {
     /* Kept for the emulator; nothing on the device shows it. */
     void (*log)(rv_extension_handle self, const char *text);
 
-    /* Screens by name. push opens one above the screen whose row, choice or
+    /* Screens by id. push opens one above the screen whose row, choice or
      * input callback is running (the screen's module loads first; RV_NOT_FOUND
-     * for an unknown name, RV_BAD_ARGUMENT outside a callback); pop closes the
-     * top screen; refresh redraws rows whose text changed; invalidate redraws an
-     * open canvas. */
+     * for an unknown id, RV_BAD_ARGUMENT outside a callback); pop closes the
+     * top screen; refresh redraws rows whose text changed; invalidate redraws the
+     * canvas on top when it is the extension's. */
     int (*ui_push)(rv_extension_handle self, const char *screen);
     void (*ui_pop)(rv_extension_handle self);
     void (*ui_refresh)(rv_extension_handle self, const char *screen);
@@ -414,6 +415,15 @@ struct rv_api {
      * ("6.0 KB"). */
     uint32_t (*format_number)(char *out, uint32_t capacity, uint32_t value);
     uint32_t (*format_size)(char *out, uint32_t capacity, uint32_t bytes);
+
+    /* Calls `callback(arg)` on the UI task after `ms`, and every `ms` after
+     * that when `repeat` is set; NULL when the heap is full. timer_stop ends
+     * it; a one-shot timer ends by itself once it fired, and must not be
+     * stopped after that. The core stops a module's timers before the module
+     * unloads. Both are for the UI task. */
+    struct rv_timer *(*timer_start)(rv_extension_handle self, uint32_t ms, int repeat,
+                                    void (*callback)(void *arg), void *arg);
+    void (*timer_stop)(rv_extension_handle self, struct rv_timer *timer);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its
