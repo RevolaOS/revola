@@ -21,18 +21,22 @@ CFLAGS := -mcpu=arm926ej-s -mthumb -mthumb-interwork -mlong-calls -Os -std=c11 \
     -fno-unwind-tables -fno-asynchronous-unwind-tables -Wall -Wextra -Werror \
     -I$(SDK) $(EXTRA_CFLAGS)
 ARM_CFLAGS := $(filter-out -mthumb,$(CFLAGS)) -marm -fno-optimize-sibling-calls
-LDFLAGS := -nostdlib -Wl,-T,$(SDK)/rvx.lds -Wl,--emit-relocs \
+LDFLAGS := -nostdlib -Wl,-T,$(SDK)/rvx.lds -Wl,--emit-relocs -Wl,--gc-sections \
     -Wl,--just-symbols=$(SDK)/$(RV_FIRMWARE_LD) -lgcc
 
 define module_rules
 $(OUT)/$(1).elf: $$($(1)_SOURCES) $$(patsubst %,$(OUT)/$(1)-arm/%.o,$$($(1)_ARM_SOURCES)) \
-    $(SDK)/rvx.lds | $(OUT)
+    $(OUT)/rv_libc.o $(SDK)/rvx.lds | $(OUT)
 	$(CC) $(CFLAGS) $$(filter %.c %.S %.o,$$^) $(LDFLAGS) -Wl,-Map,$$(@:.elf=.map) -o $$@
 $(OUT)/$(1)-arm/%.o: %
 	@mkdir -p $$(dir $$@)
 	$(CC) $(ARM_CFLAGS) -c $$< -o $$@
 endef
 $(foreach module,$(MODULES),$(eval $(call module_rules,$(module))))
+
+# Each function in its own section, so --gc-sections keeps only those called.
+$(OUT)/rv_libc.o: $(SDK)/rv_libc.c $(SDK)/rv_libc.h | $(OUT)
+	$(CC) $(CFLAGS) -ffunction-sections -fno-tree-loop-distribute-patterns -c $< -o $@
 
 all: $(OUT)/$(ID).rvx
 

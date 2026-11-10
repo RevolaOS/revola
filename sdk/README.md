@@ -6,6 +6,7 @@ Headers, linker script, tools and Make include for building extensions against o
 |---|---|
 | `rv_api.h` | the `rv_api` table the core passes to a module's entry, the descriptor it returns, hook, setting, screen, row and entry declarations; `RV_API_MAJOR`/`RV_API_MINOR` |
 | `rv_ui.h` | one-line declarations of rows, screens, entries and settings over those structs (`RV_PUSH`, `RV_LIST`, `RV_ENTRY`, `RV_SETTING_CHOICE`) |
+| `rv_libc.h`, `rv_libc.c` | the C library rv.mk links into every module: `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`, `rv_format` (printf into a buffer) and `rv_format_time` ("3:07"); a module carries only what it calls |
 | `rv_sites.h` | `RV_SITE_*` ids of every hook site in this core, generated from the core's site table |
 | `rv_menus.h` | the stock rows of the Main, Music, Extras and Settings menus (`RV_SETTINGS_LEGAL`), generated from the symbols header; what an entry anchors on |
 | `rv_firmware.h`, `rv_firmware.mk` | `RV_FIRMWARE_ID` of the Apple firmware the symbols describe; the loader refuses a module built for another |
@@ -46,6 +47,6 @@ The core decodes only the menu bitmap shown and keeps a canvas's bitmaps decoded
 
 For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest.py`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
 
-Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library (`api->format_number` and `api->format_size` write "12,345" and "6.0 KB"); only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.
+Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library beyond `rv_libc.h` (`api->format_number` and `api->format_size` write "12,345" and "6.0 KB"); only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.
 
 Thumb is the default because it is denser, and RAM comes first. Use ARM in two cases. First, DSP and hot loops: the ARMv5TE multiply-accumulate and saturating instructions (SMULxy, SMLAxy, QADD) exist only in ARM state. Second, calls into Apple routines that return with `mov pc, lr`: such a return always lands in ARM state, so a Thumb caller crashes. The call must come from an ARM function and must not be a tail call. Mark single functions `RV_ARM`, or list whole files in `<module>_ARM_SOURCES`; those files are built with `-marm -fno-optimize-sibling-calls`.

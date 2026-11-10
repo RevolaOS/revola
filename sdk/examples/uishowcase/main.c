@@ -9,6 +9,7 @@
  * back and draws. */
 
 #include "rv_api.h"
+#include "rv_libc.h"
 #include "rv_menus.h"
 #include "rv_ui.h"
 
@@ -39,15 +40,6 @@ static uint32_t presses;
 static void count_up(void)
 {
     presses++;
-}
-
-static char *format(char *end, uint32_t value)
-{
-    *--end = 0;
-    do
-        *--end = (char)('0' + value % 10);
-    while ((value /= 10));
-    return end;
 }
 
 /* Rows, and the screen calls an action may make: ui_push by name, ui_pop. */
@@ -114,14 +106,13 @@ static char loaded[40] = "asset_load failed";
 static char read_back[24] = "asset_read failed";
 static void *disc; /* the "disc" asset, for gfx->bmap while the canvas is open */
 
-static void copy_text(char *to, const char *prefix, const char *from, uint32_t bytes, uint32_t room)
+/* The first line of `bytes` of text after `prefix`. */
+static void first_line(char *to, uint32_t room, const char *prefix, const char *from, uint32_t bytes)
 {
-    uint32_t n = 0;
-    while (*prefix && n < room - 1)
-        to[n++] = *prefix++;
-    for (uint32_t i = 0; i < bytes && n < room - 1 && from[i] != '\n'; i++)
-        to[n++] = from[i];
-    to[n] = 0;
+    uint32_t line = 0;
+    while (line < bytes && from[line] != '\n')
+        line++;
+    rv_format(to, room, "%s%.*s", prefix, (int)line, from);
 }
 
 static void read_assets(void)
@@ -129,12 +120,12 @@ static void read_assets(void)
     uint32_t bytes = 0, got = 0;
     char *note = api->asset_load(self, "note", &bytes);
     if (note) {
-        copy_text(loaded, "Load: ", note, bytes, sizeof loaded);
+        first_line(loaded, sizeof loaded, "Load: ", note, bytes);
         api->free(self, note);
     }
     char part[9];
     if (api->asset_read(self, "note-raw", 7, part, sizeof part, &got) == RV_OK)
-        copy_text(read_back, "Read: ", part, got, sizeof read_back);
+        first_line(read_back, sizeof read_back, "Read: ", part, got);
 }
 
 static void unload(void)
@@ -263,7 +254,8 @@ static const char *counter_row(uint32_t index, const char **detail)
     *detail = 0;
     switch (index) {
     case 0:
-        *detail = format(digits + sizeof digits, presses);
+        rv_format(digits, sizeof digits, "%lu", presses);
+        *detail = digits;
         return "Presses";
     case 1:
         return "Count up";

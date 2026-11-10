@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 11
+#define RV_API_MINOR 12
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
