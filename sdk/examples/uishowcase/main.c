@@ -272,7 +272,7 @@ static const struct rv_screen screens[] = {
     RV_RUNTIME_LIST("runtime", "Runtime list", moon_count, moon_row, moon_select,
                     .layout = RV_LAYOUT_FULL),
     RV_RUNTIME_LIST("stacked", "Stacked", moon_count, moon_row, moon_select,
-                    .layout = RV_LAYOUT_SPLIT, .runtime.stacked = 1),
+                    .layout = RV_LAYOUT_SPLIT, .runtime.detail = RV_DETAIL_BELOW),
     RV_RUNTIME_LIST("counter", "Counter", counter_count, counter_row, counter_select),
     RV_CANVAS("canvas", "Canvas", canvas_draw, canvas_input),
     RV_TEXT("entries", "Entries", entries_text),

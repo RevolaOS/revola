@@ -38,7 +38,7 @@ One file per Apple subsystem per firmware version. Addresses live in the symbols
 
 ## Commits
 
-Subject: `type(scope): summary`, lower case, imperative, no period, at most 72 characters. Body says why. Ported code cites the RepriseOS path and commit. Commit messages are the only place for history. No generated-by trailers.
+Subject: `type(scope): summary`, lower case, imperative, no period, at most 72 characters. Body says why. Ported code cites the RepriseOS path and commit. A port of a RepriseOS commit made after the fork (NOTICE names the fork commit) adds its author, by GitHub username, to the RepriseOS contributors in the RevolaOS Info text (`core/ui/info.c`) when they are not listed yet. Commit messages are the only place for history. No generated-by trailers.
 
 | Type | Use |
 |---|---|

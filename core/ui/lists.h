@@ -21,8 +21,10 @@ static inline int core_lists_kind(uint8_t kind)
 }
 
 /* Ids the split layout of a list screen takes after the full layout's: its
- * screen, its layout, the pane and four layout clones. */
-#define CORE_LIST_SPLIT_IDS 7
+ * screen, its layout, the pane, four layout clones, and the pane's caption,
+ * icon and box sources. */
+#define CORE_LIST_SPLIT_IDS 10
+#define CORE_LIST_PANE_CAPTION(screen) ((screen) + 7)
 
 /* The screen id a list screen is pushed as: its first id for the full layout,
  * the split layout's otherwise. */

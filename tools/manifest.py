@@ -7,12 +7,13 @@ manifest.toml:
 
     id = "hello_world"           # [a-z][a-z0-9_-]{0,31}, the file name before .rvx
     name = "Hello World"
-    description = "What it does"
+    description = "What it does" # shown to listeners on its page: one plain sentence
     version = "0.1.0"
     author = "Who"
     license = "GPL-3.0-only"     # GPL-3.0 compatible
     api = "1.0"                  # minimum core API major.minor
     enabled = true               # state after install
+    stability = "beta"           # optional: alpha, beta or stable, the author's word
 
     [[module]]                   # the first module is main, trigger always
     name = "main"
@@ -53,6 +54,7 @@ import struct
 MAGIC = 0x464D5652  # RVMF
 VERSION = 2
 FLAG_ENABLED = 1
+STABILITY = {"alpha": 1, "beta": 2, "stable": 3}  # flags bits 1-2
 HEADER = struct.Struct("<7I6H")
 MODULE = struct.Struct("<HBBH")
 SITE = struct.Struct("<IIBBH")
@@ -186,13 +188,23 @@ def compile_manifest(document):
         MAGIC,
         VERSION,
         api_word(document.get("api", "1.0")),
-        FLAG_ENABLED if document.get("enabled", True) else 0,
+        (FLAG_ENABLED if document.get("enabled", True) else 0)
+        | stability_bits(document) << 1,
         len(records),
         len(site_records),
         len(strings.data),
         *texts,
     )
     return header + b"".join(site_records) + b"".join(records) + bytes(strings.data)
+
+
+def stability_bits(document):
+    """0 without a stability field, else its value in STABILITY."""
+    if "stability" not in document:
+        return 0
+    if document["stability"] not in STABILITY:
+        raise ValueError(f"stability must be one of {', '.join(STABILITY)}")
+    return STABILITY[document["stability"]]
 
 
 def assets(document):

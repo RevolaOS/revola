@@ -60,15 +60,22 @@ uint32_t core_lists_screen_id(const struct core_screen *s, int split)
 /* A split layout: the Settings > Main Menu layout with the title and the pane
  * rebound (the caption shows the title, the other pane views are hidden), and
  * the list bound by the screen's VSlt (the stock split screens bind their list
- * there, not in the list instance). Takes one id from *next for the pane.
- * TODO: a pane icon and caption per screen. */
+ * there, not in the list instance). Takes one id from *next for the pane;
+ * the declaration's caption and icon, when set, fill the pane's detail line
+ * and icon. */
 static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, uint8_t *scratch,
                        uint32_t bytes)
 {
     struct core_writer w = {scratch, 0};
-    uint32_t pane_id = (*next)++, stock_pane = core_panes_write(&w, s->id + 2, 0, 0);
+    const struct rv_screen *d = s->declaration;
+    uint32_t caption = CORE_LIST_PANE_CAPTION(screen);
+    uint32_t pane_id = (*next)++;
+    uint32_t icon = d->bitmap ? caption + 1 : 0, box = d->bitmap ? caption + 2 : 0;
+    uint32_t stock_pane = core_panes_write(&w, s->id + 2, d->caption ? caption : 0, icon, box);
     if (!stock_pane)
         return 0;
+    for (uint32_t i = 0; i < 3; i++)
+        core_set_source(bank, caption + i, caption + i, SourceDestination_Title);
     core_panes_store(pane_id, scratch, w.at, stock_pane);
     uint32_t vslt[5] = {1, 8, ViewBinding_ItemTable, RES_SettingsList_View, s->id + 3};
     ResourceBank_SetResource(bank, Resource_VSlt, screen, vslt, sizeof vslt);
@@ -117,13 +124,16 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
         const uint8_t *row = prototype(s, i, &value);
         if (!row)
             return 0;
-        /* A stacked runtime list draws the inline value under the label. */
-        int stacked = d->kind == RV_SCREEN_RUNTIME_LIST && d->runtime.stacked;
+        /* A runtime list with the detail below draws the inline value under the
+         * label; with a chevron the model gives the style (indexed.c), as the
+         * chevron shows only for a style the model answers. */
+        uint8_t detail = d->kind == RV_SCREEN_RUNTIME_LIST ? d->runtime.detail : RV_DETAIL_BESIDE;
         uint32_t words[6] = {MenuRow_id, item, MenuRow_title, source, MenuRow_style,
-                             MenuRowStyle_TwoLine};
+                             detail == RV_DETAIL_BELOW_SUBMENU ? MenuRowStyle_ModelLayout
+                                                               : MenuRowStyle_TwoLine};
         uint32_t begin = core_write_block_begin(&w, 0);
         uint32_t at = w.at;
-        core_write_copy(&w, row, ROW_BYTES, words, stacked ? 3 : 2);
+        core_write_copy(&w, row, ROW_BYTES, words, detail != RV_DETAIL_BESIDE ? 3 : 2);
         scratch[at + MenuRow_title_from_model] = 1;
         core_write_block_end(&w, begin);
         if (value)
@@ -147,7 +157,7 @@ static int clone_layouts(struct core_screen *s, int split, const void *events,
                          uint32_t layout_event_bytes, uint8_t *scratch, uint32_t scratch_bytes)
 {
     uint32_t screen = core_lists_screen_id(s, split), next = split ? screen + 2 : s->id + 4;
-    uint32_t last = split ? screen + CORE_LIST_SPLIT_IDS : CORE_SCREEN_ROWS(s);
+    uint32_t last = split ? CORE_LIST_PANE_CAPTION(screen) : CORE_SCREEN_ROWS(s);
     struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, screen + 1, RES_StatusBarWhite_Text,
                              s->id + 2, s->id + 3, 0, 0, 0, NULL};
     if (!(split ? clone_split(s, screen, &next, scratch, scratch_bytes)

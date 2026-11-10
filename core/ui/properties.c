@@ -70,7 +70,7 @@ static const char *row_text(struct rv_extension_record *owner, const struct rv_r
                             int value)
 {
     if (!value || (row->kind != RV_ROW_TOGGLE && row->kind != RV_ROW_SETTING))
-        return row->label;
+        return core_row_label(row);
     const struct rv_setting *setting = core_screens_setting(owner, row->key);
     int32_t v = core_screens_setting_value(owner, row->key);
     if (setting && setting->labels) {
@@ -100,6 +100,8 @@ static uint32_t property(uint32_t model, uint32_t type, uint32_t id, uint32_t ou
     if (s && s->declaration->kind == RV_SCREEN_SLIDER && id >= CORE_SCREEN_ROWS(s))
         return core_slider_property(s, type, id, out) ? 1 : core_next_call(next, model, type, id, out);
     if (s && core_indexed_property(s, type, id, out))
+        return 1;
+    if (s && core_panes_list_property(s, type, id, out))
         return 1;
     /* The last model-backed row of a list sets the list's row count: one row per
      * title property, so the list shows every row. */

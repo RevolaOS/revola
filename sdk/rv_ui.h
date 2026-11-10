@@ -21,6 +21,8 @@
 #define RV_ACTION(label_, fn_) {.label = (label_), .kind = RV_ROW_ACTION, .action = (fn_)}
 #define RV_SETTING(label_, key_) {.label = (label_), .kind = RV_ROW_SETTING, .key = (key_)}
 #define RV_STOCK(label_, row_) {.label = (label_), .kind = RV_ROW_STOCK, .stock = (row_)}
+/* A row that shows text_() as its label and does nothing when chosen. */
+#define RV_LIVE(label_, text_) {.label = (label_), .kind = RV_ROW_ACTION, .text = (text_)}
 
 /* Screens. */
 #define RV_LIST(name_, title_, rows_, ...)                                                      \

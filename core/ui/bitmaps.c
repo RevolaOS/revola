@@ -17,6 +17,7 @@
  * bitmap is shown. */
 
 #include "ui/bitmaps.h"
+#include "ui/icons.h"
 #include "loader/rvx.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
@@ -56,14 +57,14 @@ static int menu_bmap(const uint8_t *b, uint32_t bytes)
 
 const void *core_bitmap(struct rv_extension_record *owner, const struct rv_bitmap *bitmap)
 {
-    if (!owner || !bitmap || !bitmap->asset)
+    if (!bitmap || !bitmap->asset)
         return NULL;
     uint32_t name = core_settings_owner(bitmap->asset);
     if (decoded.block && decoded.owner == owner && decoded.name == name)
         return decoded.block;
-    uint32_t bytes;
-    uint8_t kind;
-    void *block = core_loader_asset(owner, name, &bytes, &kind);
+    uint32_t bytes = MENU_BYTES;
+    uint8_t kind = RVX_BITMAP;
+    void *block = owner ? core_loader_asset(owner, name, &bytes, &kind) : core_icon_decode(name);
     if (!block)
         return NULL;
     if (kind != RVX_BITMAP || !menu_bmap(block, bytes)) {

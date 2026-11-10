@@ -38,7 +38,7 @@
 #define MANIFEST_MAGIC 0x464d5652u /* RVMF */
 #define MANIFEST_VERSION 2
 #define MANIFEST_ENABLED 1
-#define MANIFEST_MAX 1024
+#define MANIFEST_MAX CORE_MANIFEST_MAX
 #define MAX_MODULES 15
 #define MAX_EXTENSIONS 16
 #define IDLE_TICKS 10 /* grace ticks a screen module stays loaded with no screen open */
@@ -173,7 +173,8 @@ static void release(struct rv_extension_record *owner, void *memory)
     struct block *block = header_of(memory);
     if (block->owner != owner)
         return;
-    owner->live -= block->bytes;
+    if (owner)
+        owner->live -= block->bytes;
     Heap_Free(block);
 }
 
@@ -486,6 +487,11 @@ void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint3
         *kind = entry.kind;
     }
     return out;
+}
+
+void *core_loader_block(uint32_t bytes)
+{
+    return allocate(NULL, bytes);
 }
 
 void core_loader_retire(void *block)
@@ -1259,6 +1265,22 @@ uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity)
         entry->duplicate = duplicate[i];
     }
     return count;
+}
+
+uint32_t core_loader_manifest(const char *file, uint8_t *buffer)
+{
+    return read_manifest(file, buffer);
+}
+
+const char *core_loader_manifest_text(const uint8_t *manifest, uint32_t field)
+{
+    const struct manifest_header *header = (const struct manifest_header *)manifest;
+    return field < 6 ? strings(manifest) + header->text[field] : "";
+}
+
+uint32_t core_loader_manifest_flags(const uint8_t *manifest)
+{
+    return ((const struct manifest_header *)manifest)->flags;
 }
 
 uint32_t core_loader_total_bytes(void)

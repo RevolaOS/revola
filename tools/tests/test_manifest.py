@@ -71,6 +71,18 @@ class ManifestTests(unittest.TestCase):
         data = manifest.compile_manifest({**DOCUMENT, "enabled": True})
         self.assertEqual(struct.unpack_from("<I", data, 12)[0], 1)
 
+    def test_stability_flag(self):
+        def flags(document):
+            return struct.unpack_from("<I", manifest.compile_manifest(document), 12)[0]
+
+        self.assertEqual(flags({**DOCUMENT, "enabled": True}) >> 1, 0)
+        for value, bits in (("alpha", 1), ("beta", 2), ("stable", 3)):
+            with self.subTest(value):
+                self.assertEqual(
+                    flags({**DOCUMENT, "enabled": True, "stability": value}),
+                    1 | bits << 1,
+                )
+
     def test_raw_sites(self):
         site = {
             "name": "clear",
@@ -153,6 +165,7 @@ class ManifestTests(unittest.TestCase):
             "repeated module": {
                 "module": [main, {"name": "main", "trigger": "manual"}]
             },
+            "stability": {"stability": "experimental"},
             "module name": {
                 "module": [main, {"name": "Bad Name", "trigger": "manual"}]
             },

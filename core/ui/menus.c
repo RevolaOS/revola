@@ -10,6 +10,7 @@
 
 #include "ui/menus.h"
 #include "ui/menurows.h"
+#include "ui/lists.h"
 #include "loader/containers.h"
 #include "ui/panes.h"
 #include "ui/clones.h"
@@ -322,9 +323,10 @@ int core_menus_owns(uint32_t id)
     return 0;
 }
 
-/* Appends the rows anchored on the stock row Apple just appended. The first
- * build copies that row's bytes, so the copy needs the Legal or Sound Check row
- * as the anchor's prototype only when it is not one of them. */
+/* Appends the rows anchored on the stock row Apple just appended. A row is
+ * made on the first build: under Settings a copy of the Legal row, or of Sound
+ * Check's for a row with a value, whatever row it follows; elsewhere a copy of
+ * the row it follows. */
 static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32_t metadata,
                             const struct core_next *next)
 {
@@ -342,8 +344,16 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
             row = Heap_AllocateZeroed(ROW_BYTES);
             if (!row)
                 continue;
+            const uint32_t *from = (const uint32_t *)data;
+            if (r->root == RV_ROOT_SETTINGS) {
+                uint8_t kind = r->entry ? r->entry->row.kind : RV_ROW_PUSH;
+                const uint32_t *prototype = (const uint32_t *)core_lists_prototype(
+                    kind == RV_ROW_TOGGLE || kind == RV_ROW_SETTING);
+                if (prototype)
+                    from = prototype;
+            }
             for (uint32_t w = 0; w < ROW_BYTES / 4; w++)
-                row[w] = ((const uint32_t *)data)[w];
+                row[w] = from[w];
             row[MenuRow_id / 4] = r->item;
             row[MenuRow_title / 4] = r->item + 1;
             ((uint8_t *)row)[MenuRow_title_from_model] = 1;

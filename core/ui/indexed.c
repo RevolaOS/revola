@@ -49,6 +49,13 @@ static int32_t setting(const struct core_screen *s)
 
 /* A multi-choice row asks which row styles to build, then each expanded row's. */
 static const uint32_t check_styles[2] = {MenuRowStyle_CheckIndented, 0};
+static const uint32_t submenu_styles[2] = {MenuRowStyle_TwoLineSubmenu, 0};
+
+static int submenu_rows(const struct core_screen *s)
+{
+    return s->declaration->kind == RV_SCREEN_RUNTIME_LIST &&
+           s->declaration->runtime.detail == RV_DETAIL_BELOW_SUBMENU;
+}
 
 int core_indexed_property(struct core_screen *s, uint32_t type, uint32_t id, uint32_t out)
 {
@@ -58,6 +65,8 @@ int core_indexed_property(struct core_screen *s, uint32_t type, uint32_t id, uin
         *(uint32_t *)out = row_count(s);
     else if (type == Property_LayoutSet && s->declaration->kind == RV_SCREEN_MULTI_CHOICE)
         *(const uint32_t **)out = check_styles;
+    else if (type == Property_LayoutSet && submenu_rows(s))
+        *(const uint32_t **)out = submenu_styles;
     else
         return 0;
     return 1;
@@ -97,6 +106,10 @@ static int row_answer(const struct core_screen *s, uint32_t type, uint32_t prope
         const char *detail = NULL;
         const char *label = d->runtime.row ? d->runtime.row(index, &detail) : NULL;
         const char *text = title ? label : detail;
+        if (type == Property_Layout && title && submenu_rows(s)) {
+            *out = MenuRowStyle_TwoLineSubmenu;
+            return 1;
+        }
         if (type != Property_String)
             return 0;
         *out = (uintptr_t)(text ? text : "");

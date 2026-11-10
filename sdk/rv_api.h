@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 8
+#define RV_API_MINOR 9
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -112,7 +112,9 @@ enum rv_row_kind {
                        screen of an int with labels */
 };
 
-/* One row of a list screen or an entry in a menu. */
+/* One row of a list screen or an entry in a menu. `text`, when set, gives the
+ * label each time the row is drawn, for a value that changes; `label` still
+ * names the row and is what a context menu shows. */
 struct rv_row {
     const char *label;
     uint8_t kind;
@@ -121,6 +123,7 @@ struct rv_row {
     const char *screen;
     void (*action)(void);
     uint32_t stock;
+    const char *(*text)(void);
 };
 
 enum rv_screen_kind {
@@ -202,6 +205,13 @@ struct rv_input {
     int16_t delta; /* wheel steps, signed */
 };
 
+/* Where a runtime list row shows its detail. */
+enum rv_detail {
+    RV_DETAIL_BESIDE,        /* on the right of the label, as a setting's value */
+    RV_DETAIL_BELOW,         /* a second line under the label */
+    RV_DETAIL_BELOW_SUBMENU, /* a second line, and the row shows it opens a screen */
+};
+
 /* A screen the core registers for the extension. `name` is what RV_ROW_PUSH,
  * ui_push and a module's manifest trigger call it, local to the extension.
  * Labels and text are read from the module while the screen is open; nothing
@@ -238,9 +248,14 @@ struct rv_screen {
             /* Row `index`; a detail text goes to *detail (NULL for none). */
             const char *(*row)(uint32_t index, const char **detail);
             int (*select)(uint32_t index); /* returns 1 to pop the screen */
-            uint8_t stacked;               /* detail under the label instead of inline */
+            uint8_t detail;                /* rv_detail: where the detail goes */
         } runtime;
     };
+    /* A list in the split layout shows these in the preview pane beside the
+     * title: a line of text and an icon on the system's box; NULL shows
+     * nothing. */
+    const char *caption;
+    const struct rv_bitmap *bitmap;
 };
 
 /* A row the extension adds to a menu. `in` names the menu: "main", "music",
@@ -250,12 +265,15 @@ struct rv_screen {
  * row of that menu from rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under
  * Settings the preview pane shows the label, `caption` as the line below and
  * `bitmap` as the icon while the row is highlighted; either may be NULL, and
- * the pane then shows nothing in its place. Rows under Main and Music appear in
- * Settings > Main Menu and Music Menu, `visible` is their default there. */
+ * the pane then shows nothing in its place. The icon sits on the box the
+ * system draws behind stock Settings icons unless `plain_icon` is set. Rows
+ * under Main and Music appear in Settings > Main Menu and Music Menu,
+ * `visible` is their default there. */
 struct rv_entry {
     const char *in;
     uint8_t visible;
-    uint8_t reserved[3];
+    uint8_t plain_icon; /* 1: the pane shows `bitmap` without the system's box behind it */
+    uint8_t reserved[2];
     uint32_t after;
     struct rv_row row;
     const char *caption;

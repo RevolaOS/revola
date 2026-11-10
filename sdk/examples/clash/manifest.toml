@@ -1,6 +1,6 @@
 id = "clash"
 name = "Clash"
-description = "Loader test: a replace claim on a site the core already uses"
+description = "A test extension that conflicts with RevolaOS on purpose."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"

@@ -1,6 +1,6 @@
 id = "tint"
 name = "Tint"
-description = "Loader test: raw call sites that tint the Cover Flow and album art background"
+description = "Tints the background behind Cover Flow and album art."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"

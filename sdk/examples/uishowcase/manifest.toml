@@ -1,11 +1,12 @@
 id = "uishowcase"
 name = "UI Showcase"
-description = "Every UI declaration of the SDK, one labelled screen each"
+description = "Shows every kind of screen and row an extension can add."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.8"
+api = "1.9"
 enabled = true
+stability = "beta"
 
 [[module]]
 name = "main"

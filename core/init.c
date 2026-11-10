@@ -8,6 +8,8 @@
  * timer and the extensions follow in that order. */
 
 #include "loader/loader.h"
+#include "ui/info.h"
+#include "ui/extensions.h"
 #include "ui/menus.h"
 #include "memory/memory.h"
 #include "osos-2.0.5.h"
@@ -17,8 +19,6 @@
 #include "hooks/sites.h"
 #include "timer.h"
 
-void core_about_init(void *bank);
-void core_extensions_init(void *bank);
 void core_artwork_bind(void);
 void core_selftest_boot(void);
 void core_selftest_preferences(void);
@@ -30,6 +30,8 @@ static uint32_t core_preferences_init(void *preferences, const struct core_next 
     core_memory_bind();
     core_artwork_bind();
     core_timer_init();
+    core_info_register();
+    core_extensions_register();
     core_loader_boot();
 #ifdef CORE_SELFTEST
     core_selftest_preferences();
@@ -46,10 +48,8 @@ PATCH_ARM void core_boot(void *bank)
     core_sites_init();
     core_hook_bind(&preferences_hook);
     core_settings_bind();
-    core_about_init(bank);
     core_screens_init(bank);
     core_menus_init(bank);
-    core_extensions_init(bank);
 #ifdef CORE_SELFTEST
     core_selftest_boot();
 #endif

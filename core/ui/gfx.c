@@ -103,6 +103,47 @@ static void draw_bmap(int x, int y, const uint8_t *resource)
     Bitmap_Destroy(storage);
 }
 
+void core_gfx_part(int x, int y, const void *resource, int rows, rv_color c)
+{
+    const int32_t *bounds = (const int32_t *)((const uint8_t *)resource + BMap_bounds);
+    int32_t source_rect[4] = {bounds[0], bounds[1], bounds[0] + rows, bounds[3]};
+    int32_t rect[4] = {top + y, left + x, top + y + rows, left + x + bounds[3] - bounds[1]};
+    uint32_t storage[Bitmap_bytes / 4];
+    uint32_t source[GraphicsContext_bytes / 4];
+    uint16_t format = *(const uint16_t *)((const uint8_t *)resource + BMap_format);
+    /* A coverage mask draws in the context's colour in text mode, as a bitmap
+     * view draws it in its tint. */
+    if (format == BMapFormat_Mask8 || format == BMapFormat_Mask4) {
+        set_color(c);
+        GraphicsContext_SetDrawMode(context, GraphicsDrawMode_Text);
+    }
+    Bitmap_Construct(storage);
+    GraphicsContext_InitFromBitmapResource(source, storage, resource);
+    GraphicsContext_CopyRect(context, source, source_rect, rect, 0xff, 0);
+    GraphicsContext_Destroy(source);
+    Bitmap_Destroy(storage);
+}
+
+void core_gfx_tile(int x, int y, int width, const void *resource)
+{
+    const int32_t *bounds = (const int32_t *)((const uint8_t *)resource + BMap_bounds);
+    int32_t step = bounds[3] - bounds[1], rows = bounds[2] - bounds[0];
+    uint32_t storage[Bitmap_bytes / 4];
+    uint32_t source[GraphicsContext_bytes / 4];
+    if (step <= 0)
+        return;
+    Bitmap_Construct(storage);
+    GraphicsContext_InitFromBitmapResource(source, storage, resource);
+    for (int at = 0; at < width; at += step) {
+        int32_t columns = width - at < step ? width - at : step;
+        int32_t source_rect[4] = {bounds[0], bounds[1], bounds[2], bounds[1] + columns};
+        int32_t rect[4] = {top + y, left + x + at, top + y + rows, left + x + at + columns};
+        GraphicsContext_CopyRect(context, source, source_rect, rect, 0xff, 0);
+    }
+    GraphicsContext_Destroy(source);
+    Bitmap_Destroy(storage);
+}
+
 static void bitmap(int x, int y, const struct rv_bitmap *asset)
 {
     const uint8_t *resource = core_bitmap_canvas(screen, asset);

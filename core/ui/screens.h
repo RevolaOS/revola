@@ -77,6 +77,13 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
 uint32_t core_screens_action_filter(uint32_t controller, uint32_t name, uint32_t argument,
                                     const struct core_next *next);
 
+/* The label a row shows now: its text callback's, else its label. */
+static inline const char *core_row_label(const struct rv_row *row)
+{
+    const char *text = row->text ? row->text() : 0;
+    return text ? text : row->label;
+}
+
 void core_screens_init(void *bank);
 
 #endif

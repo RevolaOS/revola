@@ -55,7 +55,7 @@ void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t second,
  * property ids do not, which lets a property filter bail out on one compare. */
 #define CORE_RESOURCE_PREFIX 0x0c
 #define CORE_RESOURCE_BLOCK_BYTES 0x1000
-#define CORE_RESOURCE_CORE_BLOCK 0x0cf00100u /* the core's screens; About rows sit below */
+#define CORE_RESOURCE_CORE_BLOCK 0x0cf00100u /* the core's screens and rows */
 struct rv_extension_record;
 /* The key of an owner's block: its settings owner hash, 0 for the core. */
 uint32_t core_resource_owner(const struct rv_extension_record *owner);

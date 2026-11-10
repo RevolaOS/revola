@@ -83,6 +83,16 @@ struct core_installed {
 /* Scans the extensions and reads each manifest's name; entries found. */
 uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity);
 
+/* Manifests: an installed extension's read into `buffer` (CORE_MANIFEST_MAX
+ * bytes), 0 when unreadable; field 0 to 5 of one (id, name, description,
+ * version, author, license); its flags (bit 0 enabled, then
+ * CORE_MANIFEST_STABILITY). */
+#define CORE_MANIFEST_MAX 1024
+#define CORE_MANIFEST_STABILITY(flags) ((flags) >> 1 & 3) /* 0 unset, alpha, beta, stable */
+uint32_t core_loader_manifest(const char *file, uint8_t *buffer);
+const char *core_loader_manifest_text(const uint8_t *manifest, uint32_t field);
+uint32_t core_loader_manifest_flags(const uint8_t *manifest);
+
 /* The resident asset `name` (FNV-1a) of `record`: its payload as stored in RAM
  * and *entry its catalog entry, or NULL. */
 const void *core_loader_resident(const struct rv_extension_record *record, uint32_t name,
@@ -92,6 +102,8 @@ const void *core_loader_resident(const struct rv_extension_record *record, uint3
  * core_loader_retire. */
 void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
                         uint8_t *kind);
+/* Zeroed memory in a loader block of the core, for core_loader_retire. */
+void *core_loader_block(uint32_t bytes);
 /* Frees a loader block two grace ticks from now, when Apple can no longer be
  * drawing from it. */
 void core_loader_retire(void *block);

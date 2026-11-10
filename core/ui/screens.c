@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Screen registry and navigation. A declared screen gets ids from its owner's
- * block and, on first push, the clones in clones.c and lists.c; its text comes
- * from the Settings model properties in properties.c. Clones survive the
- * owner's unload (Apple keeps pointers) and are reused when it loads again in
- * the same boot. */
+/* Screen navigation. A declared screen (registry.c) gets, on first push, the
+ * clones in clones.c and lists.c; its text comes from the Settings model
+ * properties in properties.c. Clones survive the owner's unload (Apple keeps
+ * pointers) and are reused when it loads again in the same boot. */
 
 #include "ui/screens.h"
 #include "ui/submenus.h"
+#include "ui/extensions.h"
 #include "ui/bitmaps.h"
 #include "ui/canvas.h"
 #include "ui/clones.h"
@@ -26,196 +26,7 @@
 
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
-/* Records in one heap block per registration of an owner, kept for the boot:
- * a stale record keeps its clones' ids for the owner's next load. */
-struct screen_set {
-    struct screen_set *next;
-    uint32_t key; /* core_resource_owner of the owner */
-    uint32_t count;
-    struct core_screen screens[];
-};
-
-static struct screen_set *sets;
 void *core_screens_caller;
-
-#define EACH_SCREEN(s)                                                                    \
-    for (struct screen_set *set_ = sets; set_; set_ = set_->next)                          \
-        for (struct core_screen *s = set_->screens; s < set_->screens + set_->count; s++)
-
-static int same(const char *a, const char *b)
-{
-    while (*a && *a == *b)
-        a++, b++;
-    return *a == *b;
-}
-
-/* Registry */
-
-/* The owner's stale record of a screen with this name and size, or NULL. */
-static struct core_screen *stale_record(uint32_t key, uint32_t name, uint32_t ids)
-{
-    for (struct screen_set *set = sets; set; set = set->next)
-        for (uint32_t i = 0; set->key == key && i < set->count; i++)
-            if (set->screens[i].stale && set->screens[i].ids == ids &&
-                set->screens[i].name == name)
-                return &set->screens[i];
-    return NULL;
-}
-
-int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
-                          uint32_t count)
-{
-    uint32_t key = core_resource_owner(owner), fresh = 0;
-    for (uint32_t n = 0; n < count; n++)
-        fresh += !stale_record(key, core_settings_owner(screens[n].name),
-                               core_clone_ids(&screens[n]));
-    struct screen_set *set = NULL;
-    if (fresh) {
-        set = Heap_AllocateZeroed(sizeof *set + fresh * sizeof set->screens[0]);
-        if (!set)
-            return RV_NO_MEMORY;
-        set->key = key;
-        struct screen_set **tail = &sets;
-        while (*tail)
-            tail = &(*tail)->next;
-        *tail = set;
-    }
-    for (uint32_t n = 0; n < count; n++) {
-        const struct rv_screen *d = &screens[n];
-        uint32_t name = core_settings_owner(d->name), ids = core_clone_ids(d);
-        struct core_screen *s = stale_record(key, name, ids);
-        if (!s) {
-            uint32_t id = core_resource_take(key, ids);
-            if (!id)
-                return RV_NO_MEMORY;
-            s = &set->screens[set->count++];
-            s->name = name;
-            s->id = id;
-            s->ids = ids;
-        }
-        s->owner = owner;
-        s->declaration = d;
-        s->stale = 0;
-    }
-    return RV_OK;
-}
-
-void core_screens_release(struct rv_extension_record *owner)
-{
-    EACH_SCREEN(s)
-        if (s->owner == owner && s->declaration) {
-            s->declaration = NULL;
-            s->stale = 1;
-        }
-}
-
-void core_screens_retire(const struct rv_screen *declaration)
-{
-    EACH_SCREEN(s)
-        if (s->declaration == declaration) {
-            s->declaration = NULL;
-            s->stale = 1;
-        }
-}
-
-struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name)
-{
-    EACH_SCREEN(s)
-        if (s->declaration && s->owner == owner && same(s->declaration->name, name))
-            return s;
-    return NULL;
-}
-
-const struct rv_setting *core_screens_setting(struct rv_extension_record *owner, uint16_t key)
-{
-    const struct rv_extension *d = owner ? owner->descriptor : NULL;
-    for (uint32_t i = 0; d && i < d->setting_count; i++)
-        if (d->settings[i].key == key)
-            return &d->settings[i];
-    return NULL;
-}
-
-int32_t core_screens_setting_value(struct rv_extension_record *owner, uint16_t key)
-{
-    const struct rv_setting *setting = core_screens_setting(owner, key);
-    return core_settings_get_int(owner ? owner->owner : CORE_SETTINGS_OWNER_CORE, key,
-                                 setting ? setting->fallback : 0);
-}
-
-/* A setting with labels and a style edits as a screen of that style, titled
- * and named by its label. */
-static uint8_t setting_screen_kind(const struct rv_setting *setting)
-{
-    if (setting->type != RV_SETTING_INT || !setting->labels || !setting->label_count)
-        return 0xff;
-    switch (setting->style) {
-    case RV_STYLE_CHOICE:
-        return RV_SCREEN_CHOICE;
-    case RV_STYLE_SLIDER:
-        return RV_SCREEN_SLIDER;
-    case RV_STYLE_MULTI:
-        return RV_SCREEN_MULTI_CHOICE;
-    default:
-        return 0xff;
-    }
-}
-
-uint32_t core_screens_from_settings(const struct rv_setting *settings, uint32_t count,
-                                    struct rv_screen *out)
-{
-    uint32_t n = 0;
-    for (uint32_t i = 0; i < count; i++) {
-        uint8_t kind = setting_screen_kind(&settings[i]);
-        if (kind == 0xff)
-            continue;
-        if (out) {
-            struct rv_screen *s = &out[n];
-            s->name = s->title = settings[i].label;
-            s->kind = kind;
-            s->layout = RV_LAYOUT_AUTO;
-            s->choice.key = settings[i].key;
-            s->choice.labels = settings[i].labels;
-            s->choice.count = settings[i].label_count;
-        }
-        n++;
-    }
-    return n;
-}
-
-struct core_screen *core_screens_find_setting(struct rv_extension_record *owner, uint16_t key)
-{
-    EACH_SCREEN(s) {
-        const struct rv_screen *d = s->declaration;
-        if (d && s->owner == owner && d->kind != RV_SCREEN_LIST && d->kind != RV_SCREEN_TEXT &&
-            d->kind != RV_SCREEN_CANVAS && d->kind != RV_SCREEN_RUNTIME_LIST && d->choice.key == key)
-            return s;
-    }
-    return NULL;
-}
-
-struct core_screen *core_screens_of_id(uint32_t id)
-{
-    for (struct screen_set *set = sets; set; set = set->next) {
-        if (!set->count || id - set->screens[0].id >= CORE_RESOURCE_BLOCK_BYTES)
-            continue; /* another owner's block */
-        for (uint32_t i = 0; i < set->count; i++) {
-            struct core_screen *s = &set->screens[i];
-            if (s->declaration && id - s->id < s->ids)
-                return s;
-        }
-    }
-    return NULL;
-}
-
-void core_screens_handler_name(char *out, uint32_t item)
-{
-    static const char digits[] = "0123456789abcdef";
-    out[0] = 'R';
-    out[1] = 'v';
-    for (unsigned i = 0; i < 8; i++)
-        out[2 + i] = digits[(item >> (28 - 4 * i)) & 15];
-    out[10] = 0;
-}
 
 /* Navigation */
 
@@ -274,6 +85,8 @@ static void screen_left(void *controller)
             s->open--;
         if (!s->open)
             core_bitmaps_screen_closed(s);
+        if (!s->open && !s->owner)
+            core_extensions_closed(s);
         if (s->owner && s->declaration)
             core_loader_screen_popped(s->declaration->name);
         return;
@@ -352,8 +165,11 @@ int core_screens_push(struct core_screen *s, void *controller)
     if (!build(s, split))
         return 0;
     uint32_t screen = core_lists_kind(kind) ? core_lists_screen_id(s, split) : s->id;
-    void *created = UI_CreateScreenController(UI_GetControllerRegistry(), screen, screen + 1,
-                                              Transition_ForegroundPush);
+    /* A split list shares the status bar, background and pane with Settings,
+     * so only its list moves in, as stock half-screen Settings lists do. */
+    uint32_t transition = split ? Transition_Standard : Transition_ForegroundPush;
+    void *created =
+        UI_CreateScreenController(UI_GetControllerRegistry(), screen, screen + 1, transition);
     if (!created)
         return 0;
     if (input)

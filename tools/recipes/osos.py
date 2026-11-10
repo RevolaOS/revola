@@ -4,7 +4,9 @@
 import struct
 from dataclasses import dataclass
 
+import bitmap
 import declarations
+import rvx
 import sites
 from declarations import Copy, Kind
 from symbols import require
@@ -44,6 +46,29 @@ def core_units(source, defines=()):
     ]
 
 
+def write_icons(source, path):
+    """core/assets/<name>.png as Settings pane icons (menu masks), lz-compressed
+    into C arrays the core decodes while one is shown."""
+    lines = []
+    names = []
+    for png in sorted((source / "assets").glob("*.png")):
+        name = png.stem.replace("-", "_")
+        mask = bitmap.png_to_bmap(png.read_bytes(), True)
+        stream = rvx.lz_encode(mask)
+        body = ",".join(str(b) for b in stream)
+        lines.append(f"static const uint8_t icon_{name}[] = {{{body}}};")
+        names.append((png.stem, name, len(stream), len(mask)))
+    lines.append("static const struct icon icons[] = {")
+    lines += [
+        f'    {{"{stem}", icon_{name}, {stored}, {size}}},'
+        for stem, name, stored, size in names
+    ]
+    lines.append("};")
+    text = "\n".join(lines) + "\n"
+    if not path.exists() or path.read_text() != text:
+        path.write_text(text)
+
+
 def build_recipe(
     source, firmware, directory, fingerprint, prefix, jobs, image=None, defines=()
 ):
@@ -55,6 +80,7 @@ def build_recipe(
     directory.mkdir(parents=True, exist_ok=True)
     row_names = sites.names(source, firmware, prefix, defines)
     sites.write_id_table(directory / "site_ids.inc", row_names)
+    write_icons(source, directory / "icons.inc")
     code, symbols = compile_payload(
         directory,
         source,

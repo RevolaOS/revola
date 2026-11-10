@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* Loader test fixture: claims the Settings row-append site exclusively, which
- * the core's About rows already filter, so the load fails with a conflict. */
+ * the core's menu rows already filter, so the load fails with a conflict. */
 
 #include "osos-2.0.5.h"
 #include "rv_api.h"
