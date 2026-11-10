@@ -115,6 +115,33 @@ class SiteTests(unittest.TestCase):
         words[BASE + 128] |= 0xF0000000
         sites.verify(table, image(words), BASE)
 
+    def test_maps_iram_sites_to_the_image_after_the_header(self):
+        iram, load_offset = 0x22000000, 0x800 + 64
+        body = bytearray(load_offset + 64)
+        entry = iram + 16
+        struct.pack_into("<II", body, 0x800 + 16, PUSH_LR, MOV_R4_R0)
+        struct.pack_into("<I", body, load_offset + 8, 0xEB000001)
+        table = [
+            site(entry, ENTRY, PUSH_LR, MOV_R4_R0),
+            site(BASE + 8, CALL, 0xEB000001),
+        ]
+        sites.verify(table, bytes(body), BASE, load_offset, iram)
+        with self.assertRaisesRegex(ValueError, "outside"):
+            sites.verify(table, bytes(body), BASE, load_offset)
+        with self.assertRaisesRegex(ValueError, "outside"):
+            sites.verify(
+                [site(iram + 64, CALL, 0)], bytes(body), BASE, load_offset, iram
+            )
+        # b entry+4 from iram+32, inside the IRAM image
+        struct.pack_into(
+            "<I",
+            body,
+            0x800 + 32,
+            0xEA000000 | ((((entry + 4) - (iram + 32) - 8) >> 2) & 0xFFFFFF),
+        )
+        with self.assertRaisesRegex(ValueError, "entry\\+4"):
+            sites.verify(table, bytes(body), BASE, load_offset, iram)
+
 
 class SiteIdTests(unittest.TestCase):
     def test_ids_hash_names_and_reject_collisions(self):

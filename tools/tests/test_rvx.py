@@ -69,6 +69,7 @@ class RvxTests(unittest.TestCase):
             "00000014  00000202 R_ARM_ABS32            000005b4   .data\n"
             "0000019c  00004f02 R_ARM_ABS32            08259b28   GraphicsContext_SetColor\n"
             "000001a0  00000102 R_ARM_ABS32            00000000   .text\n"
+            "000001a8  00000028 R_ARM_V4BX            \n"
         )
         absolute = rvx.absolute_symbols(symbols)
         self.assertEqual(absolute, {"GraphicsContext_SetColor"})

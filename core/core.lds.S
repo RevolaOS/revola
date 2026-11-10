@@ -8,6 +8,7 @@ SECTIONS {
     __core_start = .;
     __core_file_offset = CORE_FILE_OFFSET;
     __osos_load_offset = OSOS_RUNTIME_FILE_OFFSET;
+    __osos_iram_base = IRAM_BASE;
     .text : { *(.text*) *(.rodata*) }
     .data : { *(.data*) }
     . = ALIGN(4);

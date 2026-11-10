@@ -122,13 +122,37 @@ def branch_targets_into(image_words, base, target):
     return False
 
 
-def verify(sites, image=None, base=0x08000000, load_offset=0):
+IMAGE_HEADER_SIZE = 0x800
+
+
+def regions(image_size, base, load_offset, iram_base=None):
+    """(address, file offset, bytes) of each part of osos.bin: the DRAM image from
+    `load_offset`, and with `iram_base` the IRAM image between the header and it."""
+    parts = [(base, load_offset, image_size - load_offset)]
+    if iram_base is not None and load_offset > IMAGE_HEADER_SIZE:
+        parts.append((iram_base, IMAGE_HEADER_SIZE, load_offset - IMAGE_HEADER_SIZE))
+    return parts
+
+
+def file_offset(parts, address, size):
+    """Offset in osos.bin of `size` bytes at `address`, and the part holding them."""
+    for part in parts:
+        start, offset, length = part
+        if start <= address and address + size <= start + length:
+            return address - start + offset, part
+    raise ValueError(f"Site outside firmware: {address:#x}")
+
+
+def verify(sites, image=None, base=0x08000000, load_offset=0, iram_base=None):
     """Reject rows the dispatcher cannot handle; compare with the firmware if given."""
     seen = set()
-    words = None
+    parts = None
     if image is not None:
-        body = image[load_offset:]
-        words = array("I", body[: len(body) - len(body) % 4])
+        parts = regions(len(image), base, load_offset, iram_base)
+        words = {
+            part: array("I", image[part[1] : part[1] + part[2] - part[2] % 4])
+            for part in parts
+        }
     for site in sites:
         if site.address % 4:
             raise ValueError(f"Unaligned site {site.address:#x}")
@@ -144,14 +168,14 @@ def verify(sites, image=None, base=0x08000000, load_offset=0):
                 )
         if site.kind == WORD and site.chain:
             raise ValueError(f"Word site {site.address:#x} cannot chain")
-        if words is None:
+        if parts is None:
             continue
-        offset = site.address - base
-        if offset < 0 or offset + len(site.expected) > len(body):
-            raise ValueError(f"Site outside firmware: {site.address:#x}")
-        if body[offset : offset + len(site.expected)] != site.expected:
+        offset, part = file_offset(parts, site.address, len(site.expected))
+        if image[offset : offset + len(site.expected)] != site.expected:
             raise ValueError(f"Site {site.address:#x} does not match the firmware")
-        if site.is_entry and branch_targets_into(words, base, site.address + 4):
+        if site.is_entry and branch_targets_into(
+            words[part], part[0], site.address + 4
+        ):
             raise ValueError(f"Entry site {site.address:#x}: a branch targets entry+4")
 
 

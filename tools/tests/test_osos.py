@@ -5,6 +5,7 @@ import struct
 import unittest
 
 import declarations
+import sites
 from declarations import Copy, Kind, Write
 from recipes import fingerprint, osos
 
@@ -21,6 +22,7 @@ class OsosTests(unittest.TestCase):
         self.code = bytes(128)
         self.symbols = {
             "__osos_load_offset": self.load_offset,
+            "__osos_iram_base": 0x22000000,
             "__core_start": 0x08B3C000,
             "__core_end": 0x08B3C080,
             "__core_limit": 0x08B3C100,
@@ -71,6 +73,24 @@ class OsosTests(unittest.TestCase):
             self.assertEqual(
                 struct.unpack_from("<I", image, offset)[0], len(image) - 0x800
             )
+
+    def test_site_preimages_map_dram_and_iram_to_file_offsets(self):
+        table = [
+            sites.Site(osos.BASE + 8, 0, 0xEB000001, 0, sites.CALL, 1, 1),
+            sites.Site(0x22000010, 0, 0xE92D4010, 0xE1A04000, sites.ENTRY, 1, 1),
+        ]
+        recipe = osos.build(self.code, [], self.symbols, self.fingerprint, table)
+        self.assertIn(
+            {"name": "osos", "offset": self.load_offset + 8, "hex": "010000eb"},
+            recipe.checks,
+        )
+        self.assertIn(
+            {"name": "osos", "offset": 0x810, "hex": "10402de90040a0e1"},
+            recipe.checks,
+        )
+        outside = [sites.Site(0x22000000 + self.load_offset, 0, 0, 0, sites.CALL, 0, 1)]
+        with self.assertRaisesRegex(ValueError, "outside"):
+            osos.build(self.code, [], self.symbols, self.fingerprint, outside)
 
     def test_native_array_copies_preserve_adjacent_literals(self):
         self.code = bytes(40) + b"CFW!" + bytes(84)

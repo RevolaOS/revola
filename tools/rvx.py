@@ -50,6 +50,7 @@ RELATIVE_RELOCATIONS = {
     "R_ARM_THM_JUMP8",
     "R_ARM_PREL31",
     "R_ARM_NONE",
+    "R_ARM_V4BX",  # marks a bx for ARMv4 linkers; libgcc's division helpers carry it
 }
 
 

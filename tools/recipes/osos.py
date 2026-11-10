@@ -71,7 +71,9 @@ def build_recipe(
     table = sites.read(code, symbols, symbols["__core_start"])
     if len(table) != len(row_names):
         raise ValueError("site id table and site table differ in length")
-    sites.verify(table, image, BASE, symbols["__osos_load_offset"])
+    sites.verify(
+        table, image, BASE, symbols["__osos_load_offset"], symbols["__osos_iram_base"]
+    )
     used = symbols["__core_end"] - symbols["__core_start"]
     print(f"Core: {used:,} bytes resident, {len(table)} sites", flush=True)
     return build(code, patches, symbols, fingerprint, table)
@@ -157,8 +159,12 @@ def build(code, patches, symbols, fingerprint, table=()):
     layout = core_layout(code, symbols, original_size)
     recipe = Recipe({"osos": fingerprint})
     writes, copies = resolve_patches(recipe, patches, symbols, layout)
+    parts = sites.regions(
+        original_size, BASE, layout.load_offset, require(symbols, "__osos_iram_base")
+    )
     for site in table:
-        recipe.expect("osos", site.address - BASE + layout.load_offset, site.expected)
+        offset, _ = sites.file_offset(parts, site.address, len(site.expected))
+        recipe.expect("osos", offset, site.expected)
     writes.extend(
         size_header_writes(recipe, original_size, original_size + layout.reserved_size)
     )
