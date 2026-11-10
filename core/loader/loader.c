@@ -803,9 +803,11 @@ static int api_setting_set_int(rv_extension_handle self, uint16_t key, int32_t v
     if (!record || core_key(key))
         return RV_BAD_ARGUMENT;
     const struct rv_setting *setting = core_screens_setting(record, key);
-    if (setting && value < setting->minimum)
+    if (setting && setting->style == RV_SETTING_STYLE_MULTI)
+        value = (int32_t)((uint32_t)value & (uint32_t)setting->maximum); /* a mask of 32 is -1 */
+    else if (setting && value < setting->minimum)
         value = setting->minimum;
-    if (setting && value > setting->maximum)
+    else if (setting && value > setting->maximum)
         value = setting->maximum;
     if (core_settings_set_int(record->owner, key, value))
         return RV_NO_MEMORY;
@@ -1238,6 +1240,9 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
         return 0;
     }
     record->failure = CORE_EXTENSION_OK;
+    /* The entry ran before its declarations were known; now they apply. */
+    if (index == 0)
+        core_loader_setting_changed(record, RV_SETTING_KEY_ALL);
     return 1;
 }
 

@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 24
+#define RV_API_MINOR 25
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -379,8 +379,8 @@ struct rv_descriptor {
     uint32_t setting_count;
     void (*unload)(void); /* before the hooks are unbound; may be NULL */
     /* After a setting changed, whether from a row, a choice or slider screen or
-     * the extension's own write; RV_SETTING_KEY_ALL after Reset All Settings.
-     * UI task; may be NULL. */
+     * the extension's own write; RV_SETTING_KEY_ALL once the main module has
+     * loaded and after Reset All Settings. UI task; may be NULL. */
     void (*setting_changed)(uint16_t key);
     const struct rv_screen *screens;
     uint32_t screen_count;
@@ -402,8 +402,10 @@ struct rv_api {
 
     /* A bool or int setting: its value, the declared fallback when the store
      * has none. setting_set_int clamps to the declared minimum and maximum (0
-     * and 1 for a bool), stores, redraws the rows that show it and calls
-     * setting_changed. */
+     * and 1 for a bool; a multi-choice keeps only its labels' bits), stores,
+     * redraws the rows that show it and calls setting_changed. Inside the main
+     * module's entry the declarations are not known yet: no fallback, no
+     * clamp, no callback. */
     int32_t (*setting_int)(rv_extension_handle self, uint16_t key);
     int (*setting_set_int)(rv_extension_handle self, uint16_t key, int32_t value);
     /* Any setting as bytes, for strings and blobs: setting_read copies at most
