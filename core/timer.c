@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "hooks/sites.h"
 #include "timer.h"
+#include "ui/screens.h"
 #include <stddef.h>
 
 #define TICK_MS 1000
@@ -118,6 +119,7 @@ static int on_event(void *self, uint8_t *event)
     core_timer_ticks++;
     free_stopped();
     core_grace_tick();
+    core_screens_tick(); /* before an idle screen module unloads */
     core_loader_tick();
     core_settings_tick();
 #ifdef CORE_SELFTEST

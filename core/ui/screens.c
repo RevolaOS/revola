@@ -48,6 +48,7 @@ static struct {
     struct core_screen *screen;
     void *controller;
     void *arg;
+    uint8_t ticks; /* grace ticks it has waited */
 } closing;
 
 void core_screens_context(const struct core_screen *s, struct rv_context *ctx)
@@ -93,6 +94,13 @@ void core_screens_closed(void)
         return;
     struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1};
     s->declaration->closed(&ctx);
+}
+
+void core_screens_tick(void)
+{
+    /* At least one whole grace tick has passed since the pop. */
+    if (closing.screen && closing.ticks++)
+        core_screens_closed();
 }
 
 int core_screens_first_activation(void *controller)
@@ -194,6 +202,7 @@ static void screen_left(void *controller)
         closing.screen = s;
         closing.controller = controller;
         closing.arg = arg;
+        closing.ticks = 0;
         if (s->open)
             s->open--;
         if (!s->open)

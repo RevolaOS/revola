@@ -74,6 +74,8 @@ void core_screens_context(const struct core_screen *screen, struct rv_context *c
 /* Runs the closed callback of the screen popped last, if it still waits:
  * after a popped canvas's last draw, at the next push and at the grace tick. */
 void core_screens_closed(void);
+/* Grace point: runs a closed callback that waited a whole tick for its draw. */
+void core_screens_tick(void);
 /* 1 the first time it is asked for a pushed controller, 0 after: an activation
  * that is the screen opening, not a return to it. */
 int core_screens_first_activation(void *controller);
