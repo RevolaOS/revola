@@ -71,7 +71,7 @@
     RV_SETTING_LABELLED(key_, label_, fallback_, labels_, RV_STYLE_SLIDER, RV_COUNT(labels_) - 1)
 #define RV_SETTING_MULTI(key_, label_, fallback_, labels_)                                       \
     RV_SETTING_LABELLED(key_, label_, fallback_, labels_, RV_STYLE_MULTI,                        \
-                        (int32_t)((1u << RV_COUNT(labels_)) - 1))
+                        (int32_t)(0xffffffffu >> (32 - RV_COUNT(labels_))))
 
 /* The descriptor's arrays with their counts: `RV_HOOKS(hooks), RV_SCREENS(screens)`. */
 #define RV_HOOKS(array) .hooks = (array), .hook_count = RV_COUNT(array)

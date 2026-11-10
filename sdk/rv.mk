@@ -24,13 +24,19 @@ ARM_CFLAGS := $(filter-out -mthumb,$(CFLAGS)) -marm -fno-optimize-sibling-calls
 LDFLAGS := -nostdlib -Wl,-T,$(SDK)/rvx.lds -Wl,--emit-relocs -Wl,--gc-sections \
     -Wl,--just-symbols=$(SDK)/$(RV_FIRMWARE_LD) -lgcc
 
+# One object per source, with the headers it includes as dependencies.
 define module_rules
-$(OUT)/$(1).elf: $$($(1)_SOURCES) $$(patsubst %,$(OUT)/$(1)-arm/%.o,$$($(1)_ARM_SOURCES)) \
-    $(OUT)/rv_libc.o $(SDK)/rvx.lds | $(OUT)
-	$(CC) $(CFLAGS) $$(filter %.c %.S %.o,$$^) $(LDFLAGS) -Wl,-Map,$$(@:.elf=.map) -o $$@
+$(1)_OBJECTS := $$(patsubst %,$(OUT)/$(1)/%.o,$$($(1)_SOURCES)) \
+    $$(patsubst %,$(OUT)/$(1)-arm/%.o,$$($(1)_ARM_SOURCES))
+$(OUT)/$(1).elf: $$($(1)_OBJECTS) $(OUT)/rv_libc.o $(SDK)/rvx.lds | $(OUT)
+	$(CC) $(CFLAGS) $$(filter %.o,$$^) $(LDFLAGS) -Wl,-Map,$$(@:.elf=.map) -o $$@
+$(OUT)/$(1)/%.o: %
+	@mkdir -p $$(dir $$@)
+	$(CC) $(CFLAGS) -MMD -MP -c $$< -o $$@
 $(OUT)/$(1)-arm/%.o: %
 	@mkdir -p $$(dir $$@)
-	$(CC) $(ARM_CFLAGS) -c $$< -o $$@
+	$(CC) $(ARM_CFLAGS) -MMD -MP -c $$< -o $$@
+-include $$($(1)_OBJECTS:.o=.d)
 endef
 $(foreach module,$(MODULES),$(eval $(call module_rules,$(module))))
 
