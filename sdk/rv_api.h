@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 7
+#define RV_API_MINOR 8
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -92,8 +92,9 @@ struct rv_setting {
 
 /* A submenu of a menu, shared with every other extension that declares the
  * same id. Ids are stable names such as "settings.sound"; the parent is a menu
- * name (see rv_entry) or another container's id. The core shows the submenu
- * while at least one entry names it. */
+ * name (see rv_entry) or another container's id. The first declaration fixes
+ * the parent and the label. The submenu's row appears in its parent while an
+ * entry that names the container shows, and goes with the last one. */
 struct rv_container {
     const char *id;
     const char *parent;
@@ -104,9 +105,9 @@ enum rv_row_kind {
     RV_ROW_PUSH,   /* opens `screen` */
     RV_ROW_TOGGLE, /* flips the bool setting `key`; the row shows On or Off */
     RV_ROW_ACTION, /* calls `action` */
-    RV_ROW_STOCK,  /* a stock Settings row (an RV_SETTINGS_* row of rv_menus.h in `stock`)
-                      moved here with its stock behaviour; only inside a container under
-                      Settings */
+    RV_ROW_STOCK,  /* a stock Settings row (an RV_SETTINGS_* row of rv_menus.h in `stock`,
+                      any but Legal) moved here with its stock behaviour; only inside a
+                      container under Settings, and back in Settings when the entry goes */
     RV_ROW_SETTING, /* the declared setting `key`: shows its value; flips a bool, opens the
                        screen of an int with labels */
 };

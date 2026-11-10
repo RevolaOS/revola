@@ -253,6 +253,9 @@ static const char *const entries_text[] = {
     "Music: at the end, hidden until the Music Menu settings turn it on.",
     "Extras: at the end.",
     "Long press on Now Playing, a song, an album or an artist: a Count up row.",
+    "Settings > Showcase extras: a container, the stock Shuffle and Backlight rows moved into "
+    "it, and a nested container with a Count up row. Disabling the extension puts the stock "
+    "rows back in Settings.",
 };
 
 static const struct rv_row menu_rows[] = {
@@ -287,11 +290,21 @@ static const struct rv_entry entries[] = {
     RV_ENTRY("song", 0, RV_ACTION("Count up", count_up)),
     RV_ENTRY("album", 0, RV_ACTION("Count up", count_up)),
     RV_ENTRY("artist", 0, RV_ACTION("Count up", count_up)),
+    RV_ENTRY("settings.showcase", 0, RV_STOCK("Shuffle", RV_SETTINGS_SHUFFLE)),
+    RV_ENTRY("settings.showcase", 0, RV_STOCK("Backlight", RV_SETTINGS_BACKLIGHT)),
+    RV_ENTRY("settings.showcase", 0, RV_PUSH("Text page", "text")),
+    RV_ENTRY("showcase.nested", 0, RV_ACTION("Count up", count_up)),
+};
+
+/* Submenus: one under Settings, one inside it. */
+static const struct rv_container containers[] = {
+    RV_CONTAINER("settings.showcase", "settings", "Showcase extras"),
+    RV_CONTAINER("showcase.nested", "settings.showcase", "Nested"),
 };
 
 static const struct rv_extension extension = {
-    .size = sizeof extension, RV_SETTINGS(settings), RV_SCREENS(screens), RV_ENTRIES(entries),
-    .unload = unload,
+    .size = sizeof extension, RV_SETTINGS(settings), RV_CONTAINERS(containers),
+    RV_SCREENS(screens), RV_ENTRIES(entries), .unload = unload,
 };
 
 const struct rv_extension *rvx_entry(const struct rv_api *core, rv_handle handle)

@@ -23,6 +23,11 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
                         uint32_t count);
 /* Hides the owner's rows; they stay allocated because Apple keeps pointers. */
 void core_menus_release(struct rv_extension_record *owner);
+/* Hides the core's row of this entry. */
+void core_menus_retire(const struct rv_entry *entry);
+/* Rows came or went: updates the rows that open containers and marks the
+ * containers' screens for a rebuild. */
+void core_menus_changed(void);
 /* The entry row whose item or source id is `id`, or NULL; *owner receives its
  * extension and *item its item id. */
 const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **owner,

@@ -76,7 +76,9 @@ Failsafe: the panic screen writes the owner of the extension whose code was runn
 
 ## Menu containers
 
-An extension declares a submenu it wants to contribute to by id and parent (`struct rv_container`); the core deduplicates by id, keeps the first label, and refuses a second declaration with another parent. TODO: the row for a container is not materialised in the native menu yet (Settings > Extensions is the first user).
+An extension declares a submenu it wants to contribute to by id and parent (`struct rv_container`); the core deduplicates by id, keeps the first label, and refuses a second declaration with another parent. While declared, a container is a list screen of the core (`core/loader/containers.c`, `core/ui/submenus.c`) with a row in its parent menu or container, and an entry names it in `rv_entry.in`. Its screen lists the shown entries that name it in registration order and is rebuilt on its next push after entries come or go; the row shows while one of those entries shows, nested containers included, and goes with the last. Entry rows keep their own ids, so their text and actions resolve as in any menu.
+
+A stock Settings row can move into a container under Settings (`RV_ROW_STOCK`, any row but Legal, which anchors the About rows): while Apple builds the Settings table the core leaves that row out, and the container lists a copy of it with the stock row's `CEVT` bindings. The Settings list controller class runs the container's screens, so the stock handlers work there. The bindings' layout switch is dropped, because the stock layouts carry the title "Settings", and the container's layout events carry the stock Settings layouts' `controller.Goto*` events that some stock handlers post. The row returns to Settings when its entry goes.
 
 ## About and Extensions rows
 

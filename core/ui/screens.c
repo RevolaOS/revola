@@ -7,6 +7,7 @@
  * the same boot. */
 
 #include "ui/screens.h"
+#include "ui/submenus.h"
 #include "ui/bitmaps.h"
 #include "ui/canvas.h"
 #include "ui/clones.h"
@@ -103,6 +104,15 @@ void core_screens_release(struct rv_extension_record *owner)
 {
     EACH_SCREEN(s)
         if (s->owner == owner && s->declaration) {
+            s->declaration = NULL;
+            s->stale = 1;
+        }
+}
+
+void core_screens_retire(const struct rv_screen *declaration)
+{
+    EACH_SCREEN(s)
+        if (s->declaration == declaration) {
             s->declaration = NULL;
             s->stale = 1;
         }
@@ -264,7 +274,7 @@ static void screen_left(void *controller)
             s->open--;
         if (!s->open)
             core_bitmaps_screen_closed(s);
-        if (s->declaration)
+        if (s->owner && s->declaration)
             core_loader_screen_popped(s->declaration->name);
         return;
     }
@@ -298,11 +308,15 @@ static int split_from(const struct core_screen *s, void *controller)
 static int build(struct core_screen *s, int split)
 {
     uint8_t bit = split ? CORE_BUILT_SPLIT : CORE_BUILT_FULL;
+    if (!s->open && core_submenus_stale(s))
+        s->built = 0;
     if (s->built & bit)
         return 1;
     int built = 0;
     switch (s->declaration->kind) {
     case RV_SCREEN_LIST:
+        built = core_submenus_of(s) ? core_submenus_clone(s, split) : core_clone_list(s, split);
+        break;
     case RV_SCREEN_CHOICE:
     case RV_SCREEN_MULTI_CHOICE:
     case RV_SCREEN_RUNTIME_LIST:
@@ -332,7 +346,8 @@ int core_screens_push(struct core_screen *s, void *controller)
     int split = core_lists_kind(kind) && split_from(s, controller);
     if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
-    core_loader_screen_pushed(s->declaration->name);
+    if (s->owner)
+        core_loader_screen_pushed(s->declaration->name);
     s->split = (uint8_t)split;
     if (!build(s, split))
         return 0;
@@ -375,6 +390,7 @@ void core_screens_init(void *bank)
     core_clones_init(bank);
     core_panes_init(bank);
     core_lists_init(bank);
+    core_submenus_init(bank);
     core_toggles_init(bank);
     core_indexed_init(bank);
     core_canvas_init();

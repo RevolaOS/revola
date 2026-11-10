@@ -77,6 +77,12 @@ static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, u
     return core_clone_layout(&c, next, scratch, bytes);
 }
 
+const uint8_t *core_lists_prototype(int value)
+{
+    return value ? stock_row(RES_SettingsMenu_Items, RES_SettingsMenu_SoundCheck_Item)
+                 : stock_row(RES_SettingsMenu_Items, RES_SettingsMenu_Legal_Item);
+}
+
 /* The row a list screen's rows are copied from. */
 static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *value)
 {
@@ -85,14 +91,14 @@ static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *va
     *value = d->kind == RV_SCREEN_RUNTIME_LIST || (d->kind == RV_SCREEN_LIST &&
              (row_kind == RV_ROW_TOGGLE || row_kind == RV_ROW_SETTING));
     if (*value)
-        return stock_row(RES_SettingsMenu_Items, RES_SettingsMenu_SoundCheck_Item);
+        return core_lists_prototype(1);
     switch (d->kind) {
     case RV_SCREEN_CHOICE:
         return stock_row(RES_Settings_EQ_Items, RES_Settings_EQ_Item);
     case RV_SCREEN_MULTI_CHOICE:
         return stock_row(RES_Settings_MainMenu_Items, RES_Settings_MainMenu_Item);
     default:
-        return stock_row(RES_SettingsMenu_Items, RES_SettingsMenu_Legal_Item);
+        return core_lists_prototype(0);
     }
 }
 
@@ -131,16 +137,17 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
     return 1;
 }
 
-/* Ids of a list: id screen, +1 layout, +2 title, +3 items, +4.. layout clones,
- * then per row the item id and its source id (an indexed list has one such
- * row), then the split layout's screen, layout, pane and layout clones. */
-static int clone_list(struct core_screen *s, int split, uint8_t *scratch, uint32_t scratch_bytes)
+/* The layouts and the screen of a list whose rows are in place: the layout
+ * clones, the layout events (`layout_events`, else Menu pops) and the screen
+ * with `events` as its CEVT. Ids: id screen, +1 layout, +2 title, +3 items, +4..
+ * layout clones, then per row the item id and its source id (an indexed list has
+ * one such row), then the split layout's screen, layout, pane and layout clones. */
+static int clone_layouts(struct core_screen *s, int split, const void *events,
+                         uint32_t event_bytes, const void *layout_events,
+                         uint32_t layout_event_bytes, uint8_t *scratch, uint32_t scratch_bytes)
 {
-    uint32_t rows = CORE_SCREEN_ROWS(s), count = indexed(s) ? 1 : s->declaration->list.count;
     uint32_t screen = core_lists_screen_id(s, split), next = split ? screen + 2 : s->id + 4;
-    uint32_t last = split ? screen + CORE_LIST_SPLIT_IDS : rows;
-    if (!s->built && !write_rows(s, scratch))
-        return 0;
+    uint32_t last = split ? screen + CORE_LIST_SPLIT_IDS : CORE_SCREEN_ROWS(s);
     struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, screen + 1, RES_StatusBarWhite_Text,
                              s->id + 2, s->id + 3, 0, 0, 0, NULL};
     if (!(split ? clone_split(s, screen, &next, scratch, scratch_bytes)
@@ -148,29 +155,52 @@ static int clone_list(struct core_screen *s, int split, uint8_t *scratch, uint32
         next > last)
         return 0;
     struct core_writer w = {scratch, 0};
-    core_clone_layout_events(&w);
-    ResourceBank_SetResource(bank, Resource_SEVT, screen + 1, scratch, w.at);
-    w.at = 0;
-    write_row_events(&w, rows, count);
+    if (!layout_events) {
+        core_clone_layout_events(&w);
+        layout_events = scratch;
+        layout_event_bytes = w.at;
+    }
+    ResourceBank_SetResource(bank, Resource_SEVT, screen + 1, layout_events, layout_event_bytes);
     return core_clone_screen(screen, screen + 1, RES_SettingsMenu_Main_Screen,
                              split ? RES_Settings_MainMenu_Screen : RES_Notes_List_Screen_Alt,
-                             scratch, w.at, scratch + w.at, scratch_bytes - w.at);
+                             events, event_bytes, scratch, scratch_bytes);
 }
+
+/* Room for the row events: list.pid.<item>.chosen naming its Rv handler. */
+#define ROW_EVENT_BYTES 52
 
 int core_clone_list(struct core_screen *s, int split)
 {
     uint32_t count = indexed(s) ? 1 : s->declaration->list.count;
     if (count > CORE_MAX_LIST_ROWS)
         return 0;
-    /* The ITEM table, the row events and the SLst copy each fit the scratch
-     * or the table's own size, whichever is larger. */
-    uint32_t bytes = 4 + count * (8 + ROW_BYTES);
+    /* The ITEM table, the layout clones and the SLst copy each fit the scratch
+     * or the table's own size, whichever is larger; the row events go first. */
+    uint32_t bytes = 4 + count * (8 + ROW_BYTES), events = 4 + count * ROW_EVENT_BYTES;
     if (bytes < CORE_CLONE_SCRATCH_BYTES)
         bytes = CORE_CLONE_SCRATCH_BYTES;
-    uint8_t *scratch = Heap_AllocateZeroed(bytes);
+    uint8_t *scratch = Heap_AllocateZeroed(events + bytes);
     if (!scratch)
         return 0;
-    int built = clone_list(s, split, scratch, bytes);
+    int built = s->built || write_rows(s, scratch);
+    struct core_writer w = {scratch, 0};
+    write_row_events(&w, CORE_SCREEN_ROWS(s), count);
+    built = built && clone_layouts(s, split, scratch, w.at, NULL, 0, scratch + events, bytes);
+    Heap_Free(scratch);
+    return built;
+}
+
+int core_clone_list_with(struct core_screen *s, int split, const void *items, uint32_t item_bytes,
+                         const void *events, uint32_t event_bytes, const void *layout_events,
+                         uint32_t layout_event_bytes)
+{
+    uint8_t *scratch = Heap_AllocateZeroed(CORE_CLONE_SCRATCH_BYTES);
+    if (!scratch)
+        return 0;
+    core_set_source(bank, s->id + 2, s->id + 2, 1);
+    ResourceBank_SetResource(bank, Resource_ITEM, s->id + 3, items, item_bytes);
+    int built = clone_layouts(s, split, events, event_bytes, layout_events, layout_event_bytes,
+                              scratch, CORE_CLONE_SCRATCH_BYTES);
     Heap_Free(scratch);
     return built;
 }

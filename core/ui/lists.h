@@ -31,6 +31,14 @@ uint32_t core_lists_screen_id(const struct core_screen *screen, int split);
  * one layout; 0 when a stock resource is missing or the heap is full. The rows
  * and sources are shared and built with the first layout. */
 int core_clone_list(struct core_screen *screen, int split);
+/* The same for a list whose rows the caller made: its ITEM table, the screen's
+ * CEVT and the layout's SEVT (NULL for the one where Menu pops). */
+int core_clone_list_with(struct core_screen *screen, int split, const void *items,
+                         uint32_t item_bytes, const void *events, uint32_t event_bytes,
+                         const void *layout_events, uint32_t layout_event_bytes);
+/* The row a list screen's rows are copied from: Sound Check's for a row with a
+ * value beside its label, else Legal's; NULL when the table is missing. */
+const uint8_t *core_lists_prototype(int value);
 void core_lists_init(void *bank);
 
 #endif

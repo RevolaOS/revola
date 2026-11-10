@@ -4,7 +4,7 @@ description = "Every UI declaration of the SDK, one labelled screen each"
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.7"
+api = "1.8"
 enabled = true
 
 [[module]]

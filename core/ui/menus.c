@@ -10,6 +10,7 @@
 
 #include "ui/menus.h"
 #include "ui/menurows.h"
+#include "loader/containers.h"
 #include "ui/panes.h"
 #include "ui/clones.h"
 #include "osos-2.0.5.h"
@@ -77,7 +78,7 @@ static int root_of(const char *in)
  * record an entry shows as its `visible` says. Other rows always show. */
 static int toggleable(const struct row *r)
 {
-    return r->root == RV_ROOT_MAIN || r->root == RV_ROOT_MUSIC;
+    return r->owner && (r->root == RV_ROOT_MAIN || r->root == RV_ROOT_MUSIC);
 }
 
 static int shown(const struct row *r)
@@ -85,6 +86,8 @@ static int shown(const struct row *r)
     uint32_t mask;
     if (r->stale)
         return 0;
+    if (!r->owner || r->root == CORE_ROOT_CONTAINER || r->entry->row.kind == RV_ROW_STOCK)
+        return core_submenus_shown(r);
     if (!toggleable(r))
         return 1;
     if (core_settings_get(r->owner->owner, RV_KEY_MENU_VISIBILITY, &mask, 4) == 4)
@@ -97,7 +100,9 @@ static int shown(const struct row *r)
  * carries the visibility, and an open list rebuilds on the item notification. */
 static void apply_visibility(struct row *r)
 {
-    uint8_t *visible = r->data && roots[r->root].table ? (uint8_t *)r->data + MenuRow_visible : NULL;
+    uint8_t *visible = r->data && r->root < RV_ROOT_COUNT && roots[r->root].table
+                           ? (uint8_t *)r->data + MenuRow_visible
+                           : NULL;
     if (!visible || *visible == shown(r))
         return;
     *visible = (uint8_t)shown(r);
@@ -106,6 +111,21 @@ static void apply_visibility(struct row *r)
         *(void **)(*(uint8_t **)service + Model_notify_method);
     notify(service, Property_ItemChanged, r->item);
     notify(service, Notify_None, r->item);
+}
+
+void core_menus_changed(void)
+{
+    core_containers_changed();
+    EACH_ROW(r)
+        if (!r->owner && r->entry)
+            apply_visibility(r);
+}
+
+/* The menu an entry names, or CORE_ROOT_CONTAINER for a container id. */
+static int root_or_container(const char *in)
+{
+    int root = root_of(in);
+    return root < 0 ? CORE_ROOT_CONTAINER : root;
 }
 
 /* The owner's stale row of this root and label, or NULL. */
@@ -123,9 +143,10 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
 {
     uint32_t key = core_resource_owner(owner), fresh = 0;
     for (uint32_t n = 0; n < count; n++) {
-        if (root_of(entries[n].in) < 0)
-            return RV_BAD_ARGUMENT; /* TODO: containers */
-        fresh += !stale_row(key, root_of(entries[n].in), core_settings_owner(entries[n].row.label));
+        if (!entries[n].in)
+            return RV_BAD_ARGUMENT;
+        fresh += !stale_row(key, root_or_container(entries[n].in),
+                            core_settings_owner(entries[n].row.label));
     }
     struct row_set *set = NULL;
     if (fresh) {
@@ -140,7 +161,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
     }
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_entry *e = &entries[n];
-        int root = root_of(e->in);
+        int root = root_or_container(e->in);
         uint32_t label = core_settings_owner(e->row.label);
         struct row *r = stale_row(key, root, label);
         if (r) {
@@ -163,7 +184,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->root = (uint8_t)root;
         r->index = (uint8_t)n;
         r->stale = 0;
-        if (!roots[root].table) {
+        r->container = root == CORE_ROOT_CONTAINER ? core_settings_owner(e->in) : 0;
+        if (root < RV_ROOT_COUNT && !roots[root].table) {
             r->after = 0;
             r->data = Heap_AllocateZeroed(11);
             if (!r->data)
@@ -175,7 +197,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             ResourceBank_SetResource(bank, Resource_String, item + 1, e->row.label, n + 1);
             continue;
         }
-        r->after = e->after ? e->after : roots[root].anchor;
+        r->after = root == CORE_ROOT_CONTAINER ? 0 : e->after ? e->after : roots[root].anchor;
         if (root == RV_ROOT_SETTINGS)
             core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
@@ -184,6 +206,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         else
             core_set_source(bank, item + 1, item, 1);
     }
+    core_menus_changed();
     return RV_OK;
 }
 
@@ -191,6 +214,17 @@ void core_menus_release(struct rv_extension_record *owner)
 {
     EACH_ROW(r)
         if (r->entry && r->owner == owner) {
+            r->entry = NULL;
+            r->stale = 1;
+            apply_visibility(r);
+        }
+    core_menus_changed();
+}
+
+void core_menus_retire(const struct rv_entry *entry)
+{
+    EACH_ROW(r)
+        if (r->entry == entry) {
             r->entry = NULL;
             r->stale = 1;
             apply_visibility(r);
@@ -213,7 +247,7 @@ const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **ow
 static struct row *nth(uint8_t root, uint32_t n)
 {
     EACH_ROW(r)
-        if (r->entry && r->root == root && n-- == 0)
+        if (r->entry && r->owner && r->root == root && n-- == 0)
             return r;
     return NULL;
 }
@@ -294,10 +328,12 @@ int core_menus_owns(uint32_t id)
 static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32_t metadata,
                             const struct core_next *next)
 {
-    uint32_t result = core_next_call(next, list, data, bytes, metadata);
+    uint32_t id = bytes == ROW_BYTES ? core_word_at((void *)data, MenuRow_id) : 0;
+    /* A stock Settings row moved into a container is left out; rows anchored on
+     * it still follow. */
+    uint32_t result = id && core_submenus_moves(id, (const void *)data) ? 0 : core_next_call(next, list, data, bytes, metadata);
     if (bytes != ROW_BYTES)
         return result;
-    uint32_t id = core_word_at((void *)data, MenuRow_id);
     EACH_ROW(r) {
         if (!r->after || r->after != id) /* stock rows may carry id 0 */
             continue;
@@ -321,7 +357,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
 
 int core_menus_serves(uint8_t root, uint32_t screen_id)
 {
-    for (uint32_t i = 0; i < ROOT_SCREENS; i++)
+    for (uint32_t i = 0; root < RV_ROOT_COUNT && i < ROOT_SCREENS; i++)
         if (roots[root].screens[i] && roots[root].screens[i] == screen_id)
             return 1;
     return 0;

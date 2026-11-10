@@ -57,7 +57,8 @@ void core_screens_refresh(struct core_screen *s)
 static const struct rv_row *screen_row(struct core_screen *s, uint32_t id, uint32_t *item)
 {
     uint32_t rows = CORE_SCREEN_ROWS(s);
-    if (s->declaration->kind != RV_SCREEN_LIST || id < rows)
+    if (s->declaration->kind != RV_SCREEN_LIST || id < rows ||
+        (id - rows) / 2 >= s->declaration->list.count)
         return NULL;
     *item = rows + (id - rows) / 2 * 2;
     return &s->declaration->list.rows[(id - rows) / 2];

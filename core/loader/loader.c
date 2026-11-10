@@ -19,6 +19,7 @@
 
 #include "loader/file.h"
 #include "loader/loader.h"
+#include "loader/containers.h"
 #include "loader/lz.h"
 #include "ui/menus.h"
 #include "osos-2.0.5.h"
@@ -699,8 +700,6 @@ static void api_module_unload(rv_handle self, uint32_t module)
         unload_module(record, module);
 }
 
-int core_containers_declare(struct rv_extension_record *owner, const struct rv_container *container);
-void core_containers_release(struct rv_extension_record *owner, const struct rv_container *container);
 
 static int api_container_declare(rv_handle self, const struct rv_container *container)
 {
@@ -918,6 +917,9 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             unload_module(record, 0);
             return 0;
         }
+        /* Declared first: an unload after a failure below releases them. */
+        for (uint32_t i = 0; i < descriptor->container_count; i++)
+            core_containers_declare(record, &descriptor->containers[i]);
         int registered = core_screens_register(record, descriptor->screens, descriptor->screen_count);
         uint32_t synthesized =
             core_screens_from_settings(descriptor->settings, descriptor->setting_count, NULL);
@@ -938,8 +940,6 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             record->failure = CORE_EXTENSION_NO_MEMORY;
             return 0;
         }
-        for (uint32_t i = 0; i < descriptor->container_count; i++)
-            core_containers_declare(record, &descriptor->containers[i]);
     }
     record->failure = CORE_EXTENSION_OK;
     return 1;

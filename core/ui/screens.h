@@ -32,6 +32,8 @@ struct core_screen {
 int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
                           uint32_t count);
 void core_screens_release(struct rv_extension_record *owner);
+/* Makes the core's screen of this declaration stale. */
+void core_screens_retire(const struct rv_screen *declaration);
 /* The screen named `name` of `owner`, or NULL. */
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name);
 /* The screen of `owner` that edits the setting `key`, or NULL. */

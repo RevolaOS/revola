@@ -51,6 +51,9 @@
 #define RV_ENTRY(in_, after_, row_, ...)                                                        \
     {.in = (in_), .visible = 1, .after = (after_), .row = row_ __VA_OPT__(, ) __VA_ARGS__}
 
+/* A submenu shared by id: RV_CONTAINER("settings.sound", "settings", "Sound"). */
+#define RV_CONTAINER(id_, parent_, label_) {.id = (id_), .parent = (parent_), .label = (label_)}
+
 /* Settings. The labelled ones open their screen from an RV_SETTING row. */
 #define RV_SETTING_FLAG(key_, label_, fallback_)                                                \
     {.key = (key_), .type = RV_SETTING_BOOL, .fallback = (fallback_), .maximum = 1,            \
