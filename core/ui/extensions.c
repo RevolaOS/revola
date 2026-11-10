@@ -232,7 +232,7 @@ static void page_draw(const struct rv_gfx *g, int width, int height)
     char reason[48];
     const char *why = problem(e, record, reason, reason + sizeof reason);
     y = core_page_text(g, CORE_PAGE_LEFT, y, width - 2 * CORE_PAGE_LEFT, RV_FONT_TEXT,
-                       CORE_PAGE_TEXT, manifest_text(2), why ? 2 : 3);
+                       CORE_PAGE_PARAGRAPH, manifest_text(2), why ? 2 : 3);
     if (why)
         g->text(CORE_PAGE_LEFT, y, RV_FONT_TITLE, PROBLEM, why);
 

@@ -5,12 +5,13 @@
 #include "rv_api.h"
 #include <stdint.h>
 
-/* Canvas pages that look like the stock lists: white, black and dim text, and
- * rows with the list's highlight. */
+/* Canvas pages that look like the stock lists: white, black and dim text, the
+ * text pages' grey for paragraphs, and rows with the list's highlight. */
 
 #define CORE_PAGE_LEFT 10
 #define CORE_PAGE_ROW 25
 #define CORE_PAGE_TEXT 0xff000000u
+#define CORE_PAGE_PARAGRAPH 0xff424542u /* as the emulator shows text pages */
 #define CORE_PAGE_DIM 0xff6b6d6bu
 
 /* Clears the canvas to the list background. */
