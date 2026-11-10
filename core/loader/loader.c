@@ -86,6 +86,8 @@ enum { TRIGGER_ALWAYS, TRIGGER_SCREEN, TRIGGER_MANUAL };
 struct core_module {
     void *image;
     uint32_t bytes;
+    const struct rv_descriptor *descriptor; /* NULL for a module that returned none */
+    struct core_hook *hooks;                /* core-owned copies of its descriptor's hooks */
     uint8_t loaded;
     uint8_t idle;         /* ticks without an open screen */
     uint8_t screens_open; /* declared screens on the navigation stack */
@@ -653,8 +655,12 @@ static int valid_screen(const struct rv_screen *s)
     }
 }
 
-static int valid_descriptor(const struct rv_descriptor *d)
+/* The main module declares everything; another module only its hooks,
+ * screens and unload. */
+static int valid_descriptor(const struct rv_descriptor *d, uint32_t module)
 {
+    if (d->size != sizeof *d || (module && (d->setting_count || d->entry_count)))
+        return 0;
     for (uint32_t i = 0; i < d->hook_count; i++)
         if (d->hooks[i].mode > RV_HOOK_MODE_REPLACE || d->hooks[i].reserved)
             return 0;
@@ -691,9 +697,11 @@ static int valid_descriptor(const struct rv_descriptor *d)
 
 /* Binds `count` hooks into core-owned copies; on failure unbinds what it bound
  * and leaves the reason on the record. */
-static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *hooks,
-                      uint32_t count)
+static int bind_hooks(struct rv_extension_record *record, struct core_module *module,
+                      const struct rv_hook *hooks, uint32_t count)
 {
+    if (!count)
+        return 1;
     struct core_hook *copies = allocate(record, count * sizeof *copies);
     if (!copies) {
         record->failure = CORE_EXTENSION_NO_MEMORY;
@@ -721,8 +729,8 @@ static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *
         retire(copies);
         return 0;
     }
-    record->hooks = copies;
-    record->hooks_bound = count;
+    module->hooks = copies;
+    record->hooks_bound += count;
     return 1;
 }
 
@@ -818,10 +826,16 @@ static int api_setting_write(rv_extension_handle self, uint16_t key, uint8_t typ
     return RV_OK;
 }
 
+const struct rv_descriptor *core_loader_descriptor(const struct rv_extension_record *record)
+{
+    return record ? record->modules[0].descriptor : NULL;
+}
+
 void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key)
 {
-    if (record && record->descriptor && record->descriptor->setting_changed)
-        record->descriptor->setting_changed(key);
+    const struct rv_descriptor *d = core_loader_descriptor(record);
+    if (d && d->setting_changed)
+        d->setting_changed(key);
 }
 
 void core_loader_settings_reset(void)
@@ -869,9 +883,9 @@ static void api_module_unload(rv_extension_handle self, uint32_t module)
 static int api_ui_push(rv_extension_handle self, const char *screen)
 {
     struct rv_extension_record *record = valid_handle(self);
-    struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
     if (!record || !core_screens_caller)
         return RV_BAD_ARGUMENT;
+    struct core_screen *s = core_loader_screen(record, screen);
     if (!s)
         return RV_NOT_FOUND;
     return core_screens_push(s, core_screens_caller) ? RV_OK : RV_NO_MEMORY;
@@ -1092,20 +1106,23 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     module->loaded = 1;
     module->idle = 0;
     const struct rv_descriptor *descriptor = enter(record, image, header.entry);
+    if ((index == 0 && !descriptor) || (descriptor && !valid_descriptor(descriptor, index))) {
+        record->failure = CORE_EXTENSION_BAD_DESCRIPTOR;
+        unload_module(record, index);
+        return 0;
+    }
+    if (!descriptor) {
+        record->failure = CORE_EXTENSION_OK;
+        return 1;
+    }
+    module->descriptor = descriptor;
+    if (!bind_hooks(record, module, descriptor->hooks, descriptor->hook_count)) {
+        unload_module(record, index);
+        return 0;
+    }
+    int registered =
+        core_screens_register(record, index, descriptor->screens, descriptor->screen_count);
     if (index == 0) {
-        if (!descriptor || descriptor->size != sizeof *descriptor ||
-            !valid_descriptor(descriptor)) {
-            record->failure = CORE_EXTENSION_BAD_DESCRIPTOR;
-            unload_module(record, 0);
-            return 0;
-        }
-        record->descriptor = descriptor;
-        if (!bind_hooks(record, descriptor->hooks, descriptor->hook_count)) {
-            record->descriptor = NULL;
-            unload_module(record, 0);
-            return 0;
-        }
-        int registered = core_screens_register(record, descriptor->screens, descriptor->screen_count);
         uint32_t synthesized =
             core_screens_from_settings(descriptor->settings, descriptor->setting_count, NULL);
         if (registered == RV_OK && synthesized) {
@@ -1115,16 +1132,17 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             } else {
                 core_screens_from_settings(descriptor->settings, descriptor->setting_count,
                                            record->setting_screens);
-                registered = core_screens_register(record, record->setting_screens, synthesized);
+                registered =
+                    core_screens_register(record, 0, record->setting_screens, synthesized);
             }
         }
         if (registered == RV_OK)
             registered = core_menus_register(record, descriptor->entries, descriptor->entry_count);
-        if (registered != RV_OK) {
-            unload_module(record, 0);
-            record->failure = CORE_EXTENSION_NO_MEMORY;
-            return 0;
-        }
+    }
+    if (registered != RV_OK) {
+        unload_module(record, index);
+        record->failure = CORE_EXTENSION_NO_MEMORY;
+        return 0;
     }
     record->failure = CORE_EXTENSION_OK;
     return 1;
@@ -1135,13 +1153,13 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     struct core_module *module = &record->modules[index];
     if (!module->loaded)
         return;
-    if (index == 0 && record->descriptor) {
-        const struct rv_descriptor *descriptor = record->descriptor;
-        if (descriptor->unload) {
-            core_panic_extension = record->owner;
-            descriptor->unload();
-            core_panic_extension = 0;
-        }
+    const struct rv_descriptor *descriptor = module->descriptor;
+    if (descriptor && descriptor->unload) {
+        core_panic_extension = record->owner;
+        descriptor->unload();
+        core_panic_extension = 0;
+    }
+    if (index == 0 && descriptor) {
         int parked = core_menus_release(record);
         core_screens_release(record);
         if (record->setting_screens) {
@@ -1149,13 +1167,17 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
             record->setting_screens = NULL;
         }
         core_resource_release(record->owner, parked);
-        for (uint32_t i = 0; i < descriptor->hook_count; i++)
-            core_hook_unbind(&record->hooks[i]);
-        retire(record->hooks);
-        record->hooks = NULL;
-        record->hooks_bound -= descriptor->hook_count;
-        record->descriptor = NULL;
+    } else if (descriptor) {
+        core_screens_retire_module(record, index);
     }
+    if (module->hooks) {
+        for (uint32_t i = 0; i < descriptor->hook_count; i++)
+            core_hook_unbind(&module->hooks[i]);
+        retire(module->hooks);
+        module->hooks = NULL;
+        record->hooks_bound -= descriptor->hook_count;
+    }
+    module->descriptor = NULL;
     if (index == 0) {
         release_raw_sites(record);
         core_bitmaps_release(record);
@@ -1462,26 +1484,29 @@ static uint32_t screen_module(const struct rv_extension_record *record, const ch
     return 0;
 }
 
-void core_loader_screen_pushed(const char *screen)
+struct core_screen *core_loader_screen(struct rv_extension_record *record, const char *id)
 {
-    for (struct rv_extension_record *r = core_extensions; r; r = r->next) {
-        uint32_t i = screen_module(r, screen);
-        if (!i)
-            continue;
-        r->modules[i].screens_open++;
-        r->modules[i].idle = 0;
-        if (!r->modules[i].loaded)
-            load_module(r, i);
+    struct core_screen *s = core_screens_find(record, id);
+    uint32_t i = s || !record ? 0 : screen_module(record, id);
+    if (i && !record->modules[i].loaded && load_module(record, i))
+        s = core_screens_find(record, id);
+    return s;
+}
+
+void core_loader_screen_pushed(struct rv_extension_record *record, const char *id)
+{
+    uint32_t i = screen_module(record, id);
+    if (i) {
+        record->modules[i].screens_open++;
+        record->modules[i].idle = 0;
     }
 }
 
-void core_loader_screen_popped(const char *screen)
+void core_loader_screen_popped(struct rv_extension_record *record, const char *id)
 {
-    for (struct rv_extension_record *r = core_extensions; r; r = r->next) {
-        uint32_t i = screen_module(r, screen);
-        if (i && r->modules[i].screens_open)
-            r->modules[i].screens_open--;
-    }
+    uint32_t i = screen_module(record, id);
+    if (i && record->modules[i].screens_open)
+        record->modules[i].screens_open--;
 }
 
 uint32_t core_loader_owner_of(uint32_t address)

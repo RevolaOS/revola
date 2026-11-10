@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 17
+#define RV_API_MINOR 18
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -317,8 +317,12 @@ struct rv_debug_info {
     const void *heap;     /* Apple's MainHeap */
 };
 
-/* Returned by the module entry; everything it points to lives as long as the
- * module is loaded. */
+/* Returned by a module's entry; everything it points to lives as long as the
+ * module is loaded. The main module's declares everything. A screen or
+ * manual module's declares only its own hooks, screens and unload: the core
+ * binds and registers them when it loads and drops them when it unloads, so
+ * a screen module's screens, and the code they call, take no memory until one
+ * of them is opened. Its screen ids are the ones its manifest entry lists. */
 struct rv_descriptor {
     uint32_t size; /* sizeof(struct rv_descriptor) when built */
     const struct rv_hook *hooks;
@@ -403,8 +407,8 @@ struct rv_api {
     uint32_t (*format_size)(char *out, uint32_t capacity, uint32_t bytes);
 };
 
-/* Every module exports this. The entry of the main module returns the
- * descriptor; on-demand modules may return NULL. */
+/* Every module exports this as rv_module_entry. The main module returns its
+ * descriptor; another module may return NULL when it declares nothing. */
 typedef const struct rv_descriptor *(*rv_module_entry_fn)(const struct rv_api *api, rv_extension_handle self);
 
 #endif

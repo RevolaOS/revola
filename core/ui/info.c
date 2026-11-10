@@ -61,6 +61,6 @@ static const struct rv_menu_entry entry = {
 void core_info_register(void)
 {
     format_version();
-    core_screens_register(NULL, &screen, 1);
+    core_screens_register(NULL, 0, &screen, 1);
     core_menus_register(NULL, &entry, 1);
 }

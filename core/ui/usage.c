@@ -176,5 +176,5 @@ static const struct rv_screen screen = {
 
 void core_usage_register(void)
 {
-    core_screens_register(NULL, &screen, 1);
+    core_screens_register(NULL, 0, &screen, 1);
 }

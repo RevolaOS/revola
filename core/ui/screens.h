@@ -27,10 +27,13 @@ struct core_screen {
 /* First row item id (list), paragraph source id (text) or bar source id (slider). */
 #define CORE_SCREEN_ROWS(s) ((s)->id + 8)
 
-/* Registers the descriptor's screens; RV_NO_MEMORY when the heap or the
- * owner's id block is full. */
-int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
-                          uint32_t count);
+/* Registers the screens a module of `owner` declares; RV_NO_MEMORY when the
+ * heap or the owner's id block is full. */
+int core_screens_register(struct rv_extension_record *owner, uint8_t module,
+                          const struct rv_screen *screens, uint32_t count);
+/* An on-demand module unloads: its screens become stale records that keep
+ * their ids for its next load. None of them is open. */
+void core_screens_retire_module(struct rv_extension_record *owner, uint8_t module);
 /* Frees the owner's records; its open controllers stay up without a screen. */
 void core_screens_release(struct rv_extension_record *owner);
 /* Detaches the owner's open screens from their controllers; returns how many. */

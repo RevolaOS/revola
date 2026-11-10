@@ -1,0 +1,17 @@
+id = "two_modules"
+name = "Two Modules"
+description = "Opens a screen whose code loads only while it is open. Used to test RevolaOS."
+version = "0.1.0"
+author = "RevolaOS"
+license = "GPL-3.0-only"
+api = "1.18"
+enabled = true
+
+[[module]]
+name = "main"
+trigger = "always"
+
+[[module]]
+name = "viewer"
+trigger = "screen"
+screens = ["viewer"]

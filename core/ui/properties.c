@@ -171,7 +171,7 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     struct core_screen *target;
     switch (row->kind) {
     case RV_ROW_KIND_PUSH:
-        target = core_screens_find(owner, row->screen);
+        target = core_loader_screen(owner, row->screen);
         if (target)
             core_screens_push(target, controller);
         break;

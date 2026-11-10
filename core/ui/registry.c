@@ -17,6 +17,7 @@
 struct screen_set {
     struct screen_set *next;
     uint32_t key; /* core_resource_owner of the owner */
+    uint8_t module; /* the owner's module that declared them */
     uint32_t count;
     uint32_t bytes;
     struct core_screen screens[];
@@ -53,8 +54,8 @@ static uint32_t screen_key(const struct rv_screen *d)
     return core_settings_owner(d->id ? d->id : d->title);
 }
 
-int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
-                          uint32_t count)
+int core_screens_register(struct rv_extension_record *owner, uint8_t module,
+                          const struct rv_screen *screens, uint32_t count)
 {
     uint32_t key = core_resource_owner(owner), fresh = 0;
     for (uint32_t n = 0; n < count; n++)
@@ -67,6 +68,7 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
         if (!set)
             return RV_NO_MEMORY;
         set->key = key;
+        set->module = module;
         set->bytes = bytes;
         struct screen_set **tail = &sets;
         while (*tail)
@@ -110,6 +112,16 @@ void core_screens_release(struct rv_extension_record *owner)
     }
 }
 
+void core_screens_retire_module(struct rv_extension_record *owner, uint8_t module)
+{
+    uint32_t key = core_resource_owner(owner);
+    for (struct screen_set *set = sets; set; set = set->next)
+        for (uint32_t i = 0; set->key == key && set->module == module && i < set->count; i++) {
+            set->screens[i].declaration = NULL;
+            set->screens[i].stale = 1;
+        }
+}
+
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name)
 {
     EACH_SCREEN(s)
@@ -121,7 +133,7 @@ struct core_screen *core_screens_find(struct rv_extension_record *owner, const c
 
 const struct rv_setting *core_screens_setting(struct rv_extension_record *owner, uint16_t key)
 {
-    const struct rv_descriptor *d = owner ? owner->descriptor : NULL;
+    const struct rv_descriptor *d = core_loader_descriptor(owner);
     for (uint32_t i = 0; d && i < d->setting_count; i++)
         if (d->settings[i].key == key)
             return &d->settings[i];

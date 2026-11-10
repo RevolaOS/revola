@@ -6,6 +6,8 @@
 #include "osos-2.0.5.h"
 #include <stdint.h>
 
+struct core_screen;
+
 struct rvx_entry;
 
 /* Owner of the extension whose code was running at the last panic; survives a
@@ -45,8 +47,6 @@ struct rv_extension_record {
                                the core's records of its UI and Apple's copies of them */
     uint32_t peak;
     uint32_t hooks_bound;
-    const struct rv_descriptor *descriptor;
-    struct core_hook *hooks; /* core-owned copies of the descriptor's hooks */
     struct rv_screen *setting_screens; /* screens the declared settings open, or NULL */
     struct core_module *modules;
     /* While the main module is loaded: resident_count catalog entries with
@@ -66,12 +66,17 @@ int core_loader_set_enabled(const char *file, int enabled);
 /* Grace point: frees retired images, unloads what was disabled, ages idle
  * screen modules. */
 void core_loader_tick(void);
-/* Screen-trigger modules: called when a declared screen is pushed or popped. */
-void core_loader_screen_pushed(const char *screen);
-void core_loader_screen_popped(const char *screen);
+/* The screen `id` of `record` (NULL: the core's), loading the screen module
+ * that declares it first; NULL when there is none. */
+struct core_screen *core_loader_screen(struct rv_extension_record *record, const char *id);
+/* Screen modules stay loaded while one of their screens is on the stack. */
+void core_loader_screen_pushed(struct rv_extension_record *record, const char *id);
+void core_loader_screen_popped(struct rv_extension_record *record, const char *id);
 /* Owner of the extension whose image or raw site stub contains `address`, 0
  * when none. */
 uint32_t core_loader_owner_of(uint32_t address);
+/* The main module's descriptor while it is loaded, else NULL. */
+const struct rv_descriptor *core_loader_descriptor(const struct rv_extension_record *record);
 /* Tells the extension a setting changed (RV_SETTING_KEY_ALL for all). */
 void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key);
 /* Tells every loaded extension the store was emptied by Reset All Settings. */

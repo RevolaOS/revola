@@ -123,7 +123,7 @@ static void screen_left(void *controller)
         if (!s->open && !s->owner)
             core_extensions_closed(s);
         if (s->owner && s->declaration && s->declaration->id)
-            core_loader_screen_popped(s->declaration->id);
+            core_loader_screen_popped(s->owner, s->declaration->id);
         if (s->declaration && s->declaration->kind == RV_SCREEN_KIND_CANVAS &&
             !core_screens_top(RV_SCREEN_KIND_CANVAS))
             popped_canvas = s;
@@ -239,8 +239,6 @@ int core_screens_push(struct core_screen *s, void *controller)
     if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
     popped_canvas = NULL;
-    if (s->owner && s->declaration->id)
-        core_loader_screen_pushed(s->declaration->id);
     s->split = (uint8_t)split;
     uint32_t screen = core_lists_screen_id(s, split);
     if (!build(s, split, screen))
@@ -257,6 +255,8 @@ int core_screens_push(struct core_screen *s, void *controller)
     open[open_count].screen = s;
     open_count++;
     s->open++;
+    if (s->owner && s->declaration->id)
+        core_loader_screen_pushed(s->owner, s->declaration->id);
     void (*push)(void *, void *) =
         FIELD(FIELD(controller, 0, void **), ScreenController_push_method, void *);
     push(controller, created);

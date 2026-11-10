@@ -158,10 +158,11 @@ static const char *manifest_text(uint32_t field)
 static const char *conflict_holder(const struct rv_extension_record *record)
 {
     for (const struct rv_extension_record *r = core_extensions; r; r = r->next) {
-        if (r == record || !r->hooks_bound || !r->descriptor)
+        const struct rv_descriptor *d = core_loader_descriptor(r);
+        if (r == record || !r->hooks_bound || !d)
             continue;
-        for (uint32_t i = 0; i < r->descriptor->hook_count; i++)
-            if (r->descriptor->hooks[i].site == record->conflict_site)
+        for (uint32_t i = 0; i < d->hook_count; i++)
+            if (d->hooks[i].site == record->conflict_site)
                 return core_loader_manifest_text(r->manifest, 1);
     }
     return "RevolaOS";
@@ -298,6 +299,6 @@ void core_extensions_closed(const struct core_screen *s)
 void core_extensions_register(void)
 {
     core_usage_register();
-    core_screens_register(NULL, screens, sizeof screens / sizeof screens[0]);
+    core_screens_register(NULL, 0, screens, sizeof screens / sizeof screens[0]);
     core_menus_register(NULL, &entry, 1);
 }
