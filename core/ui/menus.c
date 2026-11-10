@@ -9,6 +9,7 @@
  * the handler names resolve through core_screens_action. */
 
 #include "ui/menus.h"
+#include "ui/menurows.h"
 #include "ui/panes.h"
 #include "ui/clones.h"
 #include "osos-2.0.5.h"
@@ -18,7 +19,6 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define MAX_ROWS 16
 #define ROW_BYTES 0x98
 
 #define ROOT_SCREENS 4
@@ -44,39 +44,10 @@ static const struct root roots[RV_ROOT_COUNT] = {
     [RV_ROOT_ARTIST_MENU] = {0, 0, {RES_MediaLists_Artists_Screen}},
 };
 
-/* Context menus are built on each open, so a row is appended before the Cancel
- * row at the menu's append site; the label is a string resource and the action
- * the row's handler name, both referenced by Apple while the menu is open. */
-static uint8_t context_root(uint32_t site)
-{
-    switch (site) {
-    case CORE_SITE_NowPlaying_CancelAppend_call:
-        return RV_ROOT_NOWPLAYING_MENU;
-    case CORE_SITE_Artists_CancelAppend_call:
-        return RV_ROOT_ARTIST_MENU;
-    case CORE_SITE_Albums_CancelAppend_call:
-        return RV_ROOT_ALBUM_MENU;
-    default:
-        return RV_ROOT_SONG_MENU;
-    }
-}
-
-struct row {
-    struct rv_extension_record *owner;
-    const struct rv_entry *entry; /* NULL while stale: the owner's image is gone */
-    uint32_t item;                /* resource id; item + 1 is the title source or label string */
-    uint32_t label;               /* FNV-1a of the label, to find the row again after a reload */
-    uint32_t after;               /* the stock row it follows; 0 for a context menu */
-    /* Heap, kept by Apple: the ROW_BYTES of a menu row, built when Apple builds
-     * the table, or the "Rv" handler name a context row's action points at. */
-    void *data;
-    uint8_t root;
-    uint8_t index; /* the entry's index in its descriptor, its visibility bit */
-    uint8_t stale;
-};
-
-static struct row rows[MAX_ROWS];
+struct row_set *core_menu_sets;
 static void *bank;
+
+
 
 static const char *const root_names[RV_ROOT_COUNT] = {
     [RV_ROOT_MAIN] = "main",       [RV_ROOT_MUSIC] = "music",
@@ -137,22 +108,41 @@ static void apply_visibility(struct row *r)
     notify(service, Notify_None, r->item);
 }
 
+/* The owner's stale row of this root and label, or NULL. */
+static struct row *stale_row(uint32_t key, int root, uint32_t label)
+{
+    for (struct row_set *set = core_menu_sets; set; set = set->next)
+        for (uint32_t i = 0; set->key == key && i < set->count; i++)
+            if (set->rows[i].stale && set->rows[i].root == root && set->rows[i].label == label)
+                return &set->rows[i];
+    return NULL;
+}
+
 int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
                         uint32_t count)
 {
-    uint32_t key = core_resource_owner(owner), block = core_resource_block(key);
+    uint32_t key = core_resource_owner(owner), fresh = 0;
+    for (uint32_t n = 0; n < count; n++) {
+        if (root_of(entries[n].in) < 0)
+            return RV_BAD_ARGUMENT; /* TODO: containers */
+        fresh += !stale_row(key, root_of(entries[n].in), core_settings_owner(entries[n].row.label));
+    }
+    struct row_set *set = NULL;
+    if (fresh) {
+        set = Heap_AllocateZeroed(sizeof *set + fresh * sizeof set->rows[0]);
+        if (!set)
+            return RV_NO_MEMORY;
+        set->key = key;
+        struct row_set **tail = &core_menu_sets;
+        while (*tail)
+            tail = &(*tail)->next;
+        *tail = set; /* rows keep their registration order */
+    }
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_entry *e = &entries[n];
         int root = root_of(e->in);
-        if (root < 0)
-            return RV_BAD_ARGUMENT; /* TODO: containers */
         uint32_t label = core_settings_owner(e->row.label);
-        struct row *r = NULL;
-        /* A stale row's owner record is freed; its ids say whose it was. */
-        for (uint32_t i = 0; i < MAX_ROWS && !r; i++)
-            if (rows[i].stale && rows[i].root == root && rows[i].label == label &&
-                rows[i].item - block < CORE_RESOURCE_BLOCK_BYTES)
-                r = &rows[i];
+        struct row *r = stale_row(key, root, label);
         if (r) {
             r->owner = owner;
             r->entry = e;
@@ -161,15 +151,11 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             apply_visibility(r);
             continue;
         }
-        for (uint32_t i = 0; i < MAX_ROWS && !r; i++)
-            if (!rows[i].item)
-                r = &rows[i];
-        if (!r)
-            return RV_NO_MEMORY;
         /* Item, title source, and for a Settings row its pane handler. */
         uint32_t item = core_resource_take(key, root == RV_ROOT_SETTINGS ? 3 : 2);
         if (!item)
             return RV_NO_MEMORY;
+        r = &set->rows[set->count++];
         r->owner = owner;
         r->entry = e;
         r->item = item;
@@ -177,7 +163,6 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->root = (uint8_t)root;
         r->index = (uint8_t)n;
         r->stale = 0;
-        r->data = NULL;
         if (!roots[root].table) {
             r->after = 0;
             r->data = Heap_AllocateZeroed(11);
@@ -204,22 +189,22 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
 
 void core_menus_release(struct rv_extension_record *owner)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && rows[i].owner == owner) {
-            rows[i].entry = NULL;
-            rows[i].stale = 1;
-            apply_visibility(&rows[i]);
+    EACH_ROW(r)
+        if (r->entry && r->owner == owner) {
+            r->entry = NULL;
+            r->stale = 1;
+            apply_visibility(r);
         }
 }
 
 const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **owner,
                                     uint32_t *item)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && id - rows[i].item < 2) {
-            *owner = rows[i].owner;
-            *item = rows[i].item;
-            return &rows[i].entry->row;
+    EACH_ROW(r)
+        if (r->entry && id - r->item < 2) {
+            *owner = r->owner;
+            *item = r->item;
+            return &r->entry->row;
         }
     return NULL;
 }
@@ -227,9 +212,9 @@ const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **ow
 /* The n-th live row of a root, or NULL. */
 static struct row *nth(uint8_t root, uint32_t n)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && rows[i].root == root && n-- == 0)
-            return &rows[i];
+    EACH_ROW(r)
+        if (r->entry && r->root == root && n-- == 0)
+            return r;
     return NULL;
 }
 
@@ -257,39 +242,39 @@ void core_menus_toggle(uint8_t root, uint32_t n)
     if (!r)
         return;
     uint32_t mask = 0;
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && rows[i].owner == r->owner && toggleable(&rows[i]))
-            mask |= (uint32_t)(shown(&rows[i]) ^ (&rows[i] == r)) << rows[i].index;
+    EACH_ROW(other)
+        if (other->entry && other->owner == r->owner && toggleable(other))
+            mask |= (uint32_t)(shown(other) ^ (other == r)) << other->index;
     core_settings_set(r->owner->owner, RV_KEY_MENU_VISIBILITY, CORE_SETTING_INT, &mask, 4);
     apply_visibility(r);
 }
 
 void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++) {
-        const struct rv_row *row = rows[i].entry ? &rows[i].entry->row : NULL;
-        if (row && rows[i].owner == owner && row->key == key &&
+    EACH_ROW(r) {
+        const struct rv_row *row = r->entry ? &r->entry->row : NULL;
+        if (row && r->owner == owner && row->key == key &&
             (row->kind == RV_ROW_TOGGLE || row->kind == RV_ROW_SETTING))
-            core_screens_notify(rows[i].item + 1);
+            core_screens_notify(r->item + 1);
     }
 }
 
 const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && rows[i].item == item) {
-            *owner = rows[i].owner;
-            return rows[i].entry;
+    EACH_ROW(r)
+        if (r->entry && r->item == item) {
+            *owner = r->owner;
+            return r->entry;
         }
     return NULL;
 }
 
 int core_menus_pane(uint32_t id, uint32_t argument)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].entry && rows[i].root == RV_ROOT_SETTINGS && rows[i].item + 2 == id) {
+    EACH_ROW(r)
+        if (r->entry && r->root == RV_ROOT_SETTINGS && r->item + 2 == id) {
             if (argument != ActionSupportQuery)
-                core_panes_show(rows[i].item);
+                core_panes_show(r->item);
             return 1;
         }
     return 0;
@@ -297,8 +282,8 @@ int core_menus_pane(uint32_t id, uint32_t argument)
 
 int core_menus_owns(uint32_t id)
 {
-    for (uint32_t i = 0; i < MAX_ROWS; i++)
-        if (rows[i].item && id - rows[i].item < 2)
+    EACH_ROW(r)
+        if (id - r->item < 2)
             return 1;
     return 0;
 }
@@ -313,8 +298,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
     if (bytes != ROW_BYTES)
         return result;
     uint32_t id = core_word_at((void *)data, MenuRow_id);
-    for (uint32_t i = 0; i < MAX_ROWS; i++) {
-        struct row *r = &rows[i];
+    EACH_ROW(r) {
         if (!r->after || r->after != id) /* stock rows may carry id 0 */
             continue;
         uint32_t *row = r->data;
@@ -335,7 +319,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
     return result;
 }
 
-static int root_has_screen(uint8_t root, uint32_t screen_id)
+int core_menus_serves(uint8_t root, uint32_t screen_id)
 {
     for (uint32_t i = 0; i < ROOT_SCREENS; i++)
         if (roots[root].screens[i] && roots[root].screens[i] == screen_id)
@@ -343,99 +327,23 @@ static int root_has_screen(uint8_t root, uint32_t screen_id)
     return 0;
 }
 
-/* One binding per row of the roots a screen serves. */
-static void write_bindings(struct core_writer *w, uint32_t screen_id)
+int core_menus_context_row(uint8_t root, uint32_t n, uint32_t *label, void **handler)
 {
-    uint32_t count = 0, begin = w->at;
-    core_write_word(w, 0);
-    for (uint32_t i = 0; i < MAX_ROWS; i++) {
-        struct row *r = &rows[i];
-        if (!r->item || !root_has_screen(r->root, screen_id))
-            continue;
-        char name[40], handler[11], *n;
-        core_screens_handler_name(handler, r->item);
-        if (r->after) {
-            n = core_put_text(name, name + sizeof name, "list.pid.");
-            n = core_put_number(n, name + sizeof name, r->item);
-            core_put_text(n, name + sizeof name, ".chosen");
-        } else {
-            n = core_put_text(name, name + sizeof name, "contextualMenu.");
-            core_put_text(n, name + sizeof name, handler);
-        }
-        core_write_event(w, name, handler, NULL, NULL, 0);
-        count++;
-        if (r->root != RV_ROOT_SETTINGS)
-            continue;
-        /* The preview pane: the row's pane handler, then the shared layout. */
-        static const char *const layout[] = {core_panes_layout_name};
-        n = core_put_text(name, name + sizeof name, "list.pid.");
-        n = core_put_number(n, name + sizeof name, r->item);
-        core_put_text(n, name + sizeof name, ".delayedselected");
-        core_screens_handler_name(handler, r->item + 2);
-        core_write_event(w, name, handler, "navigator.SwitchLayout", layout, 1);
-        count++;
-    }
-    if (w->out)
-        for (unsigned b = 0; b < 4; b++)
-            w->out[begin + b] = (uint8_t)(count >> (8 * b));
-}
-
-/* Adds the rows' bindings to a screen's event map after Apple loaded its own. */
-static uint32_t layout_events(uint32_t layout, const struct core_next *next)
-{
-    uint32_t result = core_next_call(next, layout, 0, 0, 0);
-    uint8_t *screen = *(uint8_t **)((uint8_t *)layout + Layout_screen);
-    uint32_t screen_id = screen ? core_word_at(screen, LayoutScreen_id) : 0;
-    struct core_writer measure = {NULL, 0};
-    write_bindings(&measure, screen_id);
-    if (measure.at <= 4)
-        return result;
-    uint8_t *stream = Heap_AllocateZeroed(measure.at);
-    if (!stream)
-        return result;
-    struct core_writer w = {stream, 0};
-    write_bindings(&w, screen_id);
-    core_clone_read_events((void *)layout, stream, w.at);
-    Heap_Free(stream);
-    return result;
-}
-
-/* Appends the context rows of the menu being built, then the Cancel row. */
-static uint32_t context_rows(uint32_t items, uint32_t label, uint32_t action, uint32_t flags,
-                             const struct core_next *next)
-{
-    uint8_t root = context_root(next->site);
-    for (uint32_t i = 0; i < MAX_ROWS; i++) {
-        struct row *r = &rows[i];
-        /* Flags 1: an ordinary row whose action is dispatched to the controller;
-         * the Cancel row's own flags only close the menu. */
-        if (r->entry && r->root == root)
-            ContextMenuItems_Append((void *)items, r->item + 1, r->data, 1);
-    }
-    return core_next_call(next, items, label, action, flags);
+    struct row *r = nth(root, n);
+    if (!r)
+        return 0;
+    *label = r->item + 1;
+    *handler = r->data;
+    return 1;
 }
 
 static const struct core_hook hooks[] = {
     {CORE_SITE_ResourceBlockList_AppendBorrowedBlock_call, CORE_HOOK_FILTER, -1, append_rows},
-    {CORE_SITE_UI_LoadLayoutEvents_call, CORE_HOOK_FILTER, 5, layout_events},
     {CORE_SITE_Main_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Music_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Main_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Music_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_NowPlaying_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Extras_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_NowPlaying_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_Artists_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_Albums_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_SongList_DispatchAction_entry, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_NestedPlaylists_DispatchAction_entry, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_Genius_DispatchAction_entry, CORE_HOOK_FILTER, 5, core_screens_action_filter},
-    {CORE_SITE_SongList_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
-    {CORE_SITE_NestedPlaylists_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
-    {CORE_SITE_Genius_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
-    {CORE_SITE_NowPlaying_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
-    {CORE_SITE_Artists_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
-    {CORE_SITE_Albums_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
 };
 
 void core_menus_init(void *resource_bank)
@@ -443,4 +351,6 @@ void core_menus_init(void *resource_bank)
     bank = resource_bank;
     for (uint32_t i = 0; i < sizeof hooks / sizeof hooks[0]; i++)
         core_hook_bind(&hooks[i]);
+    core_context_init();
+    core_bindings_init();
 }

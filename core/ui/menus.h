@@ -44,6 +44,12 @@ int core_menus_pane(uint32_t id, uint32_t argument);
 /* 1 when `id` is the item or source id of a row, live or stale. */
 int core_menus_owns(uint32_t id);
 
+/* The n-th live row of a context menu: its label's string id and the handler
+ * name its action points at; 0 past the last. */
+int core_menus_context_row(uint8_t root, uint32_t n, uint32_t *label, void **handler);
+
 void core_menus_init(void *bank);
+/* Context menu rows; called by core_menus_init. */
+void core_context_init(void);
 
 #endif

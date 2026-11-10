@@ -23,11 +23,23 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define MAX_SCREENS 16
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
-struct core_screen core_screens[MAX_SCREENS];
+/* Records in one heap block per registration of an owner, kept for the boot:
+ * a stale record keeps its clones' ids for the owner's next load. */
+struct screen_set {
+    struct screen_set *next;
+    uint32_t key; /* core_resource_owner of the owner */
+    uint32_t count;
+    struct core_screen screens[];
+};
+
+static struct screen_set *sets;
 void *core_screens_caller;
+
+#define EACH_SCREEN(s)                                                                    \
+    for (struct screen_set *set_ = sets; set_; set_ = set_->next)                          \
+        for (struct core_screen *s = set_->screens; s < set_->screens + set_->count; s++)
 
 static int same(const char *a, const char *b)
 {
@@ -38,60 +50,69 @@ static int same(const char *a, const char *b)
 
 /* Registry */
 
+/* The owner's stale record of a screen with this name and size, or NULL. */
+static struct core_screen *stale_record(uint32_t key, uint32_t name, uint32_t ids)
+{
+    for (struct screen_set *set = sets; set; set = set->next)
+        for (uint32_t i = 0; set->key == key && i < set->count; i++)
+            if (set->screens[i].stale && set->screens[i].ids == ids &&
+                set->screens[i].name == name)
+                return &set->screens[i];
+    return NULL;
+}
+
 int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
                           uint32_t count)
 {
-    uint32_t key = core_resource_owner(owner), block = core_resource_block(key);
+    uint32_t key = core_resource_owner(owner), fresh = 0;
+    for (uint32_t n = 0; n < count; n++)
+        fresh += !stale_record(key, core_settings_owner(screens[n].name),
+                               core_clone_ids(&screens[n]));
+    struct screen_set *set = NULL;
+    if (fresh) {
+        set = Heap_AllocateZeroed(sizeof *set + fresh * sizeof set->screens[0]);
+        if (!set)
+            return RV_NO_MEMORY;
+        set->key = key;
+        struct screen_set **tail = &sets;
+        while (*tail)
+            tail = &(*tail)->next;
+        *tail = set;
+    }
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_screen *d = &screens[n];
         uint32_t name = core_settings_owner(d->name), ids = core_clone_ids(d);
-        struct core_screen *s = NULL;
-        for (uint32_t i = 0; i < MAX_SCREENS && !s; i++)
-            if (core_screens[i].stale && core_screens[i].id - block < CORE_RESOURCE_BLOCK_BYTES &&
-                core_screens[i].ids == ids && core_screens[i].name == name)
-                s = &core_screens[i];
-        if (s) {
-            s->owner = owner;
-            s->declaration = d;
-            s->stale = 0;
-            continue;
+        struct core_screen *s = stale_record(key, name, ids);
+        if (!s) {
+            uint32_t id = core_resource_take(key, ids);
+            if (!id)
+                return RV_NO_MEMORY;
+            s = &set->screens[set->count++];
+            s->name = name;
+            s->id = id;
+            s->ids = ids;
         }
-        for (uint32_t i = 0; i < MAX_SCREENS && !s; i++)
-            if (!core_screens[i].ids)
-                s = &core_screens[i];
-        if (!s)
-            return RV_NO_MEMORY;
-        uint32_t id = core_resource_take(key, ids);
-        if (!id)
-            return RV_NO_MEMORY;
         s->owner = owner;
         s->declaration = d;
-        s->name = name;
-        s->id = id;
-        s->ids = ids;
-        s->built = s->open = s->stale = 0;
+        s->stale = 0;
     }
     return RV_OK;
 }
 
 void core_screens_release(struct rv_extension_record *owner)
 {
-    for (uint32_t i = 0; i < MAX_SCREENS; i++) {
-        struct core_screen *s = &core_screens[i];
-        if (s->ids && s->owner == owner) {
+    EACH_SCREEN(s)
+        if (s->owner == owner && s->declaration) {
             s->declaration = NULL;
             s->stale = 1;
         }
-    }
 }
 
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name)
 {
-    for (uint32_t i = 0; i < MAX_SCREENS; i++) {
-        struct core_screen *s = &core_screens[i];
+    EACH_SCREEN(s)
         if (s->declaration && s->owner == owner && same(s->declaration->name, name))
             return s;
-    }
     return NULL;
 }
 
@@ -153,8 +174,7 @@ uint32_t core_screens_from_settings(const struct rv_setting *settings, uint32_t 
 
 struct core_screen *core_screens_find_setting(struct rv_extension_record *owner, uint16_t key)
 {
-    for (uint32_t i = 0; i < MAX_SCREENS; i++) {
-        struct core_screen *s = &core_screens[i];
+    EACH_SCREEN(s) {
         const struct rv_screen *d = s->declaration;
         if (d && s->owner == owner && d->kind != RV_SCREEN_LIST && d->kind != RV_SCREEN_TEXT &&
             d->kind != RV_SCREEN_CANVAS && d->kind != RV_SCREEN_RUNTIME_LIST && d->choice.key == key)
@@ -165,10 +185,14 @@ struct core_screen *core_screens_find_setting(struct rv_extension_record *owner,
 
 struct core_screen *core_screens_of_id(uint32_t id)
 {
-    for (uint32_t i = 0; i < MAX_SCREENS; i++) {
-        struct core_screen *s = &core_screens[i];
-        if (s->declaration && id - s->id < s->ids)
-            return s;
+    for (struct screen_set *set = sets; set; set = set->next) {
+        if (!set->count || id - set->screens[0].id >= CORE_RESOURCE_BLOCK_BYTES)
+            continue; /* another owner's block */
+        for (uint32_t i = 0; i < set->count; i++) {
+            struct core_screen *s = &set->screens[i];
+            if (s->declaration && id - s->id < s->ids)
+                return s;
+        }
     }
     return NULL;
 }
