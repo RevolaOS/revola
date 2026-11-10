@@ -83,15 +83,15 @@ static int write_text(struct core_writer *w, uint32_t t, const void *views)
     for (uint32_t i = 0; i < CORE_MAX_PARAGRAPHS; i++) {
         uint32_t id = t + 1 + i;
         uint32_t words[10] = {ViewDescriptor_top_offset, previous ? PARAGRAPH_GAP : TEXT_TOP,
-                              ViewDescriptor_anchor, previous,
-                              ViewDescriptor_anchor_mode, previous ? AnchorMode_Bottom : 0,
+                              ViewDescriptor_top_reference_view, previous,
+                              ViewDescriptor_top_anchor_mode, previous ? AnchorMode_Bottom : 0,
                               ViewDescriptor_id, id, TextViewDescriptor_source, empty_source};
         uint32_t begin = core_write_block_begin(w, paragraph.kind);
         core_write_copy(w, paragraph.data, paragraph.bytes, words, 5);
         core_write_block_end(w, begin);
         previous = id;
     }
-    uint32_t words[4] = {ViewDescriptor_anchor, previous, ViewDescriptor_id,
+    uint32_t words[4] = {ViewDescriptor_top_reference_view, previous, ViewDescriptor_id,
                          t + 1 + CORE_MAX_PARAGRAPHS};
     uint32_t begin = core_write_block_begin(w, margin.kind);
     core_write_copy(w, margin.data, margin.bytes, words, 2);

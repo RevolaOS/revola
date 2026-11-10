@@ -173,7 +173,7 @@ int core_clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scr
                     put_word(words + SsinInstance_view_bindings, id);
                 }
             }
-            for (uint32_t offset = SsinInstance_template; offset <= SsinInstance_substitute;
+            for (uint32_t offset = SsinInstance_template; offset <= SsinInstance_layout_events_id;
                  offset += 4)
                 if (c->from && core_word_at(words, offset) == c->from)
                     put_word(words + offset, c->to);

@@ -49,7 +49,7 @@ uint32_t core_panes_stock_layout(uint32_t layout_id)
         const void *ssin = stock(Resource_SSin, core_word_at(list.data, 0), &bytes);
         for (uint32_t i = 0; ssin && core_block_at(ssin, i, &instance); i++)
             if (core_word_at(instance.data, SsinInstance_template) == RES_SettingsPreview_Template)
-                return core_word_at(instance.data, SsinInstance_substitute);
+                return core_word_at(instance.data, SsinInstance_layout_events_id);
     }
     return 0;
 }

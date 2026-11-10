@@ -138,7 +138,7 @@ int core_toggles_indexed(uint32_t model, uint32_t type, uint32_t property, uint3
          * checkmarks of moved rows and Reset's icon are the core's. */
         *result = core_next_call6(next, model, type, property, stock, (uint32_t)out, 0);
         if (type == Property_Bitmap && stock + 1 == t->count)
-            *out = selected ? (uintptr_t)bitmap(RES_Menu_Reset_Bitmap) : 0;
+            *out = selected ? (uintptr_t)bitmap(RES_Menu_Chevron_Bitmap) : 0;
         else if (type == Property_Bitmap && *out)
             *out = (uintptr_t)bitmap(selected ? RES_Menu_CheckedSelected_Bitmap
                                               : RES_Menu_Checked_Bitmap);

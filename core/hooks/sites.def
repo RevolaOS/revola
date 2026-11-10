@@ -137,7 +137,7 @@ SITE(Preferences_FlushIfDirty_call, SITE_Preferences_FlushIfDirty_call, CALL, AD
 SITE(SettingsModel_ResetAllSettings_call, SITE_SettingsModel_ResetAllSettings_call, CALL, ADDR_SettingsModel_ResetAllSettings,
      BL(SITE_SettingsModel_ResetAllSettings_call, ADDR_SettingsModel_ResetAllSettings), 0, 1, 1, 0)
 
-/* Library_FinishImport sizes the block cache: r0 = heap total, r1 = import cost, r4 =
+/* Library_LoadDatabases sizes the block cache: r0 = heap total, r1 = import cost, r4 =
  * the library browser's owner for the whole function, then sub, reserve, floor test,
  * floor set, and BlockCache_Grow(r0). The first word becomes a call that returns the
  * size; the other three become nops while bound. */
@@ -147,7 +147,7 @@ SITE(BlockCache_ReserveNative_word, SITE_BlockCache_ReserveNative_word, WORD, 0,
 SITE(BlockCache_FloorTest_word, SITE_BlockCache_FloorTest_word, WORD, 0, 0xe350060e, 0, 0, 0, 0)
 SITE(BlockCache_FloorSet_word, SITE_BlockCache_FloorSet_word, WORD, 0, 0x33a0060e, 0, 0, 0, 0)
 
-/* MediaPlayer_ReadAheadBytes: r0 = cache bytes - 10 MiB, then cmp/movlt against the
+/* MediaPlayer_GetReadAheadBytes: r0 = cache bytes - 10 MiB, then cmp/movlt against the
  * 6 MiB minimum. The compare becomes a call returning the read-ahead, the movlt a nop. */
 SITE(MediaPlayer_ReadAheadMinTest_word, SITE_MediaPlayer_ReadAheadMinTest_word, CALL, 0,
      0xe3500606, 0, 0, 1, 0)

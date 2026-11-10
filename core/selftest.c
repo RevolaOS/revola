@@ -7,7 +7,7 @@
  * two share Settings_Property_slot (order, short-circuit, direct call after the first
  * unbind, restore after the last), one claims the call site AppendBorrowedBlock to show
  * patch and restore by peek, and an entry site proves the replay stub. Raw sites:
- * claim, refusals, patch and restore of GameManifest_Init_call, pool exhaustion
+ * claim, refusals, patch and restore of GameManifest_InitReader_call, pool exhaustion
  * and reuse after two grace ticks; the tint fixture holds two more raw sites. */
 
 #ifdef CORE_SELFTEST
@@ -181,7 +181,7 @@ static uint32_t pass_through(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
 static void raw_sites_test(void)
 {
     uint32_t *results = core_selftest.raw_results;
-    uint32_t address = SITE_GameManifest_Init_call, other = SITE_MediaList_OnTheGoAdd_call;
+    uint32_t address = SITE_GameManifest_InitReader_call, other = SITE_MediaList_OnTheGoAdd_call;
     uint32_t word = *(volatile uint32_t *)address, site, ignored, filled = 0;
     uint32_t owner = core_settings_owner("selftest");
     core_selftest.raw_words[0] = word;

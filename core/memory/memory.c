@@ -137,11 +137,11 @@ static uint32_t kept_blocks(uint8_t *cache, uint8_t *skip)
     void **ring = FIELD(cache, BlockCache_clients, void **);
     for (void **node = ring[0]; node != ring; node = node[0]) {
         uint8_t *client = *(uint8_t **)node[2];
-        if (!client || client == skip || FIELD(client, BlockClient_weight, uint32_t))
+        if (!client || client == skip || FIELD(client, BlockCacheClient_weight, uint32_t))
             continue;
         uint32_t desired =
-            (FIELD(client, BlockClient_desired_bytes, uint32_t) + block_bytes - 1) / block_bytes;
-        uint32_t held = FIELD(client, BlockClient_block_count, uint32_t);
+            (FIELD(client, BlockCacheClient_desired_bytes, uint32_t) + block_bytes - 1) / block_bytes;
+        uint32_t held = FIELD(client, BlockCacheClient_block_count, uint32_t);
         kept += held > desired ? held : desired;
     }
     return kept;
