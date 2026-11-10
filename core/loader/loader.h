@@ -26,7 +26,6 @@ enum core_extension_failure {
     CORE_EXTENSION_NO_DESCRIPTOR,
     CORE_EXTENSION_UNUSED, /* keeps the later values; nothing sets it */
     CORE_EXTENSION_SITE_MISMATCH, /* a raw site's word differs; conflict_site names it */
-    CORE_EXTENSION_RESTART,       /* every id block is taken until the next boot */
 };
 
 /* One per enabled extension found at boot or enabled since, heap-allocated. */
@@ -83,8 +82,10 @@ struct core_installed {
     uint32_t owner;
     uint8_t duplicate; /* another file with this id loads instead */
 };
-/* Scans the extensions and reads each manifest's name; entries found. */
-uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity);
+/* Scans the extensions and reads each manifest's name into a heap list, one
+ * entry per readable manifest; the entries, 0 with `*out` NULL when the heap
+ * refuses. Free with core_heap_free(NULL, *out, count * sizeof **out). */
+uint32_t core_loader_installed(struct core_installed **out);
 
 /* Manifests: an installed extension's read into `buffer` (CORE_MANIFEST_MAX
  * bytes), 0 when unreadable; field 0 to 5 of one (id, name, description,

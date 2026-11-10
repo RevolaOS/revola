@@ -64,8 +64,8 @@ struct rv_extension_record;
 uint32_t core_resource_owner(const struct rv_extension_record *owner);
 /* The first id of the owner's block, 0 before it took any. */
 uint32_t core_resource_block(uint32_t owner);
-/* `count` consecutive ids of the owner's block, 0 when the block or the table
- * of blocks is full. */
+/* `count` consecutive ids of the owner's block, 0 when the block is full or
+ * the heap refuses a new owner's table entry. */
 uint32_t core_resource_take(uint32_t owner, uint32_t count);
 /* An owner unloads: what stays under its ids counts to the core. With
  * `remove`, gives its ids back and removes the resources stored under them
@@ -77,8 +77,6 @@ void core_resource_release(uint32_t owner, int remove);
  * keeps by id from the old one (ITEM tables, a built SCST) reaches a changed
  * extension. The old ids are never given out again this boot. */
 void core_resource_retire(uint32_t owner);
-/* 1 when every block is held. */
-int core_resource_full(void);
 /* Grace point: finishes releases that had to wait. */
 void core_resource_tick(void);
 void core_resources_init(void *bank);

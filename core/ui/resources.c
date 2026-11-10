@@ -144,30 +144,31 @@ uint32_t core_resource_owner(const struct rv_extension_record *owner)
     return owner ? owner->owner : 0;
 }
 
-/* The core, 16 extensions, and spares for extensions installed or replaced
- * since boot. */
-#define MAX_BLOCKS 25
+/* Every slot below the core's block of ids; the table grows by a slot each
+ * time a new owner takes ids, so it holds no more than the owners so far. */
+#define MAX_BLOCKS ((CORE_RESOURCE_CORE_BLOCK - 0x0c000000u) / CORE_RESOURCE_BLOCK_BYTES)
 /* The owner of a retired block: no owner matches it, so its ids stay unused. */
 #define RETIRED 0xffffffffu
 
 /* Blocks in the order owners first take ids. An owner keeps its slot for the
  * boot, so it takes the same ids again when it loads again. */
-static struct {
+struct block {
     uint32_t owner;
     uint32_t bytes; /* Apple's heap for the overrides under the block's ids */
     uint16_t used;
-    uint8_t held;
     uint8_t releasing; /* the owner is gone; its overrides go once off screen */
     uint8_t counted;   /* `bytes` are in the loaded owner's live bytes */
-} blocks[MAX_BLOCKS];
+};
+static struct block *blocks;
+static uint32_t block_count;
 static void *bank;
 
-/* The extension block an id lies in; MAX_BLOCKS for the core's ids and
+/* The extension block an id lies in; block_count for the core's ids and
  * Apple's. */
 static uint32_t slot_of_id(uint32_t id)
 {
     uint32_t slot = (id - 0x0c000000u) / CORE_RESOURCE_BLOCK_BYTES;
-    return slot < MAX_BLOCKS && blocks[slot].held && blocks[slot].owner ? slot : MAX_BLOCKS;
+    return slot < block_count && blocks[slot].owner ? slot : block_count;
 }
 
 /* An override costs its copy, a 16-byte entry and an 8-byte map slot. */
@@ -179,7 +180,7 @@ static int32_t override_cost(uint32_t bytes)
 static void count(uint32_t id, int32_t bytes)
 {
     uint32_t slot = slot_of_id(id);
-    if (slot == MAX_BLOCKS) {
+    if (slot == block_count) {
         core_loader_charge(NULL, bytes);
         return;
     }
@@ -205,10 +206,10 @@ void core_resource_set(uint32_t type, uint32_t id, const void *data, uint32_t by
 
 static uint32_t slot_of(uint32_t owner)
 {
-    for (uint32_t i = 0; i < MAX_BLOCKS; i++)
-        if (blocks[i].held && blocks[i].owner == owner)
+    for (uint32_t i = 0; i < block_count; i++)
+        if (blocks[i].owner == owner)
             return i;
-    return MAX_BLOCKS;
+    return block_count;
 }
 
 static uint32_t base_of(uint32_t owner, uint32_t slot)
@@ -219,7 +220,7 @@ static uint32_t base_of(uint32_t owner, uint32_t slot)
 uint32_t core_resource_block(uint32_t owner)
 {
     uint32_t slot = slot_of(owner);
-    return slot < MAX_BLOCKS ? base_of(owner, slot) : 0;
+    return slot < block_count ? base_of(owner, slot) : 0;
 }
 
 /* Everything the clones, rows and panes store under an owner's ids, except
@@ -269,23 +270,37 @@ static int clear(uint32_t slot)
     return 1;
 }
 
+/* A slot for a new owner at the end of the table; 0 when the ids or the heap
+ * run out. */
+static int grow(uint32_t owner)
+{
+    struct block *table = block_count < MAX_BLOCKS
+                              ? core_heap_allocate(NULL, (block_count + 1) * sizeof *table)
+                              : NULL;
+    if (!table)
+        return 0;
+    for (uint32_t i = 0; i < block_count; i++)
+        table[i] = blocks[i];
+    table[block_count].owner = owner;
+    core_heap_free(NULL, blocks, block_count * sizeof *blocks);
+    blocks = table;
+    block_count++;
+    return 1;
+}
+
 uint32_t core_resource_take(uint32_t owner, uint32_t count)
 {
     uint32_t slot = slot_of(owner);
-    if (slot == MAX_BLOCKS)
-        for (uint32_t i = 0; i < MAX_BLOCKS && slot == MAX_BLOCKS; i++)
-            if (!blocks[i].held)
-                slot = i;
+    if (!count || (slot == block_count && !grow(owner)))
+        return 0;
     /* Loaded again before its overrides could go: they stay, and the owner's
      * screens find them under the same ids. */
-    if (slot < MAX_BLOCKS && blocks[slot].releasing && !clear(slot)) {
+    if (blocks[slot].releasing && !clear(slot)) {
         blocks[slot].used = 0;
         blocks[slot].releasing = 0;
     }
-    if (slot == MAX_BLOCKS || !count || blocks[slot].used + count > CORE_RESOURCE_BLOCK_BYTES)
+    if (blocks[slot].used + count > CORE_RESOURCE_BLOCK_BYTES)
         return 0;
-    blocks[slot].owner = owner;
-    blocks[slot].held = 1;
     blocks[slot].used += count;
     /* What an earlier load left counts to this one again. */
     struct rv_extension_record *record = owner ? core_loader_find(owner) : NULL;
@@ -300,7 +315,7 @@ uint32_t core_resource_take(uint32_t owner, uint32_t count)
 void core_resource_release(uint32_t owner, int remove)
 {
     uint32_t slot = slot_of(owner);
-    if (slot == MAX_BLOCKS || !owner)
+    if (slot == block_count || !owner)
         return;
     if (blocks[slot].counted) {
         core_loader_charge(core_loader_find(owner), -(int32_t)blocks[slot].bytes);
@@ -313,24 +328,16 @@ void core_resource_release(uint32_t owner, int remove)
     clear(slot);
 }
 
-int core_resource_full(void)
-{
-    for (uint32_t i = 0; i < MAX_BLOCKS; i++)
-        if (!blocks[i].held)
-            return 0;
-    return 1;
-}
-
 void core_resource_retire(uint32_t owner)
 {
     uint32_t slot = slot_of(owner);
-    if (slot < MAX_BLOCKS && owner)
+    if (slot < block_count && owner)
         blocks[slot].owner = RETIRED;
 }
 
 void core_resource_tick(void)
 {
-    for (uint32_t i = 0; i < MAX_BLOCKS; i++)
+    for (uint32_t i = 0; i < block_count; i++)
         if (blocks[i].releasing)
             clear(i);
 }

@@ -42,7 +42,6 @@
 #define MANIFEST_ENABLED 1
 #define MANIFEST_MAX CORE_MANIFEST_MAX
 #define MAX_MODULES 15
-#define MAX_EXTENSIONS 16
 #define IDLE_TICKS 10 /* grace ticks a screen module stays loaded with no screen open */
 #define RELOC_CHUNK 32
 #define CATALOG_CHUNK 8
@@ -994,10 +993,7 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             registered = core_menus_register(record, descriptor->entries, descriptor->entry_count);
         if (registered != RV_OK) {
             unload_module(record, 0);
-            /* No id block left: retired blocks come back at the next boot. */
-            record->failure = !core_resource_block(record->owner) && core_resource_full()
-                                  ? CORE_EXTENSION_RESTART
-                                  : CORE_EXTENSION_NO_MEMORY;
+            record->failure = CORE_EXTENSION_NO_MEMORY;
             return 0;
         }
     }
@@ -1102,8 +1098,29 @@ static void unload_extension(struct rv_extension_record *record)
     retire(record);
 }
 
-/* Files under ROOT ending in SUFFIX, without it, collected before any is opened. */
-static uint32_t scan(char names[][sizeof ((struct rv_extension_record *)0)->file])
+/* An extension file while a scan's list lives: the name without SUFFIX and
+ * what pick read from its manifest. */
+struct found {
+    char file[sizeof ((struct rv_extension_record *)0)->file];
+    uint8_t duplicate; /* another file with the same id loads instead */
+    uint8_t readable;
+    uint8_t named; /* the file is named after the id */
+    uint32_t owner;
+};
+
+/* The length of `name` without SUFFIX when it names an extension file, else 0. */
+static uint32_t stem_of(const char *name, uint8_t is_directory)
+{
+    uint32_t stem = name ? length(name) : 0;
+    if (is_directory || stem <= sizeof SUFFIX - 1 || name[0] == '.')
+        return 0;
+    stem -= sizeof SUFFIX - 1;
+    return stem < sizeof ((struct found *)0)->file && same_name(name + stem, SUFFIX) ? stem : 0;
+}
+
+/* Walks ROOT, copies the first `capacity` extension files into `list` and
+ * returns how many it saw. */
+static uint32_t list_files(struct found *list, uint32_t capacity)
 {
     uint32_t iterator_words[DirectoryIterator_bytes / 4];
     uint32_t path_words[NativePath_bytes / 4];
@@ -1113,17 +1130,15 @@ static uint32_t scan(char names[][sizeof ((struct rv_extension_record *)0)->file
     uint32_t count = 0;
     NativePath_InitEmpty(path);
     DirectoryIterator_Init(iterator, ROOT, 0, 0);
-    while (count < MAX_EXTENSIONS && DirectoryIterator_Next(iterator, path, &is_directory)) {
+    while (DirectoryIterator_Next(iterator, path, &is_directory)) {
         const char *name = NativeString_GetUtf8((struct NativeString *)path);
-        uint32_t stem = name ? length(name) : 0;
-        if (is_directory || stem <= sizeof SUFFIX - 1 || name[0] == '.')
+        uint32_t stem = stem_of(name, is_directory);
+        if (!stem)
             continue;
-        stem -= sizeof SUFFIX - 1;
-        if (stem >= sizeof names[0] || !same_name(name + stem, SUFFIX))
-            continue;
-        for (uint32_t i = 0; i < stem; i++)
-            names[count][i] = name[i];
-        names[count][stem] = 0;
+        if (count < capacity) {
+            copy(list[count].file, name, stem);
+            list[count].file[stem] = 0;
+        }
         count++;
     }
     DirectoryIterator_Destroy(iterator);
@@ -1139,30 +1154,43 @@ static uint32_t held_buttons(void)
     return *(volatile uint32_t *)((uint8_t *)&WheelState + WheelState_buttons);
 }
 
-/* Sets duplicate[i] for every file whose manifest id another file also carries
+/* Sets `duplicate` on every file whose manifest id another file also carries
  * and that should not load: the file named after the id wins, else the first
  * found. A renamed copy beside a fresh install loads once. `buffer` holds
  * MANIFEST_MAX bytes. */
-static void pick(char names[][sizeof ((struct rv_extension_record *)0)->file], uint32_t count,
-                 uint8_t *duplicate, uint8_t *buffer)
+static void pick(struct found *list, uint32_t count, uint8_t *buffer)
 {
-    uint32_t owner[MAX_EXTENSIONS];
-    uint8_t readable[MAX_EXTENSIONS], named[MAX_EXTENSIONS];
     for (uint32_t i = 0; i < count; i++) {
-        duplicate[i] = 0;
-        readable[i] = read_manifest(names[i], buffer) != 0;
-        if (!readable[i])
+        struct found *f = &list[i];
+        f->readable = read_manifest(f->file, buffer) != 0;
+        if (!f->readable)
             continue;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
         const char *id = strings(buffer) + header->text[0];
-        owner[i] = fnv1a(id);
-        named[i] = (uint8_t)same_name(names[i], id);
+        f->owner = fnv1a(id);
+        f->named = (uint8_t)same_name(f->file, id);
     }
     for (uint32_t i = 0; i < count; i++)
-        for (uint32_t j = 0; j < count && readable[i] && !duplicate[i]; j++)
-            if (j != i && readable[j] && owner[j] == owner[i] &&
-                (named[j] > named[i] || (named[j] == named[i] && j < i)))
-                duplicate[i] = 1;
+        for (uint32_t j = 0; j < count && list[i].readable && !list[i].duplicate; j++)
+            if (j != i && list[j].readable && list[j].owner == list[i].owner &&
+                (list[j].named > list[i].named || (list[j].named == list[i].named && j < i)))
+                list[i].duplicate = 1;
+}
+
+/* The extension files, all collected before any is opened, duplicates picked;
+ * NULL when the heap refuses the list. A first pass counts them, so the list
+ * is as long as the folder. Free it with release(NULL, list). */
+static struct found *scan(uint32_t *count, uint8_t *buffer)
+{
+    uint32_t capacity = list_files(NULL, 0);
+    struct found *list = allocate(NULL, capacity * sizeof *list);
+    if (!list)
+        return NULL;
+    *count = list_files(list, capacity);
+    if (*count > capacity)
+        *count = capacity;
+    pick(list, *count, buffer);
+    return list;
 }
 
 /* The body hash in the header of `file`, 0 when it cannot be opened. */
@@ -1181,20 +1209,18 @@ static uint32_t body_hash_of(const char *file)
  * files that have no record. A changed file loads into a new id block. */
 static void rescan(void)
 {
-    char names[MAX_EXTENSIONS][sizeof ((struct rv_extension_record *)0)->file];
-    uint8_t duplicate[MAX_EXTENSIONS];
     uint32_t words[MANIFEST_MAX / 4];
-    uint32_t count = scan(names);
-    pick(names, count, duplicate, (uint8_t *)words);
+    uint32_t count = 0;
+    struct found *list = scan(&count, (uint8_t *)words);
+    if (!list)
+        return;
     for (struct rv_extension_record *r = core_extensions, *next; r; r = next) {
         next = r->next;
         uint32_t i = 0;
-        while (i < count && !same_name(names[i], r->file))
+        while (i < count && !same_name(list[i].file, r->file))
             i++;
         int changed = i < count && body_hash_of(r->file) != r->body_hash;
-        /* A full list may have left the file out; only a seen file unloads. */
-        int gone = i == count && count < MAX_EXTENSIONS;
-        if (!gone && (i == count || !duplicate[i]) && !changed)
+        if (i < count && !list[i].duplicate && !changed)
             continue;
         uint32_t owner = r->owner;
         unload_extension(r);
@@ -1202,8 +1228,9 @@ static void rescan(void)
             core_resource_retire(owner);
     }
     for (uint32_t i = 0; i < count; i++)
-        if (!duplicate[i] && !find_file(names[i]))
-            load_extension(names[i]);
+        if (!list[i].duplicate && !find_file(list[i].file))
+            load_extension(list[i].file);
+    release(NULL, list);
 }
 
 /* Disk mode ended: rescan before the main menu comes back. */
@@ -1229,14 +1256,14 @@ void core_loader_boot(void)
         core_loader_core_only = 1;
         return;
     }
-    char names[MAX_EXTENSIONS][sizeof ((struct rv_extension_record *)0)->file];
-    uint8_t duplicate[MAX_EXTENSIONS];
     uint32_t words[MANIFEST_MAX / 4];
-    uint32_t count = scan(names);
-    pick(names, count, duplicate, (uint8_t *)words);
+    uint32_t count = 0;
+    struct found *list = scan(&count, (uint8_t *)words);
     for (uint32_t i = 0; i < count; i++)
-        if (!duplicate[i])
-            load_extension(names[i]);
+        if (!list[i].duplicate)
+            load_extension(list[i].file);
+    if (list)
+        release(NULL, list);
     core_hook_bind(&disk_mode_exit_hook);
 }
 
@@ -1349,31 +1376,35 @@ struct rv_extension_record *core_loader_find(uint32_t owner)
     return NULL;
 }
 
-uint32_t core_loader_installed(struct core_installed *out, uint32_t capacity)
+uint32_t core_loader_installed(struct core_installed **out)
 {
-    char names[MAX_EXTENSIONS][sizeof out->file];
     uint32_t words[MANIFEST_MAX / 4];
     uint8_t *buffer = (uint8_t *)words;
-    uint8_t duplicate[MAX_EXTENSIONS];
-    uint32_t found = scan(names), count = 0;
-    pick(names, found, duplicate, buffer);
-    for (uint32_t i = 0; i < found && count < capacity; i++) {
-        if (!read_manifest(names[i], buffer))
+    uint32_t found = 0, count = 0;
+    struct found *list = scan(&found, buffer);
+    *out = NULL;
+    if (!list)
+        return 0;
+    for (uint32_t i = 0; i < found; i++)
+        count += list[i].readable;
+    struct core_installed *entries = count ? core_heap_allocate(NULL, count * sizeof *entries) : NULL;
+    for (uint32_t i = 0, n = 0; entries && i < found; i++) {
+        if (!list[i].readable)
             continue;
+        struct core_installed *entry = &entries[n++];
+        copy(entry->file, list[i].file, sizeof entry->file);
+        entry->owner = list[i].owner;
+        entry->duplicate = list[i].duplicate;
+        if (!read_manifest(list[i].file, buffer))
+            continue; /* removed since the scan: the row stays, without a name */
         const struct manifest_header *header = (const struct manifest_header *)buffer;
-        struct core_installed *entry = &out[count++];
         const char *name = strings(buffer) + header->text[1];
-        uint32_t n = 0;
-        for (; names[i][n]; n++)
-            entry->file[n] = names[i][n];
-        entry->file[n] = 0;
-        for (n = 0; name[n] && n < sizeof entry->name - 1; n++)
-            entry->name[n] = name[n];
-        entry->name[n] = 0;
-        entry->owner = fnv1a(strings(buffer) + header->text[0]);
-        entry->duplicate = duplicate[i];
+        for (uint32_t c = 0; name[c] && c < sizeof entry->name - 1; c++)
+            entry->name[c] = name[c];
     }
-    return count;
+    release(NULL, list);
+    *out = entries;
+    return entries ? count : 0;
 }
 
 uint32_t core_loader_manifest(const char *file, uint8_t *buffer)

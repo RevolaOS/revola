@@ -18,20 +18,17 @@
 #include "ui/usage.h"
 #include <stddef.h>
 
-#define MAX_LISTED 16
-
-static struct listed {
-    uint32_t count;
-    struct core_installed installed[MAX_LISTED];
-} *listed;
+static struct core_installed *listed;
+static uint32_t listed_count;
+static uint8_t listed_read; /* the list was read since it opened, maybe empty */
 
 static struct page {
-    uint32_t index; /* in listed->installed */
+    uint32_t index; /* in listed */
     uint8_t manifest[CORE_MANIFEST_MAX];
     uint32_t manifest_bytes;
 } *page;
 
-static char title[sizeof listed->installed[0].name];
+static char title[sizeof listed->name];
 /* The Extensions row's icon. */
 static const struct rv_bitmap extensions_icon = {"extensions"};
 static char meter[24];
@@ -58,8 +55,6 @@ static const char *state_text(const struct core_installed *e)
         return "No memory";
     case CORE_EXTENSION_SITE_MISMATCH:
         return "Site mismatch";
-    case CORE_EXTENSION_RESTART:
-        return "Restart needed";
     default:
         return "Failed";
     }
@@ -74,20 +69,22 @@ static void update_meter(void)
         core_put_text(meter, meter + sizeof meter, "Core only");
         return;
     }
-    core_put_text(core_format_number(meter, meter + sizeof meter, listed ? listed->count : 0),
+    core_put_text(core_format_number(meter, meter + sizeof meter, listed_count),
                   meter + sizeof meter, " installed");
 }
 
 /* Row 0 is Usage, then one row per installed extension. */
 static uint32_t list_count(void)
 {
-    if (!listed && !core_loader_core_only) {
-        listed = core_heap_allocate(NULL, sizeof *listed);
-        if (listed)
-            listed->count = core_loader_installed(listed->installed, MAX_LISTED);
+    /* Apple still asks while the list slides away: read it only while open,
+     * or it would stay until the list opens again. */
+    struct core_screen *s = core_screens_find(NULL, "core.extensions");
+    if (!listed_read && !core_loader_core_only && s && s->open) {
+        listed_count = core_loader_installed(&listed);
+        listed_read = 1;
     }
     update_meter();
-    return 1 + (listed ? listed->count : 0);
+    return 1 + listed_count;
 }
 
 static const char *list_row(uint32_t index, const char **detail)
@@ -96,13 +93,13 @@ static const char *list_row(uint32_t index, const char **detail)
         *detail = core_usage_active(line, line + sizeof line);
         return "Usage";
     }
-    if (!listed || index > listed->count) {
+    if (!listed || index > listed_count) {
         *detail = NULL;
         return "";
     }
     /* The state, and the memory a running extension holds: "On, 6.0 KB" (the
      * system font has no middle dot). */
-    const struct core_installed *e = &listed->installed[index - 1];
+    const struct core_installed *e = &listed[index - 1];
     struct rv_extension_record *record = core_loader_find(e->owner);
     char *out = core_put_text(line, line + sizeof line, state_text(e));
     if (enabled(record) && record->failure == CORE_EXTENSION_OK)
@@ -120,12 +117,12 @@ static int list_select(uint32_t index)
             core_screens_push(usage, core_screens_caller);
         return 0;
     }
-    if (!listed || index > listed->count || page)
+    if (!listed || index > listed_count || page)
         return 0;
     page = core_heap_allocate(NULL, sizeof *page);
     if (!page)
         return 0;
-    const struct core_installed *e = &listed->installed[index - 1];
+    const struct core_installed *e = &listed[index - 1];
     page->index = index - 1;
     page->manifest_bytes = core_loader_manifest(e->file, page->manifest);
     core_put_text(title, title + sizeof title, e->name);
@@ -186,8 +183,6 @@ static const char *problem(const struct core_installed *e, const struct rv_exten
         return "Not enough memory to run";
     case CORE_EXTENSION_SITE_MISMATCH:
         return "Not made for this firmware";
-    case CORE_EXTENSION_RESTART:
-        return "Runs after the next restart";
     default:
         return "Could not be loaded";
     }
@@ -221,7 +216,7 @@ static void page_draw(const struct rv_gfx *g, int width, int height)
     g->fill(&all, g->color(RV_COLOR_BACKGROUND));
     if (!page || !listed)
         return;
-    const struct core_installed *e = &listed->installed[page->index];
+    const struct core_installed *e = &listed[page->index];
     struct rv_extension_record *record = core_loader_find(e->owner);
     char text[64];
 
@@ -257,7 +252,7 @@ static int page_input(const struct rv_input *input)
     if (!page || !listed || input->key != RV_KEY_CENTER)
         return 0; /* Menu pops the page; the other keys are the system's */
     if (input->kind == RV_INPUT_PRESS) {
-        const struct core_installed *e = &listed->installed[page->index];
+        const struct core_installed *e = &listed[page->index];
         core_loader_set_enabled(e->file, !enabled(core_loader_find(e->owner)));
         struct core_screen *list = core_screens_find(NULL, "core.extensions");
         if (list)
@@ -288,9 +283,11 @@ void core_extensions_closed(const struct core_screen *s)
     if (s->declaration == &screens[1] && page) {
         core_heap_free(NULL, page, sizeof *page);
         page = NULL;
-    } else if (s->declaration == &screens[0] && listed) {
-        core_heap_free(NULL, listed, sizeof *listed);
+    } else if (s->declaration == &screens[0]) {
+        core_heap_free(NULL, listed, listed_count * sizeof *listed);
         listed = NULL;
+        listed_count = 0;
+        listed_read = 0;
     }
 }
 
