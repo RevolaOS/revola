@@ -68,14 +68,17 @@ class RvxTests(unittest.TestCase):
                 "manifest": len(compiled),
                 "entries": 5,
                 "resident": 1,
+                "body_hash": rvx.fnv1a(packed[rvx.HEADER.size :]),
             },
         )
-        self.assertEqual(packed[28 : 28 + len(compiled)], compiled)
-        catalog = 28 + ((len(compiled) + 3) & ~3)
+        self.assertEqual(
+            packed[rvx.HEADER.size : rvx.HEADER.size + len(compiled)], compiled
+        )
+        catalog = rvx.HEADER.size + ((len(compiled) + 3) & ~3)
         first = catalog + 5 * 20
         self.assertEqual(
             [e["name"] for e in entries],
-            [rvx.fnv1a(n) for n in ("main", "dsp", "icon", "table", "song")],
+            [rvx.fnv1a(n.encode()) for n in ("main", "dsp", "icon", "table", "song")],
         )
         self.assertEqual(
             [e["resident"] for e in entries], [False, False, True, False, False]
@@ -103,6 +106,22 @@ class RvxTests(unittest.TestCase):
         self.assertEqual(rvx.payload(packed, icon), b"\x11" * 64)
         self.assertEqual(rvx.payload(packed, table), bytes(range(7)))
         self.assertEqual(len(packed), song["offset"] + 256)
+
+    def test_body_hash_tells_a_changed_build_of_the_same_size(self):
+        self.assertEqual(rvx.fnv1a(b""), 0x811C9DC5)
+        self.assertEqual(rvx.fnv1a(b"a"), 0xE40C292C)
+        compiled = manifest.compile_manifest(DOCUMENT)
+        before, _ = rvx.pack_extension(compiled, two_modules(), [], 0, 0)
+        main = rvx.module_image(
+            SYMBOLS, bytes([1]) + bytes(range(1, 0x48)), [0x44, 0x4C]
+        )
+        after, _ = rvx.pack_extension(
+            compiled, [("main", main), two_modules()[1]], [], 0, 0
+        )
+        old, new = rvx.unpack(before)[0], rvx.unpack(after)[0]
+        self.assertEqual(len(before), len(after))
+        self.assertNotEqual(old.pop("body_hash"), new.pop("body_hash"))
+        self.assertEqual(old, new)
 
     def test_module_count_must_match_the_manifest(self):
         compiled = manifest.compile_manifest(DOCUMENT)
@@ -137,7 +156,7 @@ class RvxTests(unittest.TestCase):
         packed, _ = rvx.pack_extension(
             compiled, two_modules(), [asset("icon", b"\x22" * 40, resident=True)], 0, 0
         )
-        catalog = 28 + ((len(compiled) + 3) & ~3)
+        catalog = rvx.HEADER.size + ((len(compiled) + 3) & ~3)
         icon = catalog + 2 * 20
 
         def entry_field(index, at, value):

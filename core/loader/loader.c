@@ -905,8 +905,10 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     record->failure = CORE_EXTENSION_BAD_MODULE;
     if (!open_extension(record->file, &handle, &file))
         return 0;
-    if (index == 0)
+    if (index == 0) {
         record->entry_count = file.entry_count;
+        record->body_hash = file.body_hash;
+    }
     int ok = (file.api >> 16) == RV_API_MAJOR && file.firmware == CORE_FIRMWARE_ID &&
              file.manifest_bytes == record->manifest_bytes &&
              file.entry_count == record->entry_count && file.entry_count <= MAX_ENTRIES &&
@@ -992,7 +994,10 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             registered = core_menus_register(record, descriptor->entries, descriptor->entry_count);
         if (registered != RV_OK) {
             unload_module(record, 0);
-            record->failure = CORE_EXTENSION_NO_MEMORY;
+            /* No id block left: retired blocks come back at the next boot. */
+            record->failure = !core_resource_block(record->owner) && core_resource_full()
+                                  ? CORE_EXTENSION_RESTART
+                                  : CORE_EXTENSION_NO_MEMORY;
             return 0;
         }
     }
@@ -1160,6 +1165,57 @@ static void pick(char names[][sizeof ((struct rv_extension_record *)0)->file], u
                 duplicate[i] = 1;
 }
 
+/* The body hash in the header of `file`, 0 when it cannot be opened. */
+static uint32_t body_hash_of(const char *file)
+{
+    void *handle;
+    struct rvx_header header;
+    if (!open_extension(file, &handle, &header))
+        return 0;
+    core_file_close(handle);
+    return header.body_hash;
+}
+
+/* The host may have added, removed or replaced files. Unloads every extension
+ * whose file is gone, lost to a duplicate or changed, then loads the enabled
+ * files that have no record. A changed file loads into a new id block. */
+static void rescan(void)
+{
+    char names[MAX_EXTENSIONS][sizeof ((struct rv_extension_record *)0)->file];
+    uint8_t duplicate[MAX_EXTENSIONS];
+    uint32_t words[MANIFEST_MAX / 4];
+    uint32_t count = scan(names);
+    pick(names, count, duplicate, (uint8_t *)words);
+    for (struct rv_extension_record *r = core_extensions, *next; r; r = next) {
+        next = r->next;
+        uint32_t i = 0;
+        while (i < count && !same_name(names[i], r->file))
+            i++;
+        int changed = i < count && body_hash_of(r->file) != r->body_hash;
+        /* A full list may have left the file out; only a seen file unloads. */
+        int gone = i == count && count < MAX_EXTENSIONS;
+        if (!gone && (i == count || !duplicate[i]) && !changed)
+            continue;
+        uint32_t owner = r->owner;
+        unload_extension(r);
+        if (changed)
+            core_resource_retire(owner);
+    }
+    for (uint32_t i = 0; i < count; i++)
+        if (!duplicate[i] && !find_file(names[i]))
+            load_extension(names[i]);
+}
+
+/* Disk mode ended: rescan before the main menu comes back. */
+static uint32_t disk_mode_exit(const struct core_next *next)
+{
+    rescan();
+    return core_next_call(next, 0, 0, 0, 0);
+}
+
+static const struct core_hook disk_mode_exit_hook = {
+    CORE_SITE_DiskModeExit_PopToMainScreen_call, CORE_HOOK_FILTER, 0, disk_mode_exit};
+
 void core_loader_boot(void)
 {
     uint32_t crashed = CORE_CRASH_SCRATCH;
@@ -1181,6 +1237,7 @@ void core_loader_boot(void)
     for (uint32_t i = 0; i < count; i++)
         if (!duplicate[i])
             load_extension(names[i]);
+    core_hook_bind(&disk_mode_exit_hook);
 }
 
 int core_loader_set_enabled(const char *file, int enabled)

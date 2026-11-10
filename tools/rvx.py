@@ -26,7 +26,7 @@ import manifest
 
 MAGIC = 0x30585652  # RVX0
 FORMAT = 1
-HEADER = struct.Struct("<7I")
+HEADER = struct.Struct("<8I")
 ENTRY = struct.Struct("<IBBBBIII")
 MODULE = struct.Struct("<5I")
 HEADER_FIELDS = (
@@ -37,6 +37,7 @@ HEADER_FIELDS = (
     "manifest",
     "entries",
     "resident",
+    "body_hash",
 )
 ENTRY_FIELDS = (
     "name",
@@ -80,10 +81,12 @@ RELATIVE_RELOCATIONS = {
 }
 
 
-def fnv1a(text):
-    """The catalog name of a module or asset; the core hashes the same way."""
+def fnv1a(data):
+    """FNV-1a: catalog names (the core hashes them the same way) and the
+    header's body hash, which the core compares to tell a replaced file from
+    the one it loaded."""
     value = 2166136261
-    for byte in text.encode():
+    for byte in data:
         value = (value ^ byte) * 16777619 & 0xFFFFFFFF
     return value
 
@@ -344,7 +347,7 @@ def pack_extension(compiled, modules, assets, api, firmware):
         )
     seen = {}
     for entry in entries:
-        other = seen.setdefault(fnv1a(entry["name"]), entry)
+        other = seen.setdefault(fnv1a(entry["name"].encode()), entry)
         if other is not entry:
             raise ValueError(
                 f"{entry['name']!r} and {other['name']!r} have the same catalog name"
@@ -361,12 +364,9 @@ def pack_extension(compiled, modules, assets, api, firmware):
     for index in order:
         entries[index]["offset"] = offset
         offset += len(padded(entries[index]["stored"]))
-    header = HEADER.pack(
-        MAGIC, FORMAT, api, firmware, len(compiled), len(entries), resident
-    )
     catalog = b"".join(
         ENTRY.pack(
-            fnv1a(e["name"]),
+            fnv1a(e["name"].encode()),
             e["kind"],
             e["codec"],
             0,
@@ -378,7 +378,18 @@ def pack_extension(compiled, modules, assets, api, firmware):
         for e in entries
     )
     payloads = b"".join(padded(entries[index]["stored"]) for index in order)
-    return header + padded(compiled) + catalog + payloads, entries
+    body = padded(compiled) + catalog + payloads
+    header = HEADER.pack(
+        MAGIC,
+        FORMAT,
+        api,
+        firmware,
+        len(compiled),
+        len(entries),
+        resident,
+        fnv1a(body),
+    )
+    return header + body, entries
 
 
 def unpack(data):

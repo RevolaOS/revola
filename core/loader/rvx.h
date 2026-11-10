@@ -31,6 +31,7 @@ struct rvx_header {
     uint32_t manifest_bytes;
     uint32_t entry_count;
     uint32_t resident_count;
+    uint32_t body_hash; /* FNV-1a of every byte after the header: manifest, catalog, payloads */
 };
 
 enum { RVX_MODULE, RVX_DATA, RVX_BITMAP };
@@ -61,6 +62,6 @@ struct rvx_module {
     uint32_t entry; /* image offset, bit 0 set for Thumb */
 };
 
-_Static_assert(sizeof(struct rvx_header) == 28, "rvx header layout");
+_Static_assert(sizeof(struct rvx_header) == 32, "rvx header layout");
 _Static_assert(sizeof(struct rvx_entry) == 20, "rvx entry layout");
 _Static_assert(sizeof(struct rvx_module) == 20, "rvx module layout");

@@ -73,6 +73,12 @@ uint32_t core_resource_take(uint32_t owner, uint32_t count);
  * screen. ITEM tables stay: a list view keeps the table it last showed until
  * another is bound. */
 void core_resource_release(uint32_t owner, int remove);
+/* After the release: the owner's next load takes a new block, so nothing Apple
+ * keeps by id from the old one (ITEM tables, a built SCST) reaches a changed
+ * extension. The old ids are never given out again this boot. */
+void core_resource_retire(uint32_t owner);
+/* 1 when every block is held. */
+int core_resource_full(void);
 /* Grace point: finishes releases that had to wait. */
 void core_resource_tick(void);
 void core_resources_init(void *bank);

@@ -26,6 +26,7 @@ enum core_extension_failure {
     CORE_EXTENSION_NO_DESCRIPTOR,
     CORE_EXTENSION_UNUSED, /* keeps the later values; nothing sets it */
     CORE_EXTENSION_SITE_MISMATCH, /* a raw site's word differs; conflict_site names it */
+    CORE_EXTENSION_RESTART,       /* every id block is taken until the next boot */
 };
 
 /* One per enabled extension found at boot or enabled since, heap-allocated. */
@@ -54,6 +55,7 @@ struct rv_extension_record {
     struct rvx_entry *resident;
     uint32_t resident_count;
     uint32_t entry_count; /* catalog entries in the file */
+    uint32_t body_hash; /* the header's, read when the main module loaded */
 };
 
 /* Reads the store state and loads every enabled extension. Runs once the disk

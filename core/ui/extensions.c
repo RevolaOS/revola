@@ -58,6 +58,8 @@ static const char *state_text(const struct core_installed *e)
         return "No memory";
     case CORE_EXTENSION_SITE_MISMATCH:
         return "Site mismatch";
+    case CORE_EXTENSION_RESTART:
+        return "Restart needed";
     default:
         return "Failed";
     }
@@ -184,6 +186,8 @@ static const char *problem(const struct core_installed *e, const struct rv_exten
         return "Not enough memory to run";
     case CORE_EXTENSION_SITE_MISMATCH:
         return "Not made for this firmware";
+    case CORE_EXTENSION_RESTART:
+        return "Runs after the next restart";
     default:
         return "Could not be loaded";
     }

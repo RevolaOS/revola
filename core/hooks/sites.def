@@ -210,6 +210,11 @@ SITE(USB_DispatchNoDataRequest_call, SITE_USB_DispatchNoDataRequest_call, CALL,
  * answers medium not present instead of starting disk mode. */
 SITE(DiskClient_Yield_slot, SITE_DiskClient_Yield_slot, VTABLE, ADDR_DiskClient_Yield,
      ADDR_DiskClient_Yield, 0, 0, 1, 0)
+/* USB disk mode has ended and the volume is readable again: App_ExitDiskMode
+ * returns to the main menu, on the UI task. No arguments. */
+SITE(DiskModeExit_PopToMainScreen_call, SITE_DiskModeExit_PopToMainScreen_call, CALL,
+     ADDR_Navigator_PopToMainScreen,
+     BL(SITE_DiskModeExit_PopToMainScreen_call, ADDR_Navigator_PopToMainScreen), 0, 1, 0, 0)
 /* Every IRQ, in IRAM: (frame) with the interrupted task's registers; returns the
  * stack to resume. Patched at boot with IRQs off; no IRQ handler runs then. */
 SITE(IRQ_Dispatch_entry, SITE_IRQ_Dispatch_entry, ENTRY, REPLAY(IRQ_Dispatch_entry),

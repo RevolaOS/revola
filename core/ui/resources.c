@@ -144,7 +144,11 @@ uint32_t core_resource_owner(const struct rv_extension_record *owner)
     return owner ? owner->owner : 0;
 }
 
-#define MAX_BLOCKS 17 /* the core and at most 16 extensions */
+/* The core, 16 extensions, and spares for extensions installed or replaced
+ * since boot. */
+#define MAX_BLOCKS 25
+/* The owner of a retired block: no owner matches it, so its ids stay unused. */
+#define RETIRED 0xffffffffu
 
 /* Blocks in the order owners first take ids. An owner keeps its slot for the
  * boot, so it takes the same ids again when it loads again. */
@@ -307,6 +311,21 @@ void core_resource_release(uint32_t owner, int remove)
         return;
     blocks[slot].releasing = 1;
     clear(slot);
+}
+
+int core_resource_full(void)
+{
+    for (uint32_t i = 0; i < MAX_BLOCKS; i++)
+        if (!blocks[i].held)
+            return 0;
+    return 1;
+}
+
+void core_resource_retire(uint32_t owner)
+{
+    uint32_t slot = slot_of(owner);
+    if (slot < MAX_BLOCKS && owner)
+        blocks[slot].owner = RETIRED;
 }
 
 void core_resource_tick(void)
