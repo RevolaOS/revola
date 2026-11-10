@@ -637,10 +637,12 @@ static int valid_screen(const struct rv_screen *s)
         return 0;
     switch (s->kind) {
     case RV_SCREEN_KIND_LIST:
+        if (!s->list.rows && s->list.count)
+            return 0;
         for (uint32_t i = 0; i < s->list.count; i++)
             if (!valid_row(&s->list.rows[i]))
                 return 0;
-        return s->list.rows || !s->list.count;
+        return 1;
     case RV_SCREEN_KIND_CHOICE:
     case RV_SCREEN_KIND_SLIDER:
     case RV_SCREEN_KIND_MULTI_CHOICE:
@@ -661,7 +663,9 @@ static int valid_screen(const struct rv_screen *s)
  * screens and unload. */
 static int valid_descriptor(const struct rv_descriptor *d, uint32_t module)
 {
-    if (d->size != sizeof *d || (module && (d->setting_count || d->entry_count)))
+    if (d->size != sizeof *d || (module && (d->setting_count || d->entry_count)) ||
+        (!d->hooks && d->hook_count) || (!d->settings && d->setting_count) ||
+        (!d->screens && d->screen_count) || (!d->entries && d->entry_count))
         return 0;
     for (uint32_t i = 0; i < d->hook_count; i++)
         if (d->hooks[i].mode > RV_HOOK_MODE_REPLACE || d->hooks[i].reserved)
