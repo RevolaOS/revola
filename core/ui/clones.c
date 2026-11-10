@@ -141,7 +141,15 @@ int core_clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scr
             uint8_t *words = (uint8_t *)instance.data;
             uint32_t template = core_word_at(words, SsinInstance_template);
             if (c->drop && template == c->drop) {
-                put_word(words + SsinInstance_template, 0); /* skipped when displayed */
+                /* Removed, not zeroed: leaving a layout calls each old instance's
+                 * template unchecked, and template 0 resolves to none. */
+                uint8_t *from = words + ((instance.bytes + 3) & ~3u), *to = words - 8;
+                uint8_t *end = ssin_copy + ssin_bytes;
+                ssin_bytes -= (uint32_t)(from - to);
+                while (from < end)
+                    *to++ = *from++;
+                put_word(ssin_copy, core_blocks_count(ssin_copy) - 1);
+                n--;
                 continue;
             }
             uint32_t view_id = core_word_at(words, SsinInstance_view_bindings), vcvs_bytes;
