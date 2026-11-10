@@ -1017,17 +1017,14 @@ static void api_ui_invalidate_rect(rv_extension_handle self, const struct rv_rec
         core_screens_invalidate(record, rect);
 }
 
-#define WITH_RECORD(call)                                                                     \
-    struct rv_extension_record *record = valid_handle(self);                                  \
-    return record ? (call) : RV_BAD_ARGUMENT
-
 static int api_file_open(rv_extension_handle self, const char *name, int mode,
                          struct rv_file **file)
 {
     if (!file)
         return RV_BAD_ARGUMENT;
     *file = NULL;
-    WITH_RECORD(core_data_open(record, name, mode, file));
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_open(record, name, mode, file) : RV_BAD_ARGUMENT;
 }
 
 static int api_file_read(rv_extension_handle self, struct rv_file *file, void *out,
@@ -1036,18 +1033,21 @@ static int api_file_read(rv_extension_handle self, struct rv_file *file, void *o
     if (!got)
         return RV_BAD_ARGUMENT;
     *got = 0;
-    WITH_RECORD(core_data_read(record, file, out, bytes, got));
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_read(record, file, out, bytes, got) : RV_BAD_ARGUMENT;
 }
 
 static int api_file_write(rv_extension_handle self, struct rv_file *file, const void *data,
                           uint32_t bytes)
 {
-    WITH_RECORD(core_data_write(record, file, data, bytes));
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_write(record, file, data, bytes) : RV_BAD_ARGUMENT;
 }
 
 static int api_file_seek(rv_extension_handle self, struct rv_file *file, uint32_t offset)
 {
-    WITH_RECORD(core_data_seek(record, file, offset));
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_seek(record, file, offset) : RV_BAD_ARGUMENT;
 }
 
 static void api_file_close(rv_extension_handle self, struct rv_file *file)
@@ -1059,13 +1059,15 @@ static void api_file_close(rv_extension_handle self, struct rv_file *file)
 
 static int api_file_delete(rv_extension_handle self, const char *name)
 {
-    WITH_RECORD(core_data_delete(record, name));
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_delete(record, name) : RV_BAD_ARGUMENT;
 }
 
 static int api_folder_list(rv_extension_handle self, const char *name,
                            void (*each)(const char *entry, int is_folder, void *arg), void *arg)
 {
-    WITH_RECORD(core_data_list(record, name, each, arg));
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_list(record, name, each, arg) : RV_BAD_ARGUMENT;
 }
 
 static struct rv_timer *api_timer_start(rv_extension_handle self, uint32_t ms, int repeat,
