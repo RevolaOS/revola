@@ -17,7 +17,9 @@ static uint32_t seconds;
 static void tick(void *arg)
 {
     (void)arg;
+    uint32_t state = api->irq_save(); /* as a handoff to an audio handler would */
     seconds++;
+    api->irq_restore(state);
     static const struct rv_rect line = {0, 40, 320, 40}; /* the two text lines */
     api->ui_invalidate_rect(self, &line);
 }

@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 23
+#define RV_API_MINOR 24
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -486,6 +486,13 @@ struct rv_api {
     int (*file_delete)(rv_extension_handle self, const char *name);
     int (*folder_list)(rv_extension_handle self, const char *name,
                        void (*each)(const char *entry, int is_folder, void *arg), void *arg);
+
+    /* Masks IRQ and FIQ and returns the state before; irq_restore puts that
+     * state back. For a handoff to an interrupt or audio handler that must not
+     * see it half done, such as swapping a coefficient table; keep the masked
+     * stretch to a few instructions. Any task. */
+    uint32_t (*irq_save)(void);
+    void (*irq_restore)(uint32_t state);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its

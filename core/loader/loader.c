@@ -1105,6 +1105,8 @@ static const struct rv_api api = {
     .file_close = api_file_close,
     .file_delete = api_file_delete,
     .folder_list = api_folder_list,
+    .irq_save = core_irq_save,
+    .irq_restore = core_irq_restore,
 };
 
 /* Modules */
