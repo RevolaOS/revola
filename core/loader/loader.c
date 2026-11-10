@@ -17,6 +17,7 @@
  * once, and the block is freed two grace ticks later, when nothing can still be
  * inside it. */
 
+#include "loader/data.h"
 #include "loader/file.h"
 #include "loader/loader.h"
 #include "loader/lz.h"
@@ -1004,6 +1005,57 @@ static void api_ui_invalidate_rect(rv_extension_handle self, const struct rv_rec
         core_screens_invalidate(record, rect);
 }
 
+#define WITH_RECORD(call)                                                                     \
+    struct rv_extension_record *record = valid_handle(self);                                  \
+    return record ? (call) : RV_BAD_ARGUMENT
+
+static int api_file_open(rv_extension_handle self, const char *name, int mode,
+                         struct rv_file **file)
+{
+    if (!file)
+        return RV_BAD_ARGUMENT;
+    *file = NULL;
+    WITH_RECORD(core_data_open(record, name, mode, file));
+}
+
+static int api_file_read(rv_extension_handle self, struct rv_file *file, void *out,
+                         uint32_t bytes, uint32_t *got)
+{
+    if (!got)
+        return RV_BAD_ARGUMENT;
+    *got = 0;
+    WITH_RECORD(core_data_read(record, file, out, bytes, got));
+}
+
+static int api_file_write(rv_extension_handle self, struct rv_file *file, const void *data,
+                          uint32_t bytes)
+{
+    WITH_RECORD(core_data_write(record, file, data, bytes));
+}
+
+static int api_file_seek(rv_extension_handle self, struct rv_file *file, uint32_t offset)
+{
+    WITH_RECORD(core_data_seek(record, file, offset));
+}
+
+static void api_file_close(rv_extension_handle self, struct rv_file *file)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (record)
+        core_data_close(record, file);
+}
+
+static int api_file_delete(rv_extension_handle self, const char *name)
+{
+    WITH_RECORD(core_data_delete(record, name));
+}
+
+static int api_folder_list(rv_extension_handle self, const char *name,
+                           void (*each)(const char *entry, int is_folder, void *arg), void *arg)
+{
+    WITH_RECORD(core_data_list(record, name, each, arg));
+}
+
 static struct rv_timer *api_timer_start(rv_extension_handle self, uint32_t ms, int repeat,
                                         void (*callback)(void *arg), void *arg)
 {
@@ -1046,6 +1098,13 @@ static const struct rv_api api = {
     .timer_start = api_timer_start,
     .timer_stop = api_timer_stop,
     .ui_invalidate_rect = api_ui_invalidate_rect,
+    .file_open = api_file_open,
+    .file_read = api_file_read,
+    .file_write = api_file_write,
+    .file_seek = api_file_seek,
+    .file_close = api_file_close,
+    .file_delete = api_file_delete,
+    .folder_list = api_folder_list,
 };
 
 /* Modules */
@@ -1189,6 +1248,8 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
         descriptor->unload();
         core_panic_extension = 0;
     }
+    if (index == 0)
+        core_data_close_all(record);
     if (index == 0 && descriptor) {
         int parked = core_menus_release(record);
         core_screens_release(record);
@@ -1297,32 +1358,32 @@ static uint32_t stem_of(const char *name, uint8_t is_directory)
     return stem < sizeof ((struct found *)0)->file && same_name(name + stem, SUFFIX) ? stem : 0;
 }
 
+struct listing {
+    struct found *list;
+    uint32_t capacity;
+    uint32_t count;
+};
+
+static void list_file(const char *name, int is_folder, void *arg)
+{
+    struct listing *l = arg;
+    uint32_t stem = stem_of(name, (uint8_t)is_folder);
+    if (!stem)
+        return;
+    if (l->count < l->capacity) {
+        copy(l->list[l->count].file, name, stem);
+        l->list[l->count].file[stem] = 0;
+    }
+    l->count++;
+}
+
 /* Walks ROOT, copies the first `capacity` extension files into `list` and
  * returns how many it saw. */
 static uint32_t list_files(struct found *list, uint32_t capacity)
 {
-    uint32_t iterator_words[DirectoryIterator_bytes / 4];
-    uint32_t path_words[NativePath_bytes / 4];
-    struct DirectoryIterator *iterator = (struct DirectoryIterator *)iterator_words;
-    struct NativePath *path = (struct NativePath *)path_words;
-    uint8_t is_directory = 0;
-    uint32_t count = 0;
-    NativePath_InitEmpty(path);
-    DirectoryIterator_Init(iterator, ROOT, 0, 0);
-    while (DirectoryIterator_Next(iterator, path, &is_directory)) {
-        const char *name = NativeString_GetUtf8((struct NativeString *)path);
-        uint32_t stem = stem_of(name, is_directory);
-        if (!stem)
-            continue;
-        if (count < capacity) {
-            copy(list[count].file, name, stem);
-            list[count].file[stem] = 0;
-        }
-        count++;
-    }
-    DirectoryIterator_Destroy(iterator);
-    NativePath_Destroy(path);
-    return count;
+    struct listing l = {list, capacity, 0};
+    core_file_list(ROOT, list_file, &l);
+    return l.count;
 }
 
 /* The wheel interrupt keeps the physical button mask current in WheelState;

@@ -67,6 +67,48 @@ static const char *pane_caption(const struct rv_context *ctx)
     return text;
 }
 
+/* Files: write a note into the data folder, read it back and count what the
+ * folder holds. */
+static char file_seen[32] = "Files: not tried";
+static uint32_t folder_entries;
+
+static void count_entry(const char *entry, int is_folder, void *arg)
+{
+    (void)entry;
+    (void)is_folder;
+    (void)arg;
+    folder_entries++;
+}
+
+static void try_files(const struct rv_context *ctx)
+{
+    static const char note[] = "written by the showcase";
+    struct rv_file *file;
+    char back[8] = {0};
+    uint32_t got = 0;
+    (void)ctx;
+    api->file_delete(self, "notes/hello.txt"); /* writing does not truncate */
+    if (api->file_open(self, "notes/hello.txt", RV_FILE_WRITE, &file) == RV_OK) {
+        api->file_write(self, file, note, sizeof note - 1);
+        api->file_close(self, file);
+    }
+    if (api->file_open(self, "notes/hello.txt", RV_FILE_READ, &file) == RV_OK) {
+        api->file_seek(self, file, 11);
+        api->file_read(self, file, back, sizeof back - 1, &got);
+        api->file_close(self, file);
+    }
+    folder_entries = 0;
+    api->folder_list(self, "notes", count_entry, 0);
+    rv_format(file_seen, sizeof file_seen, "Files: %s, %lu in notes", got ? back : "failed",
+              folder_entries);
+}
+
+static const char *files_text(const struct rv_context *ctx)
+{
+    (void)ctx;
+    return file_seen;
+}
+
 static const char *context_text(const struct rv_context *ctx)
 {
     (void)ctx;
@@ -146,6 +188,8 @@ static const struct rv_row row_rows[] = {
     RV_ROW_INFO("Info", presses_text),
     RV_ROW_INFO("Changed", changed_text),
     RV_ROW_INFO("Context", context_text),
+    RV_ROW_ACTION("Action: try files", try_files),
+    RV_ROW_INFO("Files", files_text),
 };
 
 /* Screens. */

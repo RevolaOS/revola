@@ -38,6 +38,10 @@ Every UI callback (row actions and text, canvas draw and input, dynamic list row
 
 Declare settings in the descriptor and read them with `api->setting_int(self, key)`, which applies the declared fallback as the Settings rows do; `api->setting_set_int` clamps to the declared range, stores, redraws the rows that show the setting and calls the descriptor's `setting_changed(key)`. That callback also runs when the user changes a setting in a row, a choice or a slider, and once with `RV_SETTING_KEY_ALL` after Reset All Settings emptied the store, so an extension that keeps a copy (DSP coefficients, a cached flag) refreshes it in one place. `setting_read` and `setting_write` move raw bytes, for strings and blobs. An entry's `.shown_by` names a declared bool setting: the row shows while it is on, and under Main and Music the Main Menu and Music Menu settings flip it.
 
+## Files
+
+Each extension has a data folder, `/Revola/Data/<id>/`. `api->file_open` opens a path inside it for reading or writing (writing creates the folders above it), `file_read`, `file_write`, `file_seek` and `file_close` work on the handle, `file_delete` removes a file and `folder_list` lists a folder. Paths cannot leave the folder, and the core closes what an extension left open when it unloads. Anything else on the disk is reached through Apple's file functions in the symbols header.
+
 ## Assets
 
 `[[asset]]` tables in `manifest.toml` put files into the `.rvx`: a `.png` becomes a bitmap, anything else data. Find them by name with `api->asset_load` (a decoded copy, freed with `api->free`) and `api->asset_read` (part of an asset stored with `compress = false`). Draw a bitmap with `RV_BITMAP("name")`.

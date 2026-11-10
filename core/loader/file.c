@@ -10,15 +10,43 @@ struct path {
     char text[258];
 };
 
+static void path_from(struct path *path, const char *text)
+{
+    path->volume = 0;
+    uint32_t i = 0;
+    for (; text[i] && i < sizeof path->text - 1; i++)
+        path->text[i] = text[i];
+    path->text[i] = 0;
+}
+
 int core_file_open(const char *text, int mode, void **handle)
 {
     struct path path;
-    path.volume = 0;
-    uint32_t i = 0;
-    for (; text[i] && i < sizeof path.text - 1; i++)
-        path.text[i] = text[i];
-    path.text[i] = 0;
+    path_from(&path, text);
     return File_OpenLegacyPath(&path, FORK_DATA, mode, handle) == 0;
+}
+
+int core_file_delete(const char *text)
+{
+    struct path path;
+    path_from(&path, text);
+    return File_DeleteLegacyPath(&path) == 0;
+}
+
+void core_file_list(const char *folder, void (*each)(const char *name, int is_folder, void *arg),
+                    void *arg)
+{
+    uint32_t iterator_words[DirectoryIterator_bytes / 4];
+    uint32_t path_words[NativePath_bytes / 4];
+    struct DirectoryIterator *iterator = (struct DirectoryIterator *)iterator_words;
+    struct NativePath *path = (struct NativePath *)path_words;
+    uint8_t is_folder = 0;
+    NativePath_InitEmpty(path);
+    DirectoryIterator_Init(iterator, folder, 0, 0);
+    while (DirectoryIterator_Next(iterator, path, &is_folder))
+        each(NativeString_GetUtf8((struct NativeString *)path), is_folder, arg);
+    DirectoryIterator_Destroy(iterator);
+    NativePath_Destroy(path);
 }
 
 int core_file_read(void *handle, void *buffer, uint32_t bytes, uint32_t *got)

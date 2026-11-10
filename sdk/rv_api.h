@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 22
+#define RV_API_MINOR 23
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -33,6 +33,9 @@
 /* The loader's record of the extension; passed back to every call. */
 typedef struct rv_extension_record *rv_extension_handle;
 struct rv_timer;
+struct rv_file;
+
+enum rv_file_mode { RV_FILE_READ = 1, RV_FILE_WRITE = 2 };
 
 enum rv_result {
     RV_OK,
@@ -464,6 +467,25 @@ struct rv_api {
     /* ui_invalidate for `rect` of the canvas, in its coordinates; the draw
      * callback runs as for ui_invalidate. */
     void (*ui_invalidate_rect)(rv_extension_handle self, const struct rv_rect *rect);
+
+    /* Files in the extension's data folder, /Revola/Data/<id>/. `name` is a
+     * path inside it ("presets/rock.bin") without "..". file_open with
+     * RV_FILE_WRITE creates the folders above it and a missing file; to
+     * replace a file, delete it first. file_read sets *got, short at the end.
+     * folder_list calls `each` for every entry of a folder ("" for the data
+     * folder), nothing when it is missing. The core closes what is still open
+     * when the extension unloads. RV_BAD_ARGUMENT for a bad name or handle,
+     * RV_NOT_FOUND when the file layer refuses. UI task. */
+    int (*file_open)(rv_extension_handle self, const char *name, int mode, struct rv_file **file);
+    int (*file_read)(rv_extension_handle self, struct rv_file *file, void *out, uint32_t bytes,
+                     uint32_t *got);
+    int (*file_write)(rv_extension_handle self, struct rv_file *file, const void *data,
+                      uint32_t bytes);
+    int (*file_seek)(rv_extension_handle self, struct rv_file *file, uint32_t offset);
+    void (*file_close)(rv_extension_handle self, struct rv_file *file);
+    int (*file_delete)(rv_extension_handle self, const char *name);
+    int (*folder_list)(rv_extension_handle self, const char *name,
+                       void (*each)(const char *entry, int is_folder, void *arg), void *arg);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its
