@@ -13,7 +13,7 @@ Headers, linker script, tools and Make include for building extensions against o
 | `rvx.lds` | module layout: linked at 0, text, rodata, data and bss in one segment |
 | `rvx-pack` | ELF to `.rvx` (Python 3.11+, needs the `arm-elf-eabi-` binutils) |
 | `manifest` | `manifest.toml` to `manifest.bin` |
-| `rv.mk` | Make include: set `ID`, `MODULES` and `<module>_SOURCES`, include it, run `make` |
+| `rv.mk` | Make include: set `ID`, `MODULES` and `<module>_SOURCES` (and `<module>_ARM_SOURCES`), include it, run `make` |
 
 A module exports `rvx_entry` (see `rv_entry_fn`). The main module returns a `struct rv_extension`; its hooks are bound in order and a conflict fails the load with the site named in Settings > Extensions. Install the output directory as `/Revola/Extensions/<id>/`.
 
@@ -36,3 +36,5 @@ Screen names are local to the extension; `api->ui_push(self, name)` opens one fr
 For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
 
 Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library; only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.
+
+Thumb is the default because it is denser, and RAM comes first. Use ARM in two cases. First, DSP and hot loops: the ARMv5TE multiply-accumulate and saturating instructions (SMULxy, SMLAxy, QADD) exist only in ARM state. Second, calls into Apple routines that return with `mov pc, lr`: such a return always lands in ARM state, so a Thumb caller crashes. The call must come from an ARM function and must not be a tail call. Mark single functions `RV_ARM`, or list whole files in `<module>_ARM_SOURCES`; those files are built with `-marm -fno-optimize-sibling-calls`.

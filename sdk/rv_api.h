@@ -15,6 +15,12 @@
 #define RV_API_MINOR 6
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
+/* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
+ * state and for calls into Apple routines that return with `mov pc, lr`; the
+ * call must not become a tail call, or the routine returns to the Thumb caller in
+ * ARM state. */
+#define RV_ARM __attribute__((target("arm"), noinline, optimize("no-optimize-sibling-calls")))
+
 /* The loader's record of the extension; passed back to every call. */
 typedef struct rv_extension_record *rv_handle;
 
@@ -245,6 +251,16 @@ struct rv_entry {
     const struct rv_bitmap *bitmap;
 };
 
+/* Where a debugger finds core state in memory. The record offsets are into the
+ * loader's per-extension record; `directory` is a NUL-terminated name of at most
+ * 32 bytes, `failure` a byte, the others words. */
+struct rv_debug_info {
+    uint32_t core_build;  /* the core's git revision, 8 hex digits */
+    const void *extensions; /* address of the pointer to the first record */
+    uint16_t next, owner, directory, live, peak, failure;
+    const void *heap;     /* Apple's MainHeap */
+};
+
 /* Returned by the module entry; everything it points to lives as long as the
  * module is loaded. */
 struct rv_extension {
@@ -303,6 +319,8 @@ struct rv_api {
     void (*ui_pop)(rv_handle self);
     void (*ui_refresh)(rv_handle self, const char *screen);
     void (*ui_invalidate)(rv_handle self);
+
+    const struct rv_debug_info *(*debug_info)(void);
 };
 
 /* Every module exports this. The entry of the main module returns the

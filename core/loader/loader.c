@@ -501,6 +501,25 @@ static void api_ui_invalidate(rv_handle self)
         core_screens_invalidate();
 }
 
+static struct rv_debug_info debug = {
+    CORE_BUILD_ID,
+    &core_extensions,
+    offsetof(struct rv_extension_record, next),
+    offsetof(struct rv_extension_record, owner),
+    offsetof(struct rv_extension_record, directory),
+    offsetof(struct rv_extension_record, live),
+    offsetof(struct rv_extension_record, peak),
+    offsetof(struct rv_extension_record, failure),
+    0,
+};
+
+/* MainHeap is set while Apple boots, after this table is linked. */
+static const struct rv_debug_info *api_debug_info(void)
+{
+    debug.heap = MainHeap;
+    return &debug;
+}
+
 const char *core_loader_last_log;
 
 static void api_log(rv_handle self, const char *line)
@@ -515,6 +534,7 @@ static const struct rv_api api = {
     api_alloc,            api_free,           api_module_load,    api_module_unload,
     api_container_declare, api_container_release, api_log,
     api_ui_push,          api_ui_pop,            api_ui_refresh,     api_ui_invalidate,
+    api_debug_info,
 };
 
 /* Modules */

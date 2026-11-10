@@ -69,11 +69,12 @@ def assemble(config, files, out, inputs, nor=None):
         image.replace(out)
 
 
-def build_osos(config, out, inputs, version, recipe_only=False, selftest=False):
+def build_osos(config, out, inputs, build, recipe_only=False, selftest=False):
     print("Building core recipe...", flush=True)
     fingerprint = firmware.load()["inputs"]["osos.bin"]
     defines = [
-        '-DCORE_VERSION="' + version + '"',
+        '-DCORE_VERSION="' + build["version"] + '"',
+        f"-DCORE_BUILD_ID=0x{build['revision'][:8]}u",
         f"-DCORE_FIRMWARE_ID={firmware.build_id():#010x}u",
     ]
     if selftest:
@@ -308,12 +309,11 @@ def main():
         parser.error(str(error))
     config = BuildConfig(ROOT / ".build", prefix, args.jobs, args.assembler)
     if args.target in ("all", "osos", "osos-recipe"):
-        version = identity(ROOT, args.tag)["version"]
         build_osos(
             config,
             out,
             args.inputs,
-            version,
+            identity(ROOT, args.tag),
             args.target == "osos-recipe",
             args.selftest,
         )
