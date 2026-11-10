@@ -195,6 +195,32 @@ SITE(ITunesDB_ImportTrackDataset_call, SITE_ITunesDB_ImportTrackDataset_call, CA
      ADDR_ITunesDB_ImportTrackDataset,
      BL(SITE_ITunesDB_ImportTrackDataset_call, ADDR_ITunesDB_ImportTrackDataset), 0, 1, 1, 0)
 
+/* EP0 vendor device-to-host requests (bmRequestType 0xC0), on USBDeviceTask:
+ * (usb, &length) with the host's wLength in length; returns the data, the length
+ * written back, or 0 to stall. Apple answers only bRequest 0x40. */
+SITE(USB_HandleVendorDeviceRead_call, SITE_USB_HandleVendorDeviceRead_call, CALL,
+     ADDR_USB_HandleVendorDeviceRead,
+     BL(SITE_USB_HandleVendorDeviceRead_call, ADDR_USB_HandleVendorDeviceRead), 0, 1, 2, 0)
+/* EP0 requests without a data stage, on USBDeviceTask: (usb); 0 stalls. */
+SITE(USB_DispatchNoDataRequest_call, SITE_USB_DispatchNoDataRequest_call, CALL,
+     ADDR_USB_DispatchNoDataRequest,
+     BL(SITE_USB_DispatchNoDataRequest_call, ADDR_USB_DispatchNoDataRequest), 0, 1, 1, 0)
+/* The OS disk client asked by the storage arbiter to give the volume to USB mass
+ * storage: (client), with the arbiter's mutex held; 0 keeps it, and SCSI then
+ * answers medium not present instead of starting disk mode. */
+SITE(DiskClient_Yield_slot, SITE_DiskClient_Yield_slot, VTABLE, ADDR_DiskClient_Yield,
+     ADDR_DiskClient_Yield, 0, 0, 1, 0)
+/* Every IRQ, in IRAM: (frame) with the interrupted task's registers; returns the
+ * stack to resume. Patched at boot with IRQs off; no IRQ handler runs then. */
+SITE(IRQ_Dispatch_entry, SITE_IRQ_Dispatch_entry, ENTRY, REPLAY(IRQ_Dispatch_entry),
+     0xe92d4010, 0xe1a04000, 1, 1, 0)
+/* One run of a text view's string: (view, text, argument). The two draw calls
+ * inside take stack arguments a call site cannot forward; the context
+ * (view + TextView_context) holds the clip and colour once it returns. Nothing
+ * is inside it while core_boot runs during UI start-up. */
+SITE(TextView_DrawString_entry, SITE_TextView_DrawString_entry, ENTRY,
+     REPLAY(TextView_DrawString_entry), 0xe92d40f0, 0xe1a04000, 1, 3, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */
