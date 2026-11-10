@@ -87,6 +87,16 @@ struct core_screen *core_screens_top_canvas(void);
 /* The controller whose row, choice or input callback is running; NULL outside
  * one. A split list opened from it takes its layout. */
 extern void *core_screens_caller;
+/* The item a context menu opened on (MediaItem_bytes, NULL for none) and the
+ * list's model row (-1 for none). */
+struct core_menu_origin {
+    const void *item;
+    int32_t row;
+};
+/* The menu whose row or action runs, NULL outside one. A screen pushed then
+ * keeps a copy as ctx->item and ctx->row until it closed, and so does one
+ * pushed above such a screen. */
+extern const struct core_menu_origin *core_screens_menu;
 /* Pops the top screen when `owner` declared it. */
 void core_screens_pop(struct rv_extension_record *owner);
 /* Redraws the canvas on top, or `rect` of it, when `owner` declared it. */
@@ -101,6 +111,8 @@ void core_screens_refresh(struct core_screen *screen);
 void core_screens_handler_name(char *out, uint32_t item);
 /* Runs the row behind a handler name; 0 when the name is not one. */
 uint32_t core_screens_action(void *controller, const char *name, uint32_t argument);
+/* 1 when `name` is the handler of a live context-menu row that opens a screen. */
+int core_screens_context_push(const char *name);
 /* The same as a filter on an action slot. */
 uint32_t core_screens_action_filter(uint32_t controller, uint32_t name, uint32_t argument,
                                     const struct core_next *next);

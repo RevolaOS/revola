@@ -162,6 +162,16 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
         return 0;
     if (argument == ActionSupportQuery)
         return 1;
+    /* A context menu's row hands its item and row to what it runs and opens. */
+    const struct rv_menu_entry *e = s ? NULL : core_menus_entry(found, &owner);
+    int context = e && e->menu >= RV_MENU_NOW_PLAYING_CONTEXT;
+    uint32_t media[MediaItem_bytes / 4];
+    struct core_menu_origin menu = {NULL, -1};
+    const struct core_menu_origin *outer = core_screens_menu;
+    if (context) {
+        menu.item = core_context_item(e->menu, controller, media, &menu.row);
+        core_screens_menu = &menu;
+    }
     core_screens_caller = controller;
     if (indexed) {
         core_indexed_chosen(s);
@@ -170,11 +180,13 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     }
     struct core_screen *target;
     switch (row->kind) {
-    case RV_ROW_KIND_PUSH:
+    case RV_ROW_KIND_PUSH: {
         target = core_loader_screen(owner, row->screen);
-        if (target)
-            core_screens_push(target, controller, NULL);
+        int pushed = target && core_screens_push(target, controller, NULL);
+        if (context)
+            core_context_pushed(controller, pushed);
         break;
+    }
     case RV_ROW_KIND_SETTING:
         target = core_screens_find_setting(owner, row->key);
         if (target) {
@@ -188,13 +200,13 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     case RV_ROW_KIND_ACTION:
         if (row->action) {
             struct rv_context ctx;
-            uint32_t media[MediaItem_bytes / 4];
             core_screens_context(s, &ctx);
             ctx.self = owner;
             ctx.controller = controller;
-            const struct rv_menu_entry *e = s ? NULL : core_menus_entry(found, &owner);
-            if (e)
-                ctx.item = core_context_item(e->menu, controller, media, &ctx.row);
+            if (context) {
+                ctx.item = menu.item;
+                ctx.row = menu.row;
+            }
             row->action(&ctx);
         }
         break;
@@ -202,7 +214,19 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
         break;
     }
     core_screens_caller = NULL;
+    core_screens_menu = outer;
     return 1;
+}
+
+int core_screens_context_push(const char *name)
+{
+    uint32_t item = parse_handler(name), found;
+    struct rv_extension_record *owner;
+    if (!item || core_screens_of_id(item))
+        return 0;
+    const struct rv_row *row = core_menus_row(item, &owner, &found);
+    const struct rv_menu_entry *e = row ? core_menus_entry(found, &owner) : NULL;
+    return e && e->menu >= RV_MENU_NOW_PLAYING_CONTEXT && row->kind == RV_ROW_KIND_PUSH;
 }
 
 uint32_t core_screens_action_filter(uint32_t controller, uint32_t name, uint32_t argument,

@@ -115,6 +115,21 @@ static const char *context_text(const struct rv_context *ctx)
     return context_seen;
 }
 
+/* A screen a context menu's row or action opens keeps the menu's item and
+ * row; one pushed above it keeps them too. */
+static const char *origin_text(const struct rv_context *ctx)
+{
+    static char text[32];
+    rv_format(text, sizeof text, "Row %ld, %s", (long)ctx->row, ctx->item ? "a song" : "no song");
+    return text;
+}
+
+static void push_origin(const struct rv_context *ctx)
+{
+    (void)ctx;
+    api->ui_push(self, "origin", 0);
+}
+
 /* Rows, and the screen calls an action may make: ui_push by id, ui_pop. */
 static void push_from_action(const struct rv_context *ctx)
 {
@@ -190,6 +205,11 @@ static const struct rv_row row_rows[] = {
     RV_ROW_INFO("Context", context_text),
     RV_ROW_ACTION("Action: try files", try_files),
     RV_ROW_INFO("Files", files_text),
+};
+
+static const struct rv_row origin_rows[] = {
+    RV_ROW_INFO("Opened on", origin_text),
+    RV_ROW_PUSH("Push", "origin"),
 };
 
 /* Screens. */
@@ -476,6 +496,7 @@ static const struct rv_screen screens[] = {
     RV_SCREEN_DYNAMIC_LIST("argument", "Argument", argument_count, argument_row, 0,
                            .dynamic.detail = RV_DETAIL_BELOW),
     RV_SCREEN_TEXT("entries", "Entries", entries_text),
+    RV_SCREEN_LIST("origin", "Context", origin_rows),
 };
 
 static const struct rv_menu_entry entries[] = {
@@ -486,6 +507,11 @@ static const struct rv_menu_entry entries[] = {
     RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .shown_by = KEY_IN_MUSIC),
     RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("UI Showcase", "menu")),
     RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
+    RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_PUSH("Show context", "origin")),
+    RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Push context", push_origin)),
+    RV_MENU_ENTRY(RV_MENU_SONG_CONTEXT, 0, RV_ROW_PUSH("Show context", "origin")),
+    RV_MENU_ENTRY(RV_MENU_ALBUM_CONTEXT, 0, RV_ROW_PUSH("Show context", "origin")),
+    RV_MENU_ENTRY(RV_MENU_ARTIST_CONTEXT, 0, RV_ROW_PUSH("Show context", "origin")),
     RV_MENU_ENTRY(RV_MENU_SONG_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up),
                   .available = even_row),
     RV_MENU_ENTRY(RV_MENU_ALBUM_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),

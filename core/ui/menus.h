@@ -49,5 +49,8 @@ void core_context_init(void);
 const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row);
 /* The list controller whose context menu opened last, NULL when none did. */
 void *core_context_list(void);
+/* After a context row that opens a screen ran on `controller`: when no screen
+ * was pushed, shows the layout the menu's hidden pop left behind again. */
+void core_context_pushed(void *controller, int pushed);
 
 #endif

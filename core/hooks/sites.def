@@ -117,6 +117,13 @@ CANCEL_APPEND(Artists)
 CANCEL_APPEND(Albums)
 #undef CANCEL_APPEND
 
+/* The chosen context-menu action against "HandleStartGenius": (action, expected).
+ * A 0 hides the menu's pop, so the screen the action pushes follows the menu
+ * with no frame of the screen underneath. */
+SITE(ContextMenu_ScreenActionCompare_call, SITE_ContextMenu_ScreenActionCompare_call, CALL,
+     ADDR_String_CompareCString,
+     BL(SITE_ContextMenu_ScreenActionCompare_call, ADDR_String_CompareCString), 0, 1, 2, 0)
+
 /* A controller is deactivated: (controller, leaving), leaving nonzero when it is
  * popped. The plain resource screen class and the Settings list class; every
  * controller of the class passes through, so handlers check the controller. */

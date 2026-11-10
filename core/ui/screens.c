@@ -26,6 +26,7 @@
 #define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
 void *core_screens_caller;
+const struct core_menu_origin *core_screens_menu;
 
 /* Navigation */
 
@@ -38,6 +39,7 @@ static struct {
     struct core_screen *screen;
     void *arg;        /* what ui_push passed */
     uint8_t selected; /* the first activation set its selection */
+    uint8_t origin;   /* 1 + its slot in origins, 0 for none */
 } open[MAX_OPEN];
 static uint32_t open_count;
 
@@ -49,7 +51,59 @@ static struct {
     void *controller;
     void *arg;
     uint8_t ticks; /* grace ticks it has waited */
+    uint8_t origin;
 } closing;
+
+/* What a screen opened from a context menu keeps of it for ctx->item and
+ * ctx->row. A slot stays put while its screen moves through open and closing,
+ * so ctx->item does not move under a callback. */
+static struct {
+    uint32_t item[MediaItem_bytes / 4];
+    int32_t row;
+    uint8_t used, has_item;
+} origins[MAX_OPEN + 1];
+
+/* A slot for a screen pushed on `controller`: the menu whose row runs, else
+ * what the screen underneath keeps; 0 for none. */
+static uint8_t origin_keep(void *controller)
+{
+    const struct core_menu_origin *menu = core_screens_menu;
+    struct core_menu_origin under;
+    for (uint32_t i = 0; !menu && i < open_count; i++)
+        if (open[i].controller == controller && open[i].origin) {
+            under.item = origins[open[i].origin - 1].has_item ? origins[open[i].origin - 1].item
+                                                              : NULL;
+            under.row = origins[open[i].origin - 1].row;
+            menu = &under;
+        }
+    if (!menu)
+        return 0;
+    for (uint32_t n = 0; n < sizeof origins / sizeof origins[0]; n++) {
+        if (origins[n].used)
+            continue;
+        origins[n].used = 1;
+        origins[n].has_item = menu->item != NULL;
+        origins[n].row = menu->row;
+        for (uint32_t w = 0; menu->item && w < MediaItem_bytes / 4; w++)
+            origins[n].item[w] = ((const uint32_t *)menu->item)[w];
+        return (uint8_t)(n + 1);
+    }
+    return 0;
+}
+
+static void origin_into(uint8_t origin, struct rv_context *ctx)
+{
+    if (!origin)
+        return;
+    ctx->item = origins[origin - 1].has_item ? origins[origin - 1].item : NULL;
+    ctx->row = origins[origin - 1].row;
+}
+
+static void origin_release(uint8_t origin)
+{
+    if (origin)
+        origins[origin - 1].used = 0;
+}
 
 void core_screens_context(const struct core_screen *s, struct rv_context *ctx)
 {
@@ -62,11 +116,13 @@ void core_screens_context(const struct core_screen *s, struct rv_context *ctx)
         if (open[i].screen == s) {
             ctx->controller = open[i].controller;
             ctx->arg = open[i].arg;
+            origin_into(open[i].origin, ctx);
             return;
         }
     if (s && closing.screen == s) {
         ctx->controller = closing.controller;
         ctx->arg = closing.arg;
+        origin_into(closing.origin, ctx);
     }
 }
 
@@ -87,13 +143,17 @@ const char *core_row_label(const struct rv_row *row, struct rv_extension_record 
 void core_screens_closed(void)
 {
     struct core_screen *s = closing.screen;
+    uint8_t origin = closing.origin;
     closing.screen = NULL;
+    closing.origin = 0;
     if (s && s == popped_canvas)
         popped_canvas = NULL; /* its callbacks may have freed what it draws with */
-    if (!s || !s->declaration || !s->declaration->closed)
-        return;
-    struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1};
-    s->declaration->closed(&ctx);
+    if (s && s->declaration && s->declaration->closed) {
+        struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1};
+        origin_into(origin, &ctx);
+        s->declaration->closed(&ctx);
+    }
+    origin_release(origin);
 }
 
 void core_screens_tick(void)
@@ -199,16 +259,20 @@ static void screen_left(void *controller)
             continue;
         struct core_screen *s = open[i].screen;
         void *arg = open[i].arg;
+        uint8_t origin = open[i].origin;
         open_count--;
         for (uint32_t j = i; j < open_count; j++)
             open[j] = open[j + 1];
-        if (!s)
+        if (!s) {
+            origin_release(origin);
             return;
+        }
         core_screens_closed(); /* an earlier one still waiting */
         closing.screen = s;
         closing.controller = controller;
         closing.arg = arg;
         closing.ticks = 0;
+        closing.origin = origin;
         if (s->open)
             s->open--;
         if (!s->open)
@@ -351,6 +415,7 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
     open[open_count].screen = s;
     open[open_count].arg = arg;
     open[open_count].selected = 0;
+    open[open_count].origin = origin_keep(controller);
     open_count++;
     s->open++;
     if (s->owner)
@@ -360,6 +425,7 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
     push(controller, created);
     if (s->declaration->opened) {
         struct rv_context ctx = {s->owner, created, arg, NULL, -1};
+        origin_into(open[open_count - 1].origin, &ctx);
         s->declaration->opened(&ctx);
     }
     return 1;

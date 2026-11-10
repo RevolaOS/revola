@@ -4,7 +4,9 @@
  * menus are built on each open, so a row is appended before the Cancel row at
  * the menu's append site; the label is a string resource and the action the
  * row's handler name, both referenced by Apple while the menu is open. The
- * screens' action slots run the handler. */
+ * screens' action slots run the handler. A row that opens a screen hides the
+ * menu's pop, as Apple's View Album does, so no frame of the screen underneath
+ * shows between the two. */
 
 #include "ui/menus.h"
 #include "osos-2.0.5.h"
@@ -70,25 +72,46 @@ const void *core_context_item(uint8_t menu, void *controller, void *item, int32_
     return FIELD(item, MediaItem_record, void *) && MediaItem_IsValid(item) ? item : NULL;
 }
 
-static uint8_t context_root(uint32_t site)
+/* The menu a Cancel append site builds, and the layout id and cache fields of
+ * the controller it opens on. */
+static const struct {
+    uint32_t site;
+    uint8_t menu;
+    uint16_t layout, cache;
+} sources[] = {
+    {CORE_SITE_SongList_CancelAppend_call, RV_MENU_SONG_CONTEXT, SongListController_layout,
+     SongListController_layout_cache},
+    {CORE_SITE_NestedPlaylists_CancelAppend_call, RV_MENU_SONG_CONTEXT,
+     NestedPlaylistsController_layout, NestedPlaylistsController_layout_cache},
+    {CORE_SITE_Genius_CancelAppend_call, RV_MENU_SONG_CONTEXT, GeniusController_layout,
+     GeniusController_layout_cache},
+    {CORE_SITE_NowPlaying_CancelAppend_call, RV_MENU_NOW_PLAYING_CONTEXT,
+     NowPlayingController_layout, NowPlayingController_layout_cache},
+    {CORE_SITE_Artists_CancelAppend_call, RV_MENU_ARTIST_CONTEXT, ArtistsController_layout,
+     ArtistsController_layout_cache},
+    {CORE_SITE_Albums_CancelAppend_call, RV_MENU_ALBUM_CONTEXT, AlbumsController_layout,
+     AlbumsController_layout_cache},
+};
+
+/* The source of the menu built last, and 1 between hiding its pop and the
+ * action that should push a screen. */
+static uint32_t menu_source;
+static uint8_t pop_hidden;
+
+static uint32_t source_of(uint32_t site)
 {
-    switch (site) {
-    case CORE_SITE_NowPlaying_CancelAppend_call:
-        return RV_MENU_NOW_PLAYING_CONTEXT;
-    case CORE_SITE_Artists_CancelAppend_call:
-        return RV_MENU_ARTIST_CONTEXT;
-    case CORE_SITE_Albums_CancelAppend_call:
-        return RV_MENU_ALBUM_CONTEXT;
-    default:
-        return RV_MENU_SONG_CONTEXT;
-    }
+    for (uint32_t i = 0; i < sizeof sources / sizeof sources[0]; i++)
+        if (sources[i].site == site)
+            return i;
+    return 0;
 }
 
 /* Appends the context rows of the menu being built, then the Cancel row. */
 static uint32_t context_rows(uint32_t items, uint32_t label, uint32_t action, uint32_t flags,
                              const struct core_next *next)
 {
-    uint8_t root = context_root(next->site);
+    menu_source = source_of(next->site);
+    uint8_t root = sources[menu_source].menu;
     uint32_t string;
     void *handler;
     /* Flags 1: an ordinary row whose action is dispatched to the controller;
@@ -97,6 +120,38 @@ static uint32_t context_rows(uint32_t items, uint32_t label, uint32_t action, ui
         if (string)
             ContextMenuItems_Append((void *)items, string, handler, 1);
     return core_next_call(next, items, label, action, flags);
+}
+
+/* Hides the menu's pop for a row that opens a screen; Apple's own actions
+ * compare as before. */
+static uint32_t screen_action(uint32_t action, uint32_t expected, const struct core_next *next)
+{
+    if (core_screens_context_push((const char *)action)) {
+        pop_hidden = 1;
+        return 0;
+    }
+    return core_next_call(next, action, expected, 0, 0);
+}
+
+void core_context_pushed(void *controller, int pushed)
+{
+    if (!pop_hidden)
+        return;
+    pop_hidden = 0;
+    if (pushed)
+        return;
+    /* Nothing follows the hidden pop: show the layout under the menu again,
+     * prepared as it was, without switching to it. A controller without
+     * layouts keeps the stock slot and has nothing to show. */
+    void *switch_layout =
+        FIELD(FIELD(controller, 0, void **), ScreenController_switch_layout_method, void *);
+    if (switch_layout == (void *)ADDR_ScreenController_SwitchLayoutDefault)
+        return;
+    void *layout = ControllerLayoutCache_GetOrInsert(
+        (uint8_t *)controller + sources[menu_source].cache,
+        FIELD(controller, sources[menu_source].layout, uint32_t));
+    if (layout)
+        UI_DisplayPreparedLayout(UI_GetLayoutManager(), layout);
 }
 
 static const struct core_hook hooks[] = {
@@ -115,6 +170,7 @@ static const struct core_hook hooks[] = {
     {CORE_SITE_NowPlaying_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
     {CORE_SITE_Artists_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
     {CORE_SITE_Albums_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
+    {CORE_SITE_ContextMenu_ScreenActionCompare_call, CORE_HOOK_FILTER, 5, screen_action},
 };
 
 void core_context_init(void)
