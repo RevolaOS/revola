@@ -91,6 +91,7 @@ void TrackData_ReleaseStringCaches(void *track_data);
 void TrackData_DestroyStorage(void *track_data);
 void *MediaBrowser_GetOwner(void *browser);
 struct MediaList *MediaBrowser_GetCurrentList(void *browser);
+int MediaBrowser_CreateRoot(void *system, void **out_browser);
 int MediaBrowser_CreateChild(void *owner, void **out);
 int MediaBrowser_EvaluateEntryFilters(void *browser, struct MediaEntry *entry, struct MediaList *list_override);
 int MediaBrowser_InvalidateEntryMatches(void *browser);
@@ -156,6 +157,12 @@ void App_PollDiskModeEntry(void *app);
 void App_EnterDiskMode(void *app);
 void App_ExitDiskMode(void *app);
 void System_PrepareDiskMode(void *system);
+void App_HandleDiskGranted(void *app);
+void App_HandleReloadTimer(void *app);
+void App_StartMusicLoading(void *app);
+void App_PollMusicLoading(void *app);
+void *MusicLoadingTask_Create(void *memory);
+int MusicLoadingTask_Run(void *task);
 void ResourceBank_InitOverrides(void *bank);
 void ResourceBank_SetResource(void *bank, uint32_t type, uint32_t id, const void *data, uint32_t bytes);
 void *ResourceBank_GetResource(void *bank, uint32_t type, uint32_t id, uint32_t *out_bytes);
@@ -194,6 +201,7 @@ void Runtime_ReportUncaughtException(int kind, const char *what);
 struct DirectoryIterator *DirectoryIterator_Init(struct DirectoryIterator *iterator, const char *path, uint8_t recursive, uint32_t volume);
 int DirectoryIterator_Next(struct DirectoryIterator *iterator, struct NativePath *path, uint8_t *is_directory);
 void DirectoryIterator_Destroy(struct DirectoryIterator *iterator);
+int Directory_CreateWithParents(const char *path, uint32_t volume);
 struct NativePath *NativePath_InitEmpty(struct NativePath *path);
 struct NativePath *NativePath_Destroy(struct NativePath *path);
 void *Thread_GetCurrentRecord(void);
@@ -340,6 +348,7 @@ extern uint8_t StorageArbiter[];
 extern uint8_t DiskClient[];
 extern void *const DiskClient_vtable[];
 extern void *const ScsiDiskClient_vtable[];
+extern void *const MusicLoadingTask_vtable[];
 extern void *App;
 extern uint8_t ResourceNameMap[];
 extern uint8_t IRQ_Nesting;
@@ -455,6 +464,7 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_TrackData_Destroy 0x0803e58c
 #define ADDR_MediaBrowser_GetOwner 0x08046ee0
 #define ADDR_MediaBrowser_GetCurrentList 0x08046e00
+#define ADDR_MediaBrowser_CreateRoot 0x0804d6e4
 #define ADDR_MediaBrowser_CreateChild 0x0804d80c
 #define ADDR_MediaBrowser_EvaluateEntryFilters 0x080d7a98
 #define ADDR_MediaBrowser_InvalidateEntryMatches 0x0804ec24
@@ -527,6 +537,12 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_App_ExitDiskMode 0x0810b5e0
 #define ADDR_System_PrepareDiskMode 0x0805df34
 #define ADDR_SystemUI_DispatchSystemEvent 0x0810acd0
+#define ADDR_App_HandleDiskGranted 0x08108bf0
+#define ADDR_App_HandleReloadTimer 0x081084d0
+#define ADDR_App_StartMusicLoading 0x0810b974
+#define ADDR_App_PollMusicLoading 0x0810a514
+#define ADDR_MusicLoadingTask_Create 0x081aec48
+#define ADDR_MusicLoadingTask_Run 0x081aec04
 #define ADDR_ResourceBank_InitOverrides 0x08111f00
 #define ADDR_ResourceBank_SetResource 0x08111e20
 #define ADDR_ResourceBank_GetResource 0x08111d74
@@ -576,6 +592,7 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_DirectoryIterator_Init 0x081e57dc
 #define ADDR_DirectoryIterator_Next 0x081e54e8
 #define ADDR_DirectoryIterator_Destroy 0x081e5928
+#define ADDR_Directory_CreateWithParents 0x08090840
 #define ADDR_NativePath_InitEmpty 0x0826fcc4
 #define ADDR_NativePath_Destroy 0x0826fcf4
 #define ADDR_Thread_Create 0x0804b4f4
@@ -757,6 +774,7 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_DiskClient 0x08a7e920
 #define ADDR_DiskClient_vtable 0x08996b78
 #define ADDR_ScsiDiskClient_vtable 0x0898c96c
+#define ADDR_MusicLoadingTask_vtable 0x08994174
 #define ADDR_App 0x089d2cb4
 #define ADDR_ResourceNameMap 0x08ae02c4
 #define ADDR_IRQ_Nesting 0x22008af4
@@ -830,6 +848,8 @@ extern void *const MenuListModel_vtable[];
 #define SITE_Preferences_FlushIfDirty_call 0x0806392c
 #define SITE_DiskClient_Yield_slot 0x08996ba0
 #define SITE_App_HandleUsbConnected_call 0x0810ad54
+#define SITE_MusicLoadingTask_Run_slot 0x0899417c
+#define SITE_DiskModeExit_PopToMainScreen_call 0x0810b65c
 #define SITE_ResourceBlockList_AppendBorrowedBlock_call 0x0817a88c
 #define SITE_ResourceBank_InitOverrides_call 0x081c7ea8
 #define SITE_ResourceBank_NextTemplate_call 0x081af75c
@@ -1107,7 +1127,7 @@ extern void *const MenuListModel_vtable[];
 #define MainHeap_total_bytes 0x4
 #define MainHeap_used_bytes 0x8
 #define App_disk_mode_requested 0x4cc
-#define App_usb_connected 0x4d2
+#define App_library_ready 0x4d2
 #define App_in_disk_mode 0x4d3
 #define StorageArbiter_active 0x10
 #define StorageArbiter_clients 0x14
