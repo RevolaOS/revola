@@ -28,7 +28,7 @@ struct core_screen {
 #define CORE_SCREEN_ROWS(s) ((s)->id + 8)
 
 /* Registers the descriptor's screens; RV_NO_MEMORY when the table or the
- * owner's id block is full, RV_CONFLICT when another owner holds the block. */
+ * owner's id block is full. */
 int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
                           uint32_t count);
 void core_screens_release(struct rv_extension_record *owner);

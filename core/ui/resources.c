@@ -143,47 +143,46 @@ uint32_t core_resource_owner(const struct rv_extension_record *owner)
     return owner ? owner->owner : 0;
 }
 
-uint32_t core_resource_block(uint32_t owner)
-{
-    return owner ? 0x0c000000u + (owner % 0xe000u) * CORE_RESOURCE_BLOCK_BYTES
-                 : CORE_RESOURCE_CORE_BLOCK;
-}
-
 #define MAX_BLOCKS 17 /* the core and at most 16 extensions */
 
+/* Blocks in the order owners first take ids; an owner keeps its block for the
+ * boot, so an extension loaded again finds its clones under the same ids. */
 static struct {
     uint32_t owner;
     uint32_t used;
 } blocks[MAX_BLOCKS];
 
-int core_resource_block_held(uint32_t owner)
+static uint32_t slot_of(uint32_t owner)
 {
-    uint32_t block = core_resource_block(owner);
     for (uint32_t i = 0; i < MAX_BLOCKS; i++)
-        if (blocks[i].used && blocks[i].owner != owner &&
-            core_resource_block(blocks[i].owner) == block)
-            return 1;
-    return 0;
+        if (blocks[i].used && blocks[i].owner == owner)
+            return i;
+    return MAX_BLOCKS;
+}
+
+static uint32_t base_of(uint32_t owner, uint32_t slot)
+{
+    return owner ? 0x0c000000u + slot * CORE_RESOURCE_BLOCK_BYTES : CORE_RESOURCE_CORE_BLOCK;
+}
+
+uint32_t core_resource_block(uint32_t owner)
+{
+    uint32_t slot = slot_of(owner);
+    return slot < MAX_BLOCKS ? base_of(owner, slot) : 0;
 }
 
 uint32_t core_resource_take(uint32_t owner, uint32_t count)
 {
-    uint32_t block = core_resource_block(owner), free = MAX_BLOCKS;
-    for (uint32_t i = 0; i < MAX_BLOCKS; i++) {
-        if (blocks[i].used == 0 && free == MAX_BLOCKS)
-            free = i;
-        if (blocks[i].used && core_resource_block(blocks[i].owner) == block) {
-            if (blocks[i].owner != owner || blocks[i].used + count > CORE_RESOURCE_BLOCK_BYTES)
-                return 0;
-            blocks[i].used += count;
-            return block + blocks[i].used - count;
-        }
-    }
-    if (free == MAX_BLOCKS || !count || count > CORE_RESOURCE_BLOCK_BYTES)
+    uint32_t slot = slot_of(owner);
+    if (slot == MAX_BLOCKS)
+        for (uint32_t i = 0; i < MAX_BLOCKS && slot == MAX_BLOCKS; i++)
+            if (!blocks[i].used)
+                slot = i;
+    if (slot == MAX_BLOCKS || !count || blocks[slot].used + count > CORE_RESOURCE_BLOCK_BYTES)
         return 0;
-    blocks[free].owner = owner;
-    blocks[free].used = count;
-    return block;
+    blocks[slot].owner = owner;
+    blocks[slot].used += count;
+    return base_of(owner, slot) + blocks[slot].used - count;
 }
 
 char *core_put_text(char *out, const char *end, const char *value)

@@ -48,23 +48,22 @@ void core_set_source(void *bank, uint32_t id, uint32_t property, uint32_t destin
 void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t second,
                       uint32_t destination);
 
-/* Resource ids: 256 per extension from its owner hash, below the core's block
- * and Apple's. Ids are taken for the whole boot; a block stays with the owner
- * hash that first took it, so a second extension hashing into it fails to load.
+/* Resource ids: a block per extension in the order extensions first take ids,
+ * below the core's block and Apple's. Ids are taken for the whole boot and an
+ * extension keeps its block when it loads again.
  * Every core-made id starts with CORE_RESOURCE_PREFIX; Apple's Settings
  * property ids do not, which lets a property filter bail out on one compare. */
 #define CORE_RESOURCE_PREFIX 0x0c
-#define CORE_RESOURCE_BLOCK_BYTES 0x100
+#define CORE_RESOURCE_BLOCK_BYTES 0x1000
 #define CORE_RESOURCE_CORE_BLOCK 0x0cf00100u /* the core's screens; About rows sit below */
 struct rv_extension_record;
 /* The key of an owner's block: its settings owner hash, 0 for the core. */
 uint32_t core_resource_owner(const struct rv_extension_record *owner);
+/* The first id of the owner's block, 0 before it took any. */
 uint32_t core_resource_block(uint32_t owner);
-/* `count` consecutive ids of the owner's block, 0 when the block is full or
- * held by another owner. */
+/* `count` consecutive ids of the owner's block, 0 when the block or the table
+ * of blocks is full. */
 uint32_t core_resource_take(uint32_t owner, uint32_t count);
-/* 1 when another owner hashes into the same block. */
-int core_resource_block_held(uint32_t owner);
 
 /* Decimal digits of `value` appended at `out`, bounded by `end`; returns the end. */
 char *core_put_number(char *out, const char *end, uint32_t value);

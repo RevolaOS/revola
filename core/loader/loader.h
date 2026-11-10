@@ -24,7 +24,7 @@ enum core_extension_failure {
     CORE_EXTENSION_CONFLICT,    /* a hook claim collided; conflict_site names the site */
     CORE_EXTENSION_BAD_SITE,    /* the module binds a site this core does not have */
     CORE_EXTENSION_NO_DESCRIPTOR,
-    CORE_EXTENSION_ID_COLLISION, /* its resource id block is held by another extension */
+    CORE_EXTENSION_UNUSED, /* keeps the later values; nothing sets it */
     CORE_EXTENSION_SITE_MISMATCH, /* a raw site's word differs; conflict_site names it */
 };
 

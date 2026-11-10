@@ -935,8 +935,7 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             registered = core_menus_register(record, descriptor->entries, descriptor->entry_count);
         if (registered != RV_OK) {
             unload_module(record, 0);
-            record->failure = registered == RV_CONFLICT ? CORE_EXTENSION_ID_COLLISION
-                                                        : CORE_EXTENSION_NO_MEMORY;
+            record->failure = CORE_EXTENSION_NO_MEMORY;
             return 0;
         }
         for (uint32_t i = 0; i < descriptor->container_count; i++)

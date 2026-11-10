@@ -169,7 +169,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         /* Item, title source, and for a Settings row its pane handler. */
         uint32_t item = core_resource_take(key, root == RV_ROOT_SETTINGS ? 3 : 2);
         if (!item)
-            return core_resource_block_held(key) ? RV_CONFLICT : RV_NO_MEMORY;
+            return RV_NO_MEMORY;
         r->owner = owner;
         r->entry = e;
         r->item = item;

@@ -63,7 +63,7 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
             return RV_NO_MEMORY;
         uint32_t id = core_resource_take(key, ids);
         if (!id)
-            return core_resource_block_held(key) ? RV_CONFLICT : RV_NO_MEMORY;
+            return RV_NO_MEMORY;
         s->owner = owner;
         s->declaration = d;
         s->name = name;
