@@ -100,9 +100,9 @@ void core_panes_store(uint32_t id, const void *data, uint32_t bytes, uint32_t st
 {
     uint32_t events_bytes;
     const void *events = stock(Resource_TEVT, stock_pane, &events_bytes);
-    ResourceBank_SetResource(bank, Resource_VLyt, id, data, bytes);
+    core_resource_set(Resource_VLyt, id, data, bytes);
     if (events) /* the layout's event tables are loaded by this id too */
-        ResourceBank_SetResource(bank, Resource_TEVT, id, events, events_bytes);
+        core_resource_set(Resource_TEVT, id, events, events_bytes);
 }
 
 /* The shared layout: the Legal row's layout with its pane replaced, listed in
@@ -125,10 +125,10 @@ static int build(void)
     int built = stock_pane != 0;
     if (built) {
         core_panes_store(PANE, scratch, w.at, core_panes_stock_layout(RES_SettingsMenus_Legal_Layout));
-        core_set_source(bank, CAPTION, CAPTION, SourceDestination_Title);
-        core_set_source(bank, DETAIL, DETAIL, SourceDestination_Title);
-        core_set_source(bank, ICON, ICON, SourceDestination_Title);
-        core_set_source(bank, BOX, BOX, SourceDestination_Title);
+        core_set_source(CAPTION, CAPTION, SourceDestination_Title);
+        core_set_source(DETAIL, DETAIL, SourceDestination_Title);
+        core_set_source(ICON, ICON, SourceDestination_Title);
+        core_set_source(BOX, BOX, SourceDestination_Title);
         uint32_t next = SSIN;
         struct layout_clone c = {RES_SettingsMenus_Legal_Layout, layout, 0, 0, 0,
                                  core_panes_stock_layout(RES_SettingsMenus_Legal_Layout), PANE,
@@ -136,7 +136,7 @@ static int build(void)
         built = core_clone_layout(&c, &next, scratch, scratch_bytes) && next <= PANE;
     }
     if (built) {
-        ResourceBank_SetResource(bank, Resource_SEVT, layout, events, events_bytes);
+        core_resource_set(Resource_SEVT, layout, events, events_bytes);
         /* The stock SLst with one more block, a copy of the Legal layout's. */
         w.at = 0;
         core_write_word(&w, core_blocks_count(slst) + 1);
@@ -145,7 +145,7 @@ static int build(void)
         uint32_t words[2] = {0, layout};
         core_write_copy(&w, entry, entry_bytes, words, 1);
         core_write_block_end(&w, begin);
-        ResourceBank_SetResource(bank, Resource_SLst, RES_SettingsMenu_Main_Screen, scratch, w.at);
+        core_resource_set(Resource_SLst, RES_SettingsMenu_Main_Screen, scratch, w.at);
         uint32_t name[CppString_bytes / 4], allocator = 0;
         CppString_InitBytes(name, core_panes_layout_name, sizeof core_panes_layout_name - 1,
                             &allocator);

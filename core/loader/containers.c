@@ -59,7 +59,7 @@ int core_containers_declare(struct rv_extension_record *owner, const struct rv_c
         slot++;
     if (slot == MAX_CONTAINERS)
         return RV_NO_MEMORY;
-    c = Heap_AllocateZeroed(sizeof *c);
+    c = core_heap_allocate(NULL, sizeof *c);
     if (!c)
         return RV_NO_MEMORY;
     c->id = id;
@@ -80,7 +80,7 @@ int core_containers_declare(struct rv_extension_record *owner, const struct rv_c
     if (core_screens_register(NULL, &c->screen, 1) != RV_OK ||
         core_menus_register(NULL, &c->entry, 1) != RV_OK) {
         core_screens_retire(&c->screen);
-        Heap_Free(c);
+        core_heap_free(NULL, c, sizeof *c);
         return RV_NO_MEMORY;
     }
     containers[slot] = c;
@@ -99,6 +99,6 @@ void core_containers_release(struct rv_extension_record *owner, const struct rv_
             containers[i] = NULL;
     core_menus_retire(&c->entry);
     core_screens_retire(&c->screen);
-    Heap_Free(c);
+    core_heap_free(NULL, c, sizeof *c);
     core_menus_changed();
 }

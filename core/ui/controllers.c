@@ -5,6 +5,7 @@
  * Copies are made on the first push that needs one and kept for the boot. */
 
 #include "ui/controllers.h"
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "hooks/sites.h"
 #include <stddef.h>
@@ -15,7 +16,7 @@ void **core_controller_vtable(void *const *vtable, uint32_t method, void *handle
                               void **original)
 {
     uint32_t words = (CxxVtable_prefix_bytes + ScreenController_vtable_bytes) / 4;
-    void **copy = Heap_AllocateZeroed(words * 4);
+    void **copy = core_heap_allocate(NULL, words * 4);
     if (!copy)
         return NULL;
     const uint8_t *from = (const uint8_t *)vtable - CxxVtable_prefix_bytes;

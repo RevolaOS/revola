@@ -4,8 +4,10 @@
  * (cards.c) with the memory used and free on the band, then a bar drawn from
  * the About screen's capacity pieces and a legend with each part's size. The
  * parts are Apple's heap use (mostly the music library), the playback cache
- * (the block cache, carved from the heap), the core, the extensions and the
- * free heap. Figures are read on every draw. */
+ * (the block cache, carved from the heap), the core (its image and the heap it
+ * holds, Apple's copies of its resources included), the extensions (likewise,
+ * for as long as they are loaded) and the free heap. Figures are read on every
+ * draw. */
 
 #include "ui/usage.h"
 #include "loader/loader.h"
@@ -76,11 +78,11 @@ static int rows_of(const void *bmap)
 static void measure_parts(uint32_t *bytes)
 {
     uint32_t used = heap_word(MainHeap_used_bytes);
-    bytes[CORE] = (uint32_t)(__core_end - __core_start);
+    bytes[CORE] = (uint32_t)(__core_end - __core_start) + core_heap_bytes;
     bytes[EXTENSIONS] = core_loader_total_bytes();
     /* Each block also has a 16-byte list node. */
     bytes[PLAYBACK] = BlockCache_GetTotalBlocks() * (BlockCache_GetBlockBytes() + 16);
-    uint32_t ours = bytes[EXTENSIONS] + bytes[PLAYBACK];
+    uint32_t ours = bytes[EXTENSIONS] + bytes[PLAYBACK] + core_heap_bytes;
     bytes[APPLE] = used > ours ? used - ours : 0;
     bytes[FREE] = heap_word(MainHeap_free_bytes);
 }

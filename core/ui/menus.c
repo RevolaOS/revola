@@ -55,6 +55,7 @@ static void *bank;
 struct parked {
     struct parked *next;
     uint32_t left;
+    uint32_t bytes;
     struct {
         uint32_t item;
         void *data;
@@ -63,7 +64,8 @@ struct parked {
 
 static struct parked *parked;
 
-static void *adopt(uint32_t item)
+/* The parked data of a row with this item id, counted to `owner` from now. */
+static void *adopt(uint32_t item, struct rv_extension_record *owner, uint32_t bytes)
 {
     for (struct parked **link = &parked; *link; link = &(*link)->next) {
         struct parked *p = *link;
@@ -74,8 +76,9 @@ static void *adopt(uint32_t item)
             p->rows[i] = p->rows[--p->left];
             if (!p->left) {
                 *link = p->next;
-                Heap_Free(p);
+                core_heap_free(NULL, p, p->bytes);
             }
+            core_heap_move(NULL, owner, bytes);
             return data;
         }
     }
@@ -183,10 +186,12 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
     }
     struct row_set *set = NULL;
     if (fresh) {
-        set = Heap_AllocateZeroed(sizeof *set + fresh * sizeof set->rows[0]);
+        uint32_t bytes = sizeof *set + fresh * sizeof set->rows[0];
+        set = core_heap_allocate(owner, bytes);
         if (!set)
             return RV_NO_MEMORY;
         set->key = key;
+        set->bytes = bytes;
         struct row_set **tail = &core_menu_sets;
         while (*tail)
             tail = &(*tail)->next;
@@ -218,28 +223,29 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->index = (uint8_t)n;
         r->stale = 0;
         r->container = root == CORE_ROOT_CONTAINER ? core_settings_owner(e->in) : 0;
-        r->data = adopt(item);
+        r->after = root < RV_ROOT_COUNT && roots[root].table ? e->after ? e->after
+                                                                    : roots[root].anchor
+                                                           : 0;
+        r->data = adopt(item, owner, CORE_ROW_DATA_BYTES(r));
         if (root < RV_ROOT_COUNT && !roots[root].table) {
-            r->after = 0;
             if (!r->data)
-                r->data = Heap_AllocateZeroed(11);
+                r->data = core_heap_allocate(owner, CORE_HANDLER_BYTES);
             if (!r->data)
                 return RV_NO_MEMORY;
             core_screens_handler_name(r->data, item);
             uint32_t n = 0;
             while (e->row.label[n])
                 n++;
-            ResourceBank_SetResource(bank, Resource_String, item + 1, e->row.label, n + 1);
+            core_resource_set(Resource_String, item + 1, e->row.label, n + 1);
             continue;
         }
-        r->after = root == CORE_ROOT_CONTAINER ? 0 : e->after ? e->after : roots[root].anchor;
         if (root == RV_ROOT_SETTINGS)
             core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
         if (e->row.kind == RV_ROW_TOGGLE || e->row.kind == RV_ROW_SETTING)
-            core_set_source2(bank, item + 1, item, item + 1, SourceDestination_InlineValue);
+            core_set_source2(item + 1, item, item + 1, SourceDestination_InlineValue);
         else
-            core_set_source(bank, item + 1, item, 1);
+            core_set_source(item + 1, item, 1);
         apply_visibility(r);
     }
     core_menus_changed();
@@ -259,14 +265,27 @@ int core_menus_release(struct rv_extension_record *owner)
     for (struct row_set *set = core_menu_sets; set; set = set->next)
         for (uint32_t i = 0; set->key == key && i < set->count; i++)
             held += set->rows[i].data != NULL;
-    struct parked *p = held ? Heap_AllocateZeroed(sizeof *p + held * sizeof p->rows[0]) : NULL;
+    uint32_t bytes = sizeof(struct parked) + held * sizeof parked->rows[0];
+    struct parked *p = held ? core_heap_allocate(NULL, bytes) : NULL;
     if (held && !p) {
-        EACH_ROW(r)
-            if (r->entry && r->owner == owner)
-                hide(r);
+        /* The rows stay as stale records, counted to the core. */
+        for (struct row_set *set = core_menu_sets; set; set = set->next) {
+            if (set->key != key)
+                continue;
+            core_heap_move(owner, NULL, set->bytes);
+            for (uint32_t i = 0; i < set->count; i++) {
+                struct row *r = &set->rows[i];
+                if (r->data)
+                    core_heap_move(owner, NULL, CORE_ROW_DATA_BYTES(r));
+                if (r->entry)
+                    hide(r);
+            }
+        }
         core_menus_changed();
         return 0;
     }
+    if (p)
+        p->bytes = bytes;
     for (struct row_set **link = &core_menu_sets; *link;) {
         struct row_set *set = *link;
         if (set->key != key) {
@@ -280,10 +299,11 @@ int core_menus_release(struct rv_extension_record *owner)
             if (r->data) {
                 p->rows[p->left].item = r->item;
                 p->rows[p->left++].data = r->data;
+                core_heap_move(owner, NULL, CORE_ROW_DATA_BYTES(r));
             }
         }
         *link = set->next;
-        Heap_Free(set);
+        core_heap_free(owner, set, set->bytes);
     }
     if (p) {
         p->next = parked;
@@ -416,7 +436,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
             continue;
         uint32_t *row = r->data;
         if (!row) {
-            row = Heap_AllocateZeroed(ROW_BYTES);
+            row = core_heap_allocate(r->owner, ROW_BYTES);
             if (!row)
                 continue;
             const uint32_t *from = (const uint32_t *)data;

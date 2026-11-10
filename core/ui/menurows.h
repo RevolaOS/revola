@@ -10,6 +10,11 @@
 #include "ui/menus.h"
 #include <stdint.h>
 
+#define CORE_ROW_BYTES 0x98
+#define CORE_HANDLER_BYTES 11
+/* The size of a row's data. */
+#define CORE_ROW_DATA_BYTES(r) ((r)->after ? CORE_ROW_BYTES : CORE_HANDLER_BYTES)
+
 /* The root of a row in a container rather than a menu. */
 #define CORE_ROOT_CONTAINER RV_ROOT_COUNT
 
@@ -21,7 +26,8 @@ struct row {
     uint32_t after;               /* the stock row it follows; 0 for a context menu or container */
     uint32_t container;           /* FNV-1a of the container it is in, for CORE_ROOT_CONTAINER */
     /* Heap, kept by Apple: the ROW_BYTES of a menu row, built when Apple builds
-     * the table, or the "Rv" handler name a context row's action points at. */
+     * the table, or the CORE_HANDLER_BYTES "Rv" handler name a context row's
+     * action points at. */
     void *data;
     uint8_t root;
     uint8_t index; /* the entry's index in its descriptor, its visibility bit */
@@ -35,6 +41,7 @@ struct row_set {
     struct row_set *next;
     uint32_t key; /* core_resource_owner of the owner */
     uint32_t count;
+    uint32_t bytes;
     struct row rows[];
 };
 

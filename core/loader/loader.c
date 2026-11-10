@@ -148,6 +148,48 @@ static int same_name(const char *a, const char *b)
     }
 }
 
+uint32_t core_heap_bytes;
+
+void core_loader_charge(struct rv_extension_record *owner, int32_t bytes)
+{
+    if (!owner) {
+        core_heap_bytes += (uint32_t)bytes;
+        return;
+    }
+    owner->live += (uint32_t)bytes;
+    if (owner->live > owner->peak)
+        owner->peak = owner->live;
+}
+
+uint32_t core_heap_cost(uint32_t bytes)
+{
+    uint32_t block = (((bytes + 3) & ~3u) + 8 + 7) & ~7u;
+    return block < 16 ? 16 : block;
+}
+
+void *core_heap_allocate(struct rv_extension_record *owner, uint32_t bytes)
+{
+    void *memory = Heap_AllocateZeroed(bytes);
+    if (memory)
+        core_loader_charge(owner, (int32_t)core_heap_cost(bytes));
+    return memory;
+}
+
+void core_heap_free(struct rv_extension_record *owner, void *memory, uint32_t bytes)
+{
+    if (!memory)
+        return;
+    core_loader_charge(owner, -(int32_t)core_heap_cost(bytes));
+    Heap_Free(memory);
+}
+
+void core_heap_move(struct rv_extension_record *from, struct rv_extension_record *to,
+                    uint32_t bytes)
+{
+    core_loader_charge(from, -(int32_t)core_heap_cost(bytes));
+    core_loader_charge(to, (int32_t)core_heap_cost(bytes));
+}
+
 /* Owned allocation: an 8-byte header before the block, counted on the owner. */
 static void *allocate(struct rv_extension_record *owner, uint32_t bytes)
 {
@@ -156,11 +198,7 @@ static void *allocate(struct rv_extension_record *owner, uint32_t bytes)
         return NULL;
     block->owner = owner;
     block->bytes = bytes;
-    if (owner) {
-        owner->live += bytes;
-        if (owner->live > owner->peak)
-            owner->peak = owner->live;
-    }
+    core_loader_charge(owner, (int32_t)bytes);
     return block + 1;
 }
 
@@ -174,8 +212,7 @@ static void release(struct rv_extension_record *owner, void *memory)
     struct block *block = header_of(memory);
     if (block->owner != owner)
         return;
-    if (owner)
-        owner->live -= block->bytes;
+    core_loader_charge(owner, -(int32_t)block->bytes);
     Heap_Free(block);
 }
 
@@ -183,8 +220,7 @@ static void release(struct rv_extension_record *owner, void *memory)
 static void retire(void *memory)
 {
     struct block *block = header_of(memory);
-    if (block->owner)
-        block->owner->live -= block->bytes;
+    core_loader_charge(block->owner, -(int32_t)block->bytes);
     block->next = retiring;
     retiring = block;
 }
@@ -972,8 +1008,7 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
             release(record, record->setting_screens);
             record->setting_screens = NULL;
         }
-        if (parked)
-            core_resource_release(record->owner);
+        core_resource_release(record->owner, parked);
         for (uint32_t i = 0; i < descriptor->hook_count; i++)
             core_hook_unbind(&record->hooks[i]);
         retire(record->hooks);
@@ -1021,6 +1056,7 @@ static struct rv_extension_record *load_extension(const char *file)
     if (!record)
         return NULL;
     header_of(record)->owner = record;
+    core_loader_charge(NULL, -(int32_t)record_bytes);
     record->live = record->peak = record_bytes;
     record->owner = owner;
     record->module_count = (uint8_t)header->module_count;

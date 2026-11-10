@@ -17,6 +17,7 @@
  *
  * Adapted from RepriseOS perf/memory payload/artwork_thumbs.c (804e67e, f59dfdc). */
 
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
 #include "hooks/sites.h"
@@ -108,8 +109,7 @@ static struct duplicate *find(const uint32_t *order, int dbid, uint64_t value)
 
 static void forget_duplicates(void)
 {
-    if (duplicates)
-        Heap_Free(duplicates);
+    core_heap_free(NULL, duplicates, duplicate_capacity * (sizeof(struct duplicate) + 8));
     duplicates = NULL;
     by_id = by_dbid = NULL;
     duplicate_count = duplicate_capacity = 0;
@@ -125,13 +125,12 @@ static int grow_duplicates(void)
     uint32_t size = duplicate_capacity ? duplicate_capacity * 2 : INITIAL_DUPLICATES;
     if (size > 0xffffffffu / (sizeof(struct duplicate) + 8))
         return 0;
-    struct duplicate *table = Heap_AllocateZeroed(size * (sizeof(struct duplicate) + 8));
+    struct duplicate *table = core_heap_allocate(NULL, size * (sizeof(struct duplicate) + 8));
     if (!table)
         return 0;
     for (uint32_t i = 0; i < duplicate_count; i++)
         table[i] = duplicates[i];
-    if (duplicates)
-        Heap_Free(duplicates);
+    core_heap_free(NULL, duplicates, duplicate_capacity * (sizeof(struct duplicate) + 8));
     duplicates = table;
     by_id = (uint32_t *)(table + size);
     by_dbid = by_id + size;
@@ -226,8 +225,7 @@ static struct canonical *slot(struct canonical *table, uint32_t size, uint32_t h
 
 static void clear(void)
 {
-    if (entries)
-        Heap_Free(entries);
+    core_heap_free(NULL, entries, capacity * sizeof(*entries));
     entries = NULL;
     capacity = used = 0;
     active_db = last_kept = NULL;
@@ -241,15 +239,14 @@ static int grow(void)
     if (capacity > 0xffffffffu / 2 / sizeof(*entries))
         return 0;
     uint32_t size = capacity ? capacity * 2 : INITIAL_CAPACITY;
-    struct canonical *table = Heap_AllocateZeroed(size * sizeof(*table));
+    struct canonical *table = core_heap_allocate(NULL, size * sizeof(*table));
     if (!table)
         return 0;
     /* Canonical chains are distinct, so rehashing needs no chain comparison. */
     for (uint32_t i = 0; i < capacity; i++)
         if (entries[i].image)
             *slot(table, size, entries[i].hash, NULL) = entries[i];
-    if (entries)
-        Heap_Free(entries);
+    core_heap_free(NULL, entries, capacity * sizeof(*entries));
     entries = table;
     capacity = size;
     return 1;

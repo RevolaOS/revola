@@ -80,7 +80,7 @@ static void update_meter(void)
 static uint32_t list_count(void)
 {
     if (!listed && !core_loader_core_only) {
-        listed = Heap_AllocateZeroed(sizeof *listed);
+        listed = core_heap_allocate(NULL, sizeof *listed);
         if (listed)
             listed->count = core_loader_installed(listed->installed, MAX_LISTED);
     }
@@ -120,7 +120,7 @@ static int list_select(uint32_t index)
     }
     if (!listed || index > listed->count || page)
         return 0;
-    page = Heap_AllocateZeroed(sizeof *page);
+    page = core_heap_allocate(NULL, sizeof *page);
     if (!page)
         return 0;
     const struct core_installed *e = &listed->installed[index - 1];
@@ -129,7 +129,7 @@ static int list_select(uint32_t index)
     core_put_text(title, title + sizeof title, e->name);
     struct core_screen *s = core_screens_find(NULL, "core.extension");
     if (!s || !core_screens_push(s, core_screens_caller)) {
-        Heap_Free(page);
+        core_heap_free(NULL, page, sizeof *page);
         page = NULL;
     }
     return 0;
@@ -280,10 +280,10 @@ static const struct rv_entry entry = {
 void core_extensions_closed(const struct core_screen *s)
 {
     if (s->declaration == &screens[1] && page) {
-        Heap_Free(page);
+        core_heap_free(NULL, page, sizeof *page);
         page = NULL;
     } else if (s->declaration == &screens[0] && listed) {
-        Heap_Free(listed);
+        core_heap_free(NULL, listed, sizeof *listed);
         listed = NULL;
     }
 }

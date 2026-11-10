@@ -6,6 +6,7 @@
  * retired list is freed at the next grace point; nothing is counted or locked while
  * a handler runs. */
 
+#include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "hooks/sites.h"
 #include <stddef.h>
@@ -259,7 +260,7 @@ int core_hook_bind(const struct core_hook *hook)
     if (count && row->kind == CORE_SITE_WORD)
         return CORE_HOOK_CONFLICT;
 
-    struct hook_list *list = Heap_AllocateZeroed(sizeof *list + (count + 1) * sizeof(void *));
+    struct hook_list *list = core_heap_allocate(NULL, sizeof *list + (count + 1) * sizeof(void *));
     if (!list)
         return CORE_HOOK_NO_MEMORY;
     uint32_t at = 0;
@@ -288,7 +289,7 @@ int core_hook_unbind(const struct core_hook *hook)
         return CORE_HOOK_NOT_BOUND;
     struct hook_list *list = NULL;
     if (count > 1) {
-        list = Heap_AllocateZeroed(sizeof *list + (count - 1) * sizeof(void *));
+        list = core_heap_allocate(NULL, sizeof *list + (count - 1) * sizeof(void *));
         if (!list)
             return CORE_HOOK_NO_MEMORY;
         for (uint32_t i = 0, j = 0; i < count; i++)
@@ -320,7 +321,7 @@ void core_grace_tick(void)
     retired = NULL;
     while (list) {
         struct hook_list *following = list->retired;
-        Heap_Free(list);
+        core_heap_free(NULL, list, sizeof *list + list->count * sizeof(void *));
         list = following;
     }
 }

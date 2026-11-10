@@ -75,10 +75,10 @@ static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, u
     if (!stock_pane)
         return 0;
     for (uint32_t i = 0; i < 3; i++)
-        core_set_source(bank, caption + i, caption + i, SourceDestination_Title);
+        core_set_source(caption + i, caption + i, SourceDestination_Title);
     core_panes_store(pane_id, scratch, w.at, stock_pane);
     uint32_t vslt[5] = {1, 8, ViewBinding_ItemTable, RES_SettingsList_View, s->id + 3};
-    ResourceBank_SetResource(bank, Resource_VSlt, screen, vslt, sizeof vslt);
+    core_resource_set(Resource_VSlt, screen, vslt, sizeof vslt);
     struct layout_clone c = {RES_Settings_MainMenu_Layout, screen + 1, RES_StatusBarWhite_Text,
                              s->id + 2, 0, stock_pane, pane_id, 0, NULL};
     return core_clone_layout(&c, next, scratch, bytes);
@@ -115,7 +115,7 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
 {
     const struct rv_screen *d = s->declaration;
     uint32_t rows = CORE_SCREEN_ROWS(s), count = indexed(s) ? 1 : d->list.count;
-    core_set_source(bank, s->id + 2, s->id + 2, 1);
+    core_set_source(s->id + 2, s->id + 2, 1);
     struct core_writer w = {scratch, 0};
     core_write_word(&w, count);
     for (uint32_t i = 0; i < count; i++) {
@@ -137,17 +137,17 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
         scratch[at + MenuRow_title_from_model] = 1;
         core_write_block_end(&w, begin);
         if (value)
-            core_set_source2(bank, source, item, source, SourceDestination_InlineValue);
+            core_set_source2(source, item, source, SourceDestination_InlineValue);
         else if (d->kind == RV_SCREEN_MULTI_CHOICE)
-            core_set_source2(bank, source, item, item, SourceDestination_RowBitmap);
+            core_set_source2(source, item, item, SourceDestination_RowBitmap);
         else
-            core_set_source(bank, source, item, 1);
+            core_set_source(source, item, 1);
     }
     /* A table left from the owner's earlier load stays: a list view that still
      * holds it would read a freed copy if it were replaced. */
     uint32_t bytes;
     if (!stock(Resource_ITEM, s->id + 3, &bytes))
-        ResourceBank_SetResource(bank, Resource_ITEM, s->id + 3, scratch, w.at);
+        core_resource_set(Resource_ITEM, s->id + 3, scratch, w.at);
     return 1;
 }
 
@@ -174,7 +174,7 @@ static int clone_layouts(struct core_screen *s, int split, const void *events,
         layout_events = scratch;
         layout_event_bytes = w.at;
     }
-    ResourceBank_SetResource(bank, Resource_SEVT, screen + 1, layout_events, layout_event_bytes);
+    core_resource_set(Resource_SEVT, screen + 1, layout_events, layout_event_bytes);
     return core_clone_screen(screen, screen + 1, RES_SettingsMenu_Main_Screen,
                              split ? RES_Settings_MainMenu_Screen : RES_Notes_List_Screen_Alt,
                              events, event_bytes, scratch, scratch_bytes);
@@ -211,8 +211,8 @@ int core_clone_list_with(struct core_screen *s, int split, const void *items, ui
     uint8_t *scratch = Heap_AllocateZeroed(CORE_CLONE_SCRATCH_BYTES);
     if (!scratch)
         return 0;
-    core_set_source(bank, s->id + 2, s->id + 2, 1);
-    ResourceBank_SetResource(bank, Resource_ITEM, s->id + 3, items, item_bytes);
+    core_set_source(s->id + 2, s->id + 2, 1);
+    core_resource_set(Resource_ITEM, s->id + 3, items, item_bytes);
     int built = clone_layouts(s, split, events, event_bytes, layout_events, layout_event_bytes,
                               scratch, CORE_CLONE_SCRATCH_BYTES);
     Heap_Free(scratch);

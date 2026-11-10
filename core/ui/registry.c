@@ -4,6 +4,7 @@
  * the owner's block. The core's own screens are records without an owner. */
 
 #include "ui/screens.h"
+#include "loader/loader.h"
 #include "ui/clones.h"
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
@@ -17,6 +18,7 @@ struct screen_set {
     struct screen_set *next;
     uint32_t key; /* core_resource_owner of the owner */
     uint32_t count;
+    uint32_t bytes;
     struct core_screen screens[];
 };
 
@@ -53,10 +55,12 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
                                core_clone_ids(&screens[n]));
     struct screen_set *set = NULL;
     if (fresh) {
-        set = Heap_AllocateZeroed(sizeof *set + fresh * sizeof set->screens[0]);
+        uint32_t bytes = sizeof *set + fresh * sizeof set->screens[0];
+        set = core_heap_allocate(owner, bytes);
         if (!set)
             return RV_NO_MEMORY;
         set->key = key;
+        set->bytes = bytes;
         struct screen_set **tail = &sets;
         while (*tail)
             tail = &(*tail)->next;
@@ -95,7 +99,7 @@ void core_screens_release(struct rv_extension_record *owner)
             continue;
         }
         *link = set->next;
-        Heap_Free(set);
+        core_heap_free(owner, set, set->bytes);
     }
 }
 

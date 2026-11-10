@@ -43,10 +43,12 @@ void core_write_event(struct core_writer *w, const char *name, const char *handl
 
 /* A property source: the title (destination 1) or inline value (10) of a row or
  * view comes from Settings model property `property`, which the core answers. */
-void core_set_source(void *bank, uint32_t id, uint32_t property, uint32_t destination);
+void core_set_source(uint32_t id, uint32_t property, uint32_t destination);
 /* A title source with a second binding: `second` for `destination`. */
-void core_set_source2(void *bank, uint32_t id, uint32_t title, uint32_t second,
-                      uint32_t destination);
+void core_set_source2(uint32_t id, uint32_t title, uint32_t second, uint32_t destination);
+/* Stores a resource in the bank, counting Apple's copy to the extension whose
+ * ids it is under while it is loaded, else to the core. */
+void core_resource_set(uint32_t type, uint32_t id, const void *data, uint32_t bytes);
 
 /* Resource ids: a block per extension in the order extensions first take ids,
  * below the core's block and Apple's. An owner keeps its block for the boot
@@ -65,11 +67,12 @@ uint32_t core_resource_block(uint32_t owner);
 /* `count` consecutive ids of the owner's block, 0 when the block or the table
  * of blocks is full. */
 uint32_t core_resource_take(uint32_t owner, uint32_t count);
-/* Gives the ids of an unloaded owner back and removes the resources stored
- * under them from the bank, now or at a later tick once nothing of the owner
- * is on screen. ITEM tables stay: a list view keeps the table it last showed
- * until another is bound. */
-void core_resource_release(uint32_t owner);
+/* An owner unloads: what stays under its ids counts to the core. With
+ * `remove`, gives its ids back and removes the resources stored under them
+ * from the bank, now or at a later tick once nothing of the owner is on
+ * screen. ITEM tables stay: a list view keeps the table it last showed until
+ * another is bound. */
+void core_resource_release(uint32_t owner, int remove);
 /* Grace point: finishes releases that had to wait. */
 void core_resource_tick(void);
 void core_resources_init(void *bank);

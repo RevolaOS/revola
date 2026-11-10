@@ -27,7 +27,7 @@ static const void *stock(uint32_t type, uint32_t id, uint32_t *bytes)
 
 static void set(uint32_t type, uint32_t id, const void *data, uint32_t bytes)
 {
-    ResourceBank_SetResource(bank, type, id, data, bytes);
+    core_resource_set(type, id, data, bytes);
 }
 
 uint32_t core_clone_ids(const struct rv_screen *d)
@@ -237,9 +237,9 @@ int core_clone_text(struct core_screen *s)
     if (!scratch)
         return 0;
     struct view_sources paragraphs = {core_template_text + 1, rows, s->ids - 8};
-    core_set_source(bank, s->id + 2, s->id + 2, 1);
+    core_set_source(s->id + 2, s->id + 2, 1);
     for (uint32_t i = 0; i < paragraphs.count; i++)
-        core_set_source(bank, rows + i, rows + i, 1);
+        core_set_source(rows + i, rows + i, 1);
     uint32_t none = 0; /* the Legal controller handles Menu itself: no layout events */
     struct layout_clone c = {RES_Settings_Legal_Layout, s->id + 1, RES_StatusBarWhite_Text,
                              s->id + 2, 0, RES_Settings_Legal_Template, core_template_text, 0,
@@ -268,7 +268,7 @@ static int clone_brightness(struct core_screen *s, uint32_t template, const stru
     uint8_t *scratch = Heap_AllocateZeroed(CORE_CLONE_SCRATCH_BYTES);
     if (!scratch)
         return 0;
-    core_set_source(bank, s->id + 2, s->id + 2, 1);
+    core_set_source(s->id + 2, s->id + 2, 1);
     struct layout_clone c = {RES_Settings_Brightness_Screen_Default, s->id + 1,
                              RES_StatusBar_Title_Text, s->id + 2, 0,
                              RES_Settings_Brightness_Template, template, drop, views};
@@ -291,8 +291,8 @@ int core_clone_slider(struct core_screen *s)
     struct view_sources views = {core_template_slider + 1, rows, 2};
     if (!events)
         return 0;
-    core_set_source(bank, rows, rows, 1);
-    core_set_source(bank, rows + 1, rows + 1, 1);
+    core_set_source(rows, rows, 1);
+    core_set_source(rows + 1, rows + 1, 1);
     return clone_brightness(s, core_template_slider, &views, 0, events, bytes);
 }
 

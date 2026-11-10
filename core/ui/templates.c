@@ -32,7 +32,7 @@ static const void *stock(uint32_t type, uint32_t id, uint32_t *bytes)
 
 static void set(uint32_t type, uint32_t id, const void *data, uint32_t bytes)
 {
-    ResourceBank_SetResource(bank, type, id, data, bytes);
+    core_resource_set(type, id, data, bytes);
 }
 
 /* Writes the View resource of a template whose first id is `id`; 0 when a

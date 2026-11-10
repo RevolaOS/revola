@@ -10,6 +10,7 @@
  * records {owner, key, type, size, data} padded to a word. Unknown records are
  * carried through a rewrite. Adapted from RepriseOS payload/store.c (d3d7b4d). */
 
+#include "loader/loader.h"
 #include "loader/file.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
@@ -107,12 +108,12 @@ static int ensure(uint32_t needed)
     uint32_t grown = capacity ? capacity : MIN_CAPACITY;
     while (grown < needed)
         grown *= 2;
-    uint8_t *larger = Heap_AllocateZeroed(grown);
+    uint8_t *larger = core_heap_allocate(NULL, grown);
     if (!larger)
         return 0;
     if (store) {
         copy(larger, store, header()->length);
-        Heap_Free(store);
+        core_heap_free(NULL, store, capacity);
     }
     store = larger;
     capacity = grown;

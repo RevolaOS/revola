@@ -41,7 +41,8 @@ struct rv_extension_record {
     uint32_t conflict_site; /* site id of the collided claim, 0 otherwise */
     uint8_t raw_count;      /* raw sites claimed for the main module */
     uint8_t raw_sites[CORE_RAW_SITES]; /* their site indices, RV_RAW_SITE(n) order */
-    uint32_t live;          /* bytes owned now: images plus api->alloc blocks */
+    uint32_t live;          /* heap held for it now: its record, images, api->alloc blocks,
+                               the core's records of its UI and Apple's copies of them */
     uint32_t peak;
     uint32_t hooks_bound;
     const struct rv_extension *descriptor;
@@ -111,6 +112,22 @@ void core_loader_retire(void *block);
 void core_loader_free(struct rv_extension_record *record, void *block);
 /* The record of an enabled extension by owner, NULL when disabled or absent. */
 struct rv_extension_record *core_loader_find(uint32_t owner);
+
+/* Heap the core holds for itself: its loader blocks, its own records and
+ * Apple's copies of its resources. What exists only while an extension is
+ * loaded is counted to that extension's live bytes instead. */
+extern uint32_t core_heap_bytes;
+/* Counts `bytes` (negative to give back) to `owner`, or to the core for NULL. */
+void core_loader_charge(struct rv_extension_record *owner, int32_t bytes);
+/* What Apple's heap takes for a request of `bytes`: rounded to 4, an 8-byte
+ * header, rounded to 8, at least 16. */
+uint32_t core_heap_cost(uint32_t bytes);
+/* Zeroed heap counted to `owner` (the core for NULL); free with the same
+ * owner and size, or move the count when the block changes hands. */
+void *core_heap_allocate(struct rv_extension_record *owner, uint32_t bytes);
+void core_heap_free(struct rv_extension_record *owner, void *memory, uint32_t bytes);
+void core_heap_move(struct rv_extension_record *from, struct rv_extension_record *to,
+                    uint32_t bytes);
 
 extern struct rv_extension_record *core_extensions;
 extern uint8_t core_loader_core_only;
