@@ -110,6 +110,22 @@ The 32 KiB UI stack is not carried until stack-watermark evidence exists on the 
 
 Something is core only if the loader, SDK or settings store needs it, if it must act before the loader can run, or if the boot cannot recover without it. Everything else is an extension, however small. One extension per concern. If one feature cannot work without another, it is a module of that extension, not a dependency.
 
+## RevolaOS and RepriseOS
+
+RevolaOS started from the groundwork of [RepriseOS](https://github.com/lgreitis/osos-lab) by lgreitis: the boot chain, the installer's device and bundle code, and the reverse engineering of Apple's 2.0.5 firmware. You can support lgreitis on [Ko-fi](https://ko-fi.com/lgreitis).
+
+Both run Apple's own 2.0.5 firmware with additions, on the iPod Classic 6G, 6.5G and 7G, and both install from the desktop over DFU. They take different approaches:
+
+- **RepriseOS** is a firmware image: what it contains is settled before it goes onto the iPod.
+- **RevolaOS** is a small core that loads extensions on the iPod itself. You change your setup there, in Settings, at any time, and an extension that's off takes no memory. Extensions from anyone install next to the first-party ones without changing the OS.
+
+| | RepriseOS | RevolaOS |
+|---|---|---|
+| Where features are chosen | Before installing | On the iPod, in Settings |
+| Adding or removing a feature | Install a different firmware | Turn an installed extension on or off; when it's off it isn't loaded and uses no RAM, leaving more for your music library |
+| Third-party features | Need a modified firmware | Copy the extension's folder to `/Revola/Extensions/`; the OS stays as it is |
+| Seeing memory use | Not shown | Settings shows free memory and how much each extension uses |
+| After a crash | Panic screen | The next boot turns off the extension that crashed; hold Previous to start without extensions |
 
 ## License
 
