@@ -617,7 +617,7 @@ static int valid_row(const struct rv_row *row)
     case RV_ROW_KIND_PUSH:
         return row->label && row->screen;
     case RV_ROW_KIND_SETTING:
-        return row->label && row->key != RV_SETTING_KEY_ENABLED && row->key != RV_SETTING_KEY_MENU_VISIBILITY;
+        return row->label && row->key != RV_SETTING_KEY_ENABLED && row->key != RV_SETTING_KEY_ALL;
     case RV_ROW_KIND_ACTION:
         return row->label && row->action;
     case RV_ROW_KIND_INFO:
@@ -660,7 +660,7 @@ static int valid_descriptor(const struct rv_descriptor *d)
             return 0;
     for (uint32_t i = 0; i < d->setting_count; i++) {
         const struct rv_setting *setting = &d->settings[i];
-        if (setting->key == RV_SETTING_KEY_ENABLED || setting->key == RV_SETTING_KEY_MENU_VISIBILITY ||
+        if (setting->key == RV_SETTING_KEY_ENABLED || setting->key == RV_SETTING_KEY_ALL ||
             setting->type < RV_SETTING_TYPE_BOOL || setting->type > RV_SETTING_TYPE_BLOB ||
             setting->style > RV_SETTING_STYLE_MULTI ||
             (setting->style == RV_SETTING_STYLE_MULTI && setting->label_count > 32))
@@ -676,9 +676,16 @@ static int valid_descriptor(const struct rv_descriptor *d)
             if (fnv1a(d->screens[j].id) == fnv1a(d->screens[i].id))
                 return 0;
     }
-    for (uint32_t i = 0; i < d->entry_count; i++)
-        if (d->entries[i].menu > RV_MENU_ARTIST_CONTEXT || !valid_row(&d->entries[i].row))
+    for (uint32_t i = 0; i < d->entry_count; i++) {
+        const struct rv_menu_entry *e = &d->entries[i];
+        const struct rv_setting *shown_by = NULL;
+        for (uint32_t j = 0; e->shown_by && j < d->setting_count; j++)
+            if (d->settings[j].key == e->shown_by)
+                shown_by = &d->settings[j];
+        if (e->menu > RV_MENU_ARTIST_CONTEXT || !valid_row(&e->row) ||
+            (e->shown_by && (!shown_by || shown_by->type != RV_SETTING_TYPE_BOOL)))
             return 0;
+    }
     return 1;
 }
 
@@ -759,25 +766,68 @@ static int api_hook_unbind(rv_extension_handle self, const struct rv_hook *hook)
     return result_of(result);
 }
 
-static uint32_t api_next(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+static uint32_t api_hook_next(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
                          uint32_t e, uint32_t f)
 {
     return core_next_call6(next, a, b, c, d, e, f);
 }
 
-static uint32_t api_setting_get(rv_extension_handle self, uint16_t key, void *out, uint32_t capacity)
+static int core_key(uint16_t key)
 {
-    struct rv_extension_record *record = valid_handle(self);
-    return record ? core_settings_get(record->owner, key, out, capacity) : 0;
+    return key == RV_SETTING_KEY_ENABLED || key == RV_SETTING_KEY_ALL;
 }
 
-static int api_setting_set(rv_extension_handle self, uint16_t key, uint8_t type, const void *data,
-                           uint32_t bytes)
+static int32_t api_setting_int(rv_extension_handle self, uint16_t key)
 {
     struct rv_extension_record *record = valid_handle(self);
-    if (!record || key == RV_SETTING_KEY_ENABLED)
+    return record ? core_screens_setting_value(record, key) : 0;
+}
+
+static int api_setting_set_int(rv_extension_handle self, uint16_t key, int32_t value)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (!record || core_key(key))
         return RV_BAD_ARGUMENT;
-    return core_settings_set(record->owner, key, type, data, bytes) ? RV_NO_MEMORY : RV_OK;
+    const struct rv_setting *setting = core_screens_setting(record, key);
+    if (setting && value < setting->minimum)
+        value = setting->minimum;
+    if (setting && value > setting->maximum)
+        value = setting->maximum;
+    if (core_settings_set_int(record->owner, key, value))
+        return RV_NO_MEMORY;
+    core_screens_setting_changed(record, key);
+    return RV_OK;
+}
+
+static uint32_t api_setting_read(rv_extension_handle self, uint16_t key, void *out,
+                                 uint32_t capacity)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    return record && !core_key(key) ? core_settings_get(record->owner, key, out, capacity) : 0;
+}
+
+static int api_setting_write(rv_extension_handle self, uint16_t key, uint8_t type,
+                             const void *data, uint32_t bytes)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (!record || core_key(key) || bytes > 255)
+        return RV_BAD_ARGUMENT;
+    if (core_settings_set(record->owner, key, type, data, bytes))
+        return RV_NO_MEMORY;
+    core_screens_setting_changed(record, key);
+    return RV_OK;
+}
+
+void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key)
+{
+    if (record && record->descriptor && record->descriptor->setting_changed)
+        record->descriptor->setting_changed(key);
+}
+
+void core_loader_settings_reset(void)
+{
+    for (struct rv_extension_record *r = core_extensions; r; r = r->next)
+        core_loader_setting_changed(r, RV_SETTING_KEY_ALL);
 }
 
 static void *api_alloc(rv_extension_handle self, uint32_t bytes)
@@ -930,12 +980,30 @@ static uint32_t api_format_size(char *out, uint32_t capacity, uint32_t bytes)
 }
 
 static const struct rv_api api = {
-    sizeof api,           RV_API_VERSION,     api_hook_bind,      api_hook_unbind,
-    api_next,             api_setting_get,    api_setting_set,    core_settings_flush,
-    api_alloc,            api_free,           api_module_load,    api_module_unload,
-    api_log,              api_ui_push,        api_ui_pop,         api_ui_refresh,
-    api_ui_invalidate,    api_debug_info,     api_asset_load,     api_asset_read,
-    api_format_number,    api_format_size,
+    .size = sizeof api,
+    .version = RV_API_VERSION,
+    .hook_bind = api_hook_bind,
+    .hook_unbind = api_hook_unbind,
+    .hook_next = api_hook_next,
+    .setting_int = api_setting_int,
+    .setting_set_int = api_setting_set_int,
+    .setting_read = api_setting_read,
+    .setting_write = api_setting_write,
+    .settings_flush = core_settings_flush,
+    .alloc = api_alloc,
+    .free = api_free,
+    .module_load = api_module_load,
+    .module_unload = api_module_unload,
+    .log = api_log,
+    .ui_push = api_ui_push,
+    .ui_pop = api_ui_pop,
+    .ui_refresh = api_ui_refresh,
+    .ui_invalidate = api_ui_invalidate,
+    .debug_info = api_debug_info,
+    .asset_load = api_asset_load,
+    .asset_read = api_asset_read,
+    .format_number = api_format_number,
+    .format_size = api_format_size,
 };
 
 /* Modules */

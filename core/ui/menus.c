@@ -85,24 +85,22 @@ static void *adopt(uint32_t item, struct rv_extension_record *owner, uint32_t by
 }
 
 
-/* Main and Music rows can be hidden in Settings > Main Menu and Music Menu: bit
- * n of the owner's RV_SETTING_KEY_MENU_VISIBILITY record is entry n, and without a
- * record an entry shows unless it is `hidden`. Other rows always show. */
+/* An entry with `shown_by` shows while that bool setting of its owner is on;
+ * under Main and Music, Settings > Main Menu and Music Menu list it and flip
+ * the setting. Other rows always show. */
 static int toggleable(const struct row *r)
 {
-    return r->owner && (r->root == RV_MENU_MAIN || r->root == RV_MENU_MUSIC);
+    return r->owner && r->entry && r->entry->shown_by &&
+           (r->root == RV_MENU_MAIN || r->root == RV_MENU_MUSIC);
 }
 
 static int shown(const struct row *r)
 {
-    uint32_t mask;
     if (r->stale)
         return 0;
-    if (!toggleable(r))
+    if (!r->owner || !r->entry || !r->entry->shown_by)
         return 1;
-    if (core_settings_get(r->owner->owner, RV_SETTING_KEY_MENU_VISIBILITY, &mask, 4) == 4)
-        return mask >> r->index & 1;
-    return !r->entry->hidden;
+    return core_screens_setting_value(r->owner, r->entry->shown_by) != 0;
 }
 
 /* Apple's registry is built before the core runs and never sees the rows the
@@ -162,7 +160,6 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_
         if (r) {
             r->owner = owner;
             r->entry = e;
-            r->index = (uint8_t)n;
             r->stale = 0;
             apply_visibility(r);
             continue;
@@ -177,7 +174,6 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_
         r->item = item;
         r->label = label;
         r->root = (uint8_t)root;
-        r->index = (uint8_t)n;
         r->stale = 0;
         r->after = roots[root].table ? e->after ? e->after : roots[root].anchor : 0;
         r->data = adopt(item, owner, CORE_ROW_DATA_BYTES(r));
@@ -196,7 +192,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_
         if (root == RV_MENU_SETTINGS)
             core_panes_prepare();
         /* The item id is the title property, the source id the value's. */
-        if (e->row.kind == RV_ROW_KIND_SETTING)
+        if (e->row.kind == RV_ROW_KIND_SETTING || e->row.kind == RV_ROW_KIND_INFO)
             core_set_source2(item + 1, item, item + 1, SourceDestination_InlineValue);
         else
             core_set_source(item + 1, item, 1);
@@ -285,17 +281,26 @@ static struct row *nth(uint8_t root, uint32_t n)
     return NULL;
 }
 
+/* The n-th row of Main or Music that Settings > Main Menu or Music Menu lists. */
+static struct row *nth_toggleable(uint8_t root, uint32_t n)
+{
+    EACH_ROW(r)
+        if (r->root == root && toggleable(r) && n-- == 0)
+            return r;
+    return NULL;
+}
+
 uint32_t core_menus_count(uint8_t root)
 {
     uint32_t count = 0;
-    while (nth(root, count))
+    while (nth_toggleable(root, count))
         count++;
     return count;
 }
 
 const char *core_menus_label(uint8_t root, uint32_t n, int *visible, uint32_t *after)
 {
-    struct row *r = nth(root, n);
+    struct row *r = nth_toggleable(root, n);
     if (!r)
         return NULL;
     *visible = shown(r);
@@ -305,15 +310,11 @@ const char *core_menus_label(uint8_t root, uint32_t n, int *visible, uint32_t *a
 
 void core_menus_toggle(uint8_t root, uint32_t n)
 {
-    struct row *r = nth(root, n);
+    struct row *r = nth_toggleable(root, n);
     if (!r)
         return;
-    uint32_t mask = 0;
-    EACH_ROW(other)
-        if (other->entry && other->owner == r->owner && toggleable(other))
-            mask |= (uint32_t)(shown(other) ^ (other == r)) << other->index;
-    core_settings_set(r->owner->owner, RV_SETTING_KEY_MENU_VISIBILITY, CORE_SETTING_INT, &mask, 4);
-    apply_visibility(r);
+    core_settings_set_int(r->owner->owner, r->entry->shown_by, !shown(r));
+    core_screens_setting_changed(r->owner, r->entry->shown_by);
 }
 
 void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
@@ -323,6 +324,8 @@ void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
         if (row && r->owner == owner && row->key == key &&
             row->kind == RV_ROW_KIND_SETTING)
             core_screens_notify(r->item + 1);
+        if (r->entry && r->owner == owner && r->entry->shown_by == key)
+            apply_visibility(r);
     }
 }
 
@@ -382,7 +385,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
             if (r->root == RV_MENU_SETTINGS) {
                 uint8_t kind = r->entry ? r->entry->row.kind : RV_ROW_KIND_PUSH;
                 const uint32_t *prototype = (const uint32_t *)core_lists_prototype(
-                    kind == RV_ROW_KIND_SETTING);
+                    kind == RV_ROW_KIND_SETTING || kind == RV_ROW_KIND_INFO);
                 if (prototype)
                     from = prototype;
             }
@@ -412,7 +415,7 @@ int core_menus_context_row(uint8_t root, uint32_t n, uint32_t *label, void **han
     struct row *r = nth(root, n);
     if (!r)
         return 0;
-    *label = r->item + 1;
+    *label = shown(r) ? r->item + 1 : 0;
     *handler = r->data;
     return 1;
 }

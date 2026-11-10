@@ -375,6 +375,7 @@ static uint32_t reset_all(uint32_t model, const struct core_next *next)
         mark_dirty();
         core_settings_flush();
     }
+    core_loader_settings_reset();
     return result;
 }
 

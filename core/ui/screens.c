@@ -82,6 +82,7 @@ void core_screens_setting_changed(struct rv_extension_record *owner, uint16_t ke
                 core_screens_notify(CORE_SCREEN_ROWS(s) + 2 * r + 1);
     }
     core_menus_setting_changed(owner, key);
+    core_loader_setting_changed(owner, key);
 }
 
 struct core_screen *core_screens_top(uint8_t kind)

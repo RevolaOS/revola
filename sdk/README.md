@@ -30,9 +30,13 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | `RV_SCREEN_TEXT(id, title, paragraphs)` | a text page |
 | `RV_SCREEN_DYNAMIC_LIST(id, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
 | `RV_SCREEN_CANVAS(id, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, colour roles themes can change, wrapped paragraphs, list rows, BMaps whole, in part or tiled, and the Settings > About card the core's Usage page uses) and reads wheel and key input |
-| `RV_MENU_ENTRY(menu, after, row)` | a row in `RV_MENU_MAIN`, `RV_MENU_MUSIC`, `RV_MENU_EXTRAS`, `RV_MENU_SETTINGS` or a context menu (`RV_MENU_NOW_PLAYING_CONTEXT`, `RV_MENU_SONG_CONTEXT`, `RV_MENU_ALBUM_CONTEXT`, `RV_MENU_ARTIST_CONTEXT`), after a stock row from `rv_menus.h`; under Settings `.caption` and `.bitmap` fill the preview pane, `.hidden = 1` starts a Main or Music row hidden |
+| `RV_MENU_ENTRY(menu, after, row)` | a row in `RV_MENU_MAIN`, `RV_MENU_MUSIC`, `RV_MENU_EXTRAS`, `RV_MENU_SETTINGS` or a context menu (`RV_MENU_NOW_PLAYING_CONTEXT`, `RV_MENU_SONG_CONTEXT`, `RV_MENU_ALBUM_CONTEXT`, `RV_MENU_ARTIST_CONTEXT`), after a stock row from `rv_menus.h`; under Settings `.caption` and `.bitmap` fill the preview pane, `.shown_by` names a bool setting that shows the row (Settings > Main Menu and Music Menu flip it) |
 
 Screen ids are local to the extension; `api->ui_push(self, id)` opens one from a row, choice or input callback. Screens and entries are limited only by the heap and by the extension's 4,096 resource ids: a list takes 15 + 2 per row, a choice, multi-choice or dynamic list 17, a text page 8 + one per paragraph, a slider 10, a canvas 8, a menu entry 2 (3 under Settings). A load that runs out shows No memory in Settings > Extensions. An unloaded extension's screens and records are freed. Labels and paragraphs are read from the module while a screen is open, never copied. Nothing about the firmware's own resources appears in a UI declaration; the symbols header is for hooks.
+
+## Settings
+
+Declare settings in the descriptor and read them with `api->setting_int(self, key)`, which applies the declared fallback as the Settings rows do; `api->setting_set_int` clamps to the declared range, stores, redraws the rows that show the setting and calls the descriptor's `setting_changed(key)`. That callback also runs when the user changes a setting in a row, a choice or a slider, and once with `RV_SETTING_KEY_ALL` after Reset All Settings emptied the store, so an extension that keeps a copy (DSP coefficients, a cached flag) refreshes it in one place. `setting_read` and `setting_write` move raw bytes, for strings and blobs. An entry's `.shown_by` names a declared bool setting: the row shows while it is on, and under Main and Music the Main Menu and Music Menu settings flip it.
 
 ## Assets
 

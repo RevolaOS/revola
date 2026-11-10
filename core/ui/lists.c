@@ -95,8 +95,9 @@ static const uint8_t *prototype(const struct core_screen *s, uint32_t i, int *va
 {
     const struct rv_screen *d = s->declaration;
     uint8_t row_kind = d->kind == RV_SCREEN_KIND_LIST ? d->list.rows[i].kind : 0;
-    *value = d->kind == RV_SCREEN_KIND_DYNAMIC_LIST || (d->kind == RV_SCREEN_KIND_LIST &&
-             row_kind == RV_ROW_KIND_SETTING);
+    *value = d->kind == RV_SCREEN_KIND_DYNAMIC_LIST ||
+             (d->kind == RV_SCREEN_KIND_LIST &&
+              (row_kind == RV_ROW_KIND_SETTING || row_kind == RV_ROW_KIND_INFO));
     if (*value)
         return core_lists_prototype(1);
     switch (d->kind) {

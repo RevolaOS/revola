@@ -43,10 +43,7 @@ static uint32_t second(uint32_t model, uint32_t type, uint32_t property, uint32_
     if (hello_log.count < 5)
         record(0x20 | (hello_log.count << 8));
     uint32_t result = api->hook_next(next, model, type, property, out, 0, 0);
-    int32_t calls = 0;
-    api->setting_get(self, SETTING_CALLS, &calls, sizeof calls);
-    calls++;
-    api->setting_set(self, SETTING_CALLS, RV_SETTING_TYPE_INT, &calls, sizeof calls);
+    api->setting_set_int(self, SETTING_CALLS, api->setting_int(self, SETTING_CALLS) + 1);
     return result;
 }
 

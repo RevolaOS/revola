@@ -21,6 +21,8 @@ static rv_extension_handle self;
 #define KEY_CHOICE 2
 #define KEY_SLIDER 3
 #define KEY_MULTI 4
+#define KEY_IN_MAIN 5  /* Settings > Main Menu flips these two */
+#define KEY_IN_MUSIC 6
 
 static const char *const seasons[] = {"Spring", "Summer", "Autumn", "Winter"};
 static const char *const volumes[] = {"Mute", "Quiet", "Normal", "Loud", "Max"};
@@ -31,6 +33,8 @@ static const struct rv_setting settings[] = {
     RV_SETTING_CHOICE(KEY_CHOICE, "Choice", 1, seasons),
     RV_SETTING_SLIDER(KEY_SLIDER, "Slider", 2, volumes),
     RV_SETTING_MULTI(KEY_MULTI, "Multi-choice", 0x1f, days),
+    RV_SETTING_BOOL(KEY_IN_MAIN, "In Main Menu", 1),
+    RV_SETTING_BOOL(KEY_IN_MUSIC, "In Music Menu", 0),
 };
 
 /* Actions and the long-press menu rows count presses; the Counter screen
@@ -53,11 +57,28 @@ static void pop_from_action(void)
     api->ui_pop(self);
 }
 
-/* An info row's text, drawn each time the row is. */
+/* Info rows' text, drawn each time the row is: the presses, and the last
+ * setting setting_changed reported. */
 static const char *presses_text(void)
 {
     static char text[24];
     rv_format(text, sizeof text, "Info: %lu presses", presses);
+    return text;
+}
+
+static int last_changed = -1;
+
+static void setting_changed(uint16_t key)
+{
+    last_changed = key;
+}
+
+static const char *changed_text(void)
+{
+    static char text[24];
+    if (last_changed < 0)
+        return "Changed: nothing yet";
+    rv_format(text, sizeof text, "Changed: key %d", last_changed);
     return text;
 }
 
@@ -71,6 +92,7 @@ static const struct rv_row row_rows[] = {
     RV_ROW_SETTING("Setting: slider", KEY_SLIDER),
     RV_ROW_SETTING("Setting: multi", KEY_MULTI),
     RV_ROW_INFO("Info", presses_text),
+    RV_ROW_INFO("Changed", changed_text),
 };
 
 /* Screens. */
@@ -335,8 +357,9 @@ static const struct rv_screen screens[] = {
 static const struct rv_menu_entry entries[] = {
     RV_MENU_ENTRY(RV_MENU_SETTINGS, RV_SETTINGS_LEGAL, RV_ROW_PUSH("UI Showcase", "menu"),
              .caption = "Every SDK screen", .bitmap = RV_BITMAP("pane")),
-    RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_EXTRAS, RV_ROW_PUSH("UI Showcase", "menu")),
-    RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .hidden = 1),
+    RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_EXTRAS, RV_ROW_PUSH("UI Showcase", "menu"),
+                  .shown_by = KEY_IN_MAIN),
+    RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .shown_by = KEY_IN_MUSIC),
     RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("UI Showcase", "menu")),
     RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
     RV_MENU_ENTRY(RV_MENU_SONG_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
@@ -347,6 +370,7 @@ static const struct rv_menu_entry entries[] = {
 static const struct rv_descriptor extension = {
     .size = sizeof extension, RV_SETTINGS(settings),
     RV_SCREENS(screens), RV_ENTRIES(entries), .unload = unload,
+    .setting_changed = setting_changed,
 };
 
 const struct rv_descriptor *rv_module_entry(const struct rv_api *core, rv_extension_handle handle)

@@ -72,6 +72,10 @@ void core_loader_screen_popped(const char *screen);
 /* Owner of the extension whose image or raw site stub contains `address`, 0
  * when none. */
 uint32_t core_loader_owner_of(uint32_t address);
+/* Tells the extension a setting changed (RV_SETTING_KEY_ALL for all). */
+void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key);
+/* Tells every loaded extension the store was emptied by Reset All Settings. */
+void core_loader_settings_reset(void);
 /* Resident bytes of every loaded extension together. */
 uint32_t core_loader_total_bytes(void);
 

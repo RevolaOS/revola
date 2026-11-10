@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 16
+#define RV_API_MINOR 17
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -61,10 +61,11 @@ enum rv_setting_type {
     RV_SETTING_TYPE_BLOB = 4,
 };
 
-/* Keys the core keeps in every extension's settings: the enabled flag, and which
- * of its Main and Music rows are shown (bit n is entry n). */
+/* The key the core keeps in every extension's settings for its enabled flag; an
+ * extension never writes it. RV_SETTING_KEY_ALL is what setting_changed
+ * receives after Reset All Settings emptied the store. */
 #define RV_SETTING_KEY_ENABLED 0
-#define RV_SETTING_KEY_MENU_VISIBILITY 0xffff
+#define RV_SETTING_KEY_ALL 0xffff
 
 /* How an RV_ROW_SETTING row shows an int setting with `labels`. */
 enum rv_setting_style {
@@ -291,13 +292,14 @@ enum rv_menu {
  * pane shows the label, `caption` as the line below and `bitmap` as the icon
  * while the row is highlighted; either may be NULL, and the pane then shows
  * nothing in its place. The icon sits on the box the system draws behind stock
- * Settings icons unless `plain_icon` is set. Rows under Main and Music appear
- * in Settings > Main Menu and Music Menu, shown unless `hidden` is set. */
+ * Settings icons unless `plain_icon` is set. With `shown_by`, the key of a
+ * declared bool setting, the row shows while that setting is on; under Main
+ * and Music, Settings > Main Menu and Music Menu list the row and flip it.
+ * Without, the row always shows. */
 struct rv_menu_entry {
     uint8_t menu;       /* rv_menu */
-    uint8_t hidden;     /* 1: a Main or Music row starts hidden in Settings > Main/Music Menu */
     uint8_t plain_icon; /* 1: the pane shows `bitmap` without the system's box behind it */
-    uint8_t reserved;
+    uint16_t shown_by;  /* a bool setting key, 0 for always shown */
     uint32_t after;
     struct rv_row row;
     const char *caption;
@@ -324,6 +326,10 @@ struct rv_descriptor {
     const struct rv_setting *settings;
     uint32_t setting_count;
     void (*unload)(void); /* before the hooks are unbound; may be NULL */
+    /* After a setting changed, whether from a row, a choice or slider screen or
+     * the extension's own write; RV_SETTING_KEY_ALL after Reset All Settings.
+     * UI task; may be NULL. */
+    void (*setting_changed)(uint16_t key);
     const struct rv_screen *screens;
     uint32_t screen_count;
     const struct rv_menu_entry *entries;
@@ -342,10 +348,19 @@ struct rv_api {
     uint32_t (*hook_next)(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
                      uint32_t e, uint32_t f);
 
-    /* Bytes copied, 0 when absent. Values are at most 255 bytes. */
-    uint32_t (*setting_get)(rv_extension_handle self, uint16_t key, void *out, uint32_t capacity);
-    int (*setting_set)(rv_extension_handle self, uint16_t key, uint8_t type, const void *data,
-                       uint32_t bytes);
+    /* A bool or int setting: its value, the declared fallback when the store
+     * has none. setting_set_int clamps to the declared minimum and maximum (0
+     * and 1 for a bool), stores, redraws the rows that show it and calls
+     * setting_changed. */
+    int32_t (*setting_int)(rv_extension_handle self, uint16_t key);
+    int (*setting_set_int)(rv_extension_handle self, uint16_t key, int32_t value);
+    /* Any setting as bytes, for strings and blobs: setting_read copies at most
+     * `capacity` bytes and returns how many, 0 when absent; setting_write
+     * stores at most 255 bytes and calls setting_changed. Neither applies a
+     * fallback. The core's keys are refused. */
+    uint32_t (*setting_read)(rv_extension_handle self, uint16_t key, void *out, uint32_t capacity);
+    int (*setting_write)(rv_extension_handle self, uint16_t key, uint8_t type, const void *data,
+                         uint32_t bytes);
     void (*settings_flush)(void);
 
     /* Zeroed memory from the Apple heap, counted against the extension. */

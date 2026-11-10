@@ -35,7 +35,8 @@ static uint32_t context_rows(uint32_t items, uint32_t label, uint32_t action, ui
     /* Flags 1: an ordinary row whose action is dispatched to the controller;
      * the Cancel row's own flags only close the menu. */
     for (uint32_t n = 0; core_menus_context_row(root, n, &string, &handler); n++)
-        ContextMenuItems_Append((void *)items, string, handler, 1);
+        if (string)
+            ContextMenuItems_Append((void *)items, string, handler, 1);
     return core_next_call(next, items, label, action, flags);
 }
 

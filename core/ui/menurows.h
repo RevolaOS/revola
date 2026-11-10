@@ -26,7 +26,6 @@ struct row {
      * action points at. */
     void *data;
     uint8_t root;
-    uint8_t index; /* the entry's index in its descriptor, its visibility bit */
     uint8_t stale;
 };
 

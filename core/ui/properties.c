@@ -64,11 +64,14 @@ static const struct rv_row *screen_row(struct core_screen *s, uint32_t id, uint3
     return &s->declaration->list.rows[(id - rows) / 2];
 }
 
-/* A toggle or setting row's value: the chosen label of a setting with labels
- * (nothing for a multi-choice), else On or Off. */
+/* A setting row's value: the chosen label of a setting with labels (nothing
+ * for a multi-choice), else On or Off. An info row has the value row's
+ * layout, for its lack of a chevron, and no value. */
 static const char *row_text(struct rv_extension_record *owner, const struct rv_row *row,
                             int value)
 {
+    if (value && row->kind == RV_ROW_KIND_INFO)
+        return "";
     if (!value || row->kind != RV_ROW_KIND_SETTING)
         return core_row_label(row);
     const struct rv_setting *setting = core_screens_setting(owner, row->key);
