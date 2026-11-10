@@ -28,9 +28,9 @@ struct row {
     uint8_t stale;
 };
 
-/* Rows in one heap block per registration of an owner, kept for the boot: Apple
- * keeps pointers to a row's data, and a stale row is found again when its
- * owner loads again. */
+/* Rows in one heap block per registration of an owner, freed when the owner
+ * unloads. The core's own blocks stay for the boot: a retired core row is a
+ * stale record found again when its entry registers again. */
 struct row_set {
     struct row_set *next;
     uint32_t key; /* core_resource_owner of the owner */

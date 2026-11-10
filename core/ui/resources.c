@@ -6,6 +6,7 @@
 #include "ui/resources.h"
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
+#include "ui/screens.h"
 
 uint32_t core_word_at(const void *data, uint32_t offset)
 {
@@ -145,17 +146,20 @@ uint32_t core_resource_owner(const struct rv_extension_record *owner)
 
 #define MAX_BLOCKS 17 /* the core and at most 16 extensions */
 
-/* Blocks in the order owners first take ids; an owner keeps its block for the
- * boot, so an extension loaded again finds its clones under the same ids. */
+/* Blocks in the order owners first take ids. An owner keeps its slot for the
+ * boot, so it takes the same ids again when it loads again. */
 static struct {
     uint32_t owner;
-    uint32_t used;
+    uint16_t used;
+    uint8_t held;
+    uint8_t releasing; /* the owner is gone; its overrides go once off screen */
 } blocks[MAX_BLOCKS];
+static void *bank;
 
 static uint32_t slot_of(uint32_t owner)
 {
     for (uint32_t i = 0; i < MAX_BLOCKS; i++)
-        if (blocks[i].used && blocks[i].owner == owner)
+        if (blocks[i].held && blocks[i].owner == owner)
             return i;
     return MAX_BLOCKS;
 }
@@ -171,18 +175,92 @@ uint32_t core_resource_block(uint32_t owner)
     return slot < MAX_BLOCKS ? base_of(owner, slot) : 0;
 }
 
+/* Everything the clones, rows and panes store under an owner's ids, except
+ * the ITEM tables (see resources.h). */
+static const uint32_t removable[] = {
+    Resource_SCST, Resource_SLst, Resource_SLyt, Resource_SSin, Resource_CEVT,
+    Resource_SEVT, Resource_VSlt, Resource_VLyt, Resource_TEVT, Resource_VCvs,
+    Resource_VCrv, Resource_SORC, Resource_String,
+};
+
+/* The bank has no remove for a ROM-backed bank; its heap-bank remove is these
+ * two map calls and the frees, which work on the override map as well. */
+static void remove_override(uint32_t type, uint32_t id)
+{
+    uint32_t *entry;
+    void *map = *(void **)((uint8_t *)bank + ResourceBank_overrides);
+    if (!ResourceOverrides_Find(map, type, id, &entry))
+        return;
+    ResourceOverrides_EraseEntry(map, type, entry);
+    Heap_Free((void *)entry[ResourceOverride_data / 4]);
+    Heap_Free(entry);
+}
+
+/* 1 when the last displayed screen or layout is in the block: the layout
+ * manager reads its SLyt and SSin again on the next display. */
+static int displayed(uint32_t base)
+{
+    uint8_t *manager = UI_GetLayoutManager();
+    return manager &&
+           (*(uint32_t *)(manager + LayoutManager_screen) - base < CORE_RESOURCE_BLOCK_BYTES ||
+            *(uint32_t *)(manager + LayoutManager_layout) - base < CORE_RESOURCE_BLOCK_BYTES);
+}
+
+/* Removes the block's overrides and gives its ids back; 0 while a controller
+ * of the owner is still alive or its layout was the last displayed. */
+static int clear(uint32_t slot)
+{
+    uint32_t base = base_of(blocks[slot].owner, slot);
+    if (core_screens_orphans() || displayed(base))
+        return 0;
+    for (uint32_t id = base; id < base + blocks[slot].used; id++)
+        for (uint32_t t = 0; t < sizeof removable / sizeof removable[0]; t++)
+            remove_override(removable[t], id);
+    blocks[slot].used = 0;
+    blocks[slot].releasing = 0;
+    return 1;
+}
+
 uint32_t core_resource_take(uint32_t owner, uint32_t count)
 {
     uint32_t slot = slot_of(owner);
     if (slot == MAX_BLOCKS)
         for (uint32_t i = 0; i < MAX_BLOCKS && slot == MAX_BLOCKS; i++)
-            if (!blocks[i].used)
+            if (!blocks[i].held)
                 slot = i;
+    /* Loaded again before its overrides could go: they stay, and the owner's
+     * screens find them under the same ids. */
+    if (slot < MAX_BLOCKS && blocks[slot].releasing && !clear(slot)) {
+        blocks[slot].used = 0;
+        blocks[slot].releasing = 0;
+    }
     if (slot == MAX_BLOCKS || !count || blocks[slot].used + count > CORE_RESOURCE_BLOCK_BYTES)
         return 0;
     blocks[slot].owner = owner;
+    blocks[slot].held = 1;
     blocks[slot].used += count;
     return base_of(owner, slot) + blocks[slot].used - count;
+}
+
+void core_resource_release(uint32_t owner)
+{
+    uint32_t slot = slot_of(owner);
+    if (slot == MAX_BLOCKS || !owner)
+        return;
+    blocks[slot].releasing = 1;
+    clear(slot);
+}
+
+void core_resource_tick(void)
+{
+    for (uint32_t i = 0; i < MAX_BLOCKS; i++)
+        if (blocks[i].releasing)
+            clear(i);
+}
+
+void core_resources_init(void *resource_bank)
+{
+    bank = resource_bank;
 }
 
 char *core_put_text(char *out, const char *end, const char *value)

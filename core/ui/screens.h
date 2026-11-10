@@ -7,9 +7,9 @@
 #include "hooks/sites.h"
 
 /* One registered screen: a declaration of its owner and the ids the clones use.
- * The owner is NULL for the core's own screens. A stale record outlives its
- * owner's image, so it keeps the name hash instead of the declaration and is
- * reused when the same owner declares the screen again in this boot. */
+ * The owner is NULL for the core's own screens. A retired core screen stays as
+ * a stale record, which keeps the name hash instead of the declaration and is
+ * reused when the screen is declared again in this boot. */
 struct core_screen {
     struct rv_extension_record *owner;
     const struct rv_screen *declaration; /* NULL while stale */
@@ -27,11 +27,16 @@ struct core_screen {
 /* First row item id (list), paragraph source id (text) or bar source id (slider). */
 #define CORE_SCREEN_ROWS(s) ((s)->id + 8)
 
-/* Registers the descriptor's screens; RV_NO_MEMORY when the table or the
+/* Registers the descriptor's screens; RV_NO_MEMORY when the heap or the
  * owner's id block is full. */
 int core_screens_register(struct rv_extension_record *owner, const struct rv_screen *screens,
                           uint32_t count);
+/* Frees the owner's records; its open controllers stay up without a screen. */
 void core_screens_release(struct rv_extension_record *owner);
+/* Detaches the owner's open screens from their controllers; returns how many. */
+uint32_t core_screens_abandon(struct rv_extension_record *owner);
+/* Controllers still up whose screen's owner unloaded. */
+uint32_t core_screens_orphans(void);
 /* Makes the core's screen of this declaration stale. */
 void core_screens_retire(const struct rv_screen *declaration);
 /* The screen named `name` of `owner`, or NULL. */

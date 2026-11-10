@@ -143,7 +143,11 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
         else
             core_set_source(bank, source, item, 1);
     }
-    ResourceBank_SetResource(bank, Resource_ITEM, s->id + 3, scratch, w.at);
+    /* A table left from the owner's earlier load stays: a list view that still
+     * holds it would read a freed copy if it were replaced. */
+    uint32_t bytes;
+    if (!stock(Resource_ITEM, s->id + 3, &bytes))
+        ResourceBank_SetResource(bank, Resource_ITEM, s->id + 3, scratch, w.at);
     return 1;
 }
 

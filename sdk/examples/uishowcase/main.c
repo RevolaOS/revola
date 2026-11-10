@@ -3,11 +3,10 @@
 /* Every UI declaration of the SDK behind a row that names it: the row kinds
  * with the screen calls of rv_api, the screen kinds with their layouts, and the
  * menus an entry can appear in. Open it from Settings, Main, Music (after
- * Settings > Music Menu turns it on) or Extras. The core shares 16 screens
- * among all extensions; this one takes 12, three of which the core makes from
- * the settings. Its
- * assets are in manifest.toml: the pane icon, the canvas bitmap and a note the
- * canvas reads back and draws. */
+ * Settings > Music Menu turns it on) or Extras. It declares nine screens and
+ * the core makes three more from the settings. Its assets are in
+ * manifest.toml: the pane icon, the canvas bitmap and a note the canvas reads
+ * back and draws. */
 
 #include "rv_api.h"
 #include "rv_menus.h"

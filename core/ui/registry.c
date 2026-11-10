@@ -10,8 +10,9 @@
 #include "settings.h"
 #include <stddef.h>
 
-/* Records in one heap block per registration of an owner, kept for the boot:
- * a stale record keeps its clones' ids for the owner's next load. */
+/* Records in one heap block per registration of an owner, freed when the
+ * owner unloads. The core's own blocks stay for the boot: a retired core screen
+ * keeps its ids as a stale record for its next declaration. */
 struct screen_set {
     struct screen_set *next;
     uint32_t key; /* core_resource_owner of the owner */
@@ -83,11 +84,19 @@ int core_screens_register(struct rv_extension_record *owner, const struct rv_scr
 
 void core_screens_release(struct rv_extension_record *owner)
 {
-    EACH_SCREEN(s)
-        if (s->owner == owner && s->declaration) {
-            s->declaration = NULL;
-            s->stale = 1;
+    uint32_t key = core_resource_owner(owner);
+    if (!owner)
+        return;
+    core_screens_abandon(owner);
+    for (struct screen_set **link = &sets; *link;) {
+        struct screen_set *set = *link;
+        if (set->key != key) {
+            link = &set->next;
+            continue;
         }
+        *link = set->next;
+        Heap_Free(set);
+    }
 }
 
 void core_screens_retire(const struct rv_screen *declaration)

@@ -2,8 +2,8 @@
 
 /* Screen navigation. A declared screen (registry.c) gets, on first push, the
  * clones in clones.c and lists.c; its text comes from the Settings model
- * properties in properties.c. Clones survive the owner's unload (Apple keeps
- * pointers) and are reused when it loads again in the same boot. */
+ * properties in properties.c. The clones go with the owner's id block
+ * (resources.c) when it unloads. */
 
 #include "ui/screens.h"
 #include "ui/submenus.h"
@@ -31,7 +31,8 @@ void *core_screens_caller;
 /* Navigation */
 
 /* Controllers the runtime pushed, in push order, so a deactivate finds its
- * screen without knowing the controller class. */
+ * screen without knowing the controller class. The screen is NULL once its
+ * owner unloaded under the controller. */
 #define MAX_OPEN 8
 static struct {
     void *controller;
@@ -47,11 +48,33 @@ struct core_screen *core_screens_of_controller(void *controller)
     return NULL;
 }
 
+uint32_t core_screens_abandon(struct rv_extension_record *owner)
+{
+    uint32_t abandoned = 0;
+    for (uint32_t i = 0; i < open_count; i++) {
+        struct core_screen *s = open[i].screen;
+        if (!s || s->owner != owner)
+            continue;
+        core_bitmaps_screen_closed(s);
+        open[i].screen = NULL;
+        abandoned++;
+    }
+    return abandoned;
+}
+
+uint32_t core_screens_orphans(void)
+{
+    uint32_t orphans = 0;
+    for (uint32_t i = 0; i < open_count; i++)
+        orphans += !open[i].screen;
+    return orphans;
+}
+
 void core_screens_setting_changed(struct rv_extension_record *owner, uint16_t key)
 {
     for (uint32_t i = 0; i < open_count; i++) {
         struct core_screen *s = open[i].screen;
-        const struct rv_screen *d = s->declaration;
+        const struct rv_screen *d = s ? s->declaration : NULL;
         if (!d || s->owner != owner || d->kind != RV_SCREEN_LIST)
             continue;
         for (uint32_t r = 0; r < d->list.count; r++)
@@ -66,7 +89,7 @@ struct core_screen *core_screens_top(uint8_t kind)
 {
     for (uint32_t i = open_count; i-- > 0;) {
         struct core_screen *s = open[i].screen;
-        if (s->declaration && s->declaration->kind == kind)
+        if (s && s->declaration && s->declaration->kind == kind)
             return s;
     }
     return NULL;
@@ -81,6 +104,8 @@ static void screen_left(void *controller)
         open_count--;
         for (uint32_t j = i; j < open_count; j++)
             open[j] = open[j + 1];
+        if (!s)
+            return;
         if (s->open)
             s->open--;
         if (!s->open)
@@ -118,11 +143,19 @@ static int split_from(const struct core_screen *s, void *controller)
     return FIELD(controller, 0, void *) == (void *)SettingsMenuListController_vtable;
 }
 
+static void *bank;
+
 static int build(struct core_screen *s, int split)
 {
     uint8_t bit = split ? CORE_BUILT_SPLIT : CORE_BUILT_FULL;
+    uint32_t screen = core_lists_kind(s->declaration->kind) ? core_lists_screen_id(s, split) : s->id;
+    uint32_t bytes;
     if (!s->open && core_submenus_stale(s))
         s->built = 0;
+    /* An owner loaded again before its last release finished finds its
+     * clones still in the bank; a controller may still read them. */
+    else if (s->owner && ResourceBank_GetResource(bank, Resource_SCST, screen, &bytes))
+        s->built |= bit;
     if (s->built & bit)
         return 1;
     int built = 0;
@@ -200,9 +233,11 @@ static const struct core_hook hooks[] = {
     {CORE_SITE_SettingsMenuListController_Deactivate_slot, CORE_HOOK_FILTER, 0, deactivated},
 };
 
-void core_screens_init(void *bank)
+void core_screens_init(void *resource_bank)
 {
+    bank = resource_bank;
     core_properties_init();
+    core_resources_init(bank);
     core_clones_init(bank);
     core_panes_init(bank);
     core_lists_init(bank);

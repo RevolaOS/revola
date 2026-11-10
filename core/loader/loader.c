@@ -22,6 +22,7 @@
 #include "loader/containers.h"
 #include "loader/lz.h"
 #include "ui/menus.h"
+#include "ui/resources.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
 #include "rv_api.h"
@@ -965,12 +966,14 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
         }
         for (uint32_t i = 0; i < descriptor->container_count; i++)
             core_containers_release(record, &descriptor->containers[i]);
-        core_menus_release(record);
+        int parked = core_menus_release(record);
         core_screens_release(record);
         if (record->setting_screens) {
             release(record, record->setting_screens);
             record->setting_screens = NULL;
         }
+        if (parked)
+            core_resource_release(record->owner);
         for (uint32_t i = 0; i < descriptor->hook_count; i++)
             core_hook_unbind(&record->hooks[i]);
         retire(record->hooks);
@@ -1166,6 +1169,7 @@ void core_loader_tick(void)
     }
     retired = retiring;
     retiring = NULL;
+    core_resource_tick();
 
     for (struct rv_extension_record *r = core_extensions, *next; r; r = next) {
         next = r->next;

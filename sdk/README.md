@@ -30,7 +30,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | `RV_CANVAS(name, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, colour roles themes can change) and reads wheel and key input |
 | `RV_ENTRY(menu, after, row)` | a row in `"main"`, `"music"`, `"extras"`, `"settings"`, a long-press menu (`"nowplaying"`, `"song"`, `"album"`, `"artist"`) or a container, after a stock row from `rv_menus.h`; under Settings `.caption` and `.bitmap` fill the preview pane |
 
-Screen names are local to the extension; `api->ui_push(self, name)` opens one from a row, choice or input callback. Labels and paragraphs are read from the module while a screen is open, never copied. Nothing about the firmware's own resources appears in a UI declaration; the symbols header is for hooks.
+Screen names are local to the extension; `api->ui_push(self, name)` opens one from a row, choice or input callback. Screens and entries are limited only by the heap and by the extension's 4,096 resource ids: a list takes 15 + 2 per row, a choice, multi-choice or runtime list 17, a text page 8 + one per paragraph, a slider 10, a canvas 8, a menu entry 2 (3 under Settings). A load that runs out shows No memory in Settings > Extensions. An unloaded extension's screens and records are freed. Labels and paragraphs are read from the module while a screen is open, never copied. Nothing about the firmware's own resources appears in a UI declaration; the symbols header is for hooks.
 
 ## Assets
 

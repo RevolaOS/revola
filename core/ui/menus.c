@@ -49,6 +49,38 @@ static const struct root roots[RV_ROOT_COUNT] = {
 struct row_set *core_menu_sets;
 static void *bank;
 
+/* Row data of unloaded owners, by item id. Apple's menu registry and the
+ * context menu model keep the pointers, so a block is handed back to the row
+ * that takes the item id again instead of being freed. */
+struct parked {
+    struct parked *next;
+    uint32_t left;
+    struct {
+        uint32_t item;
+        void *data;
+    } rows[];
+};
+
+static struct parked *parked;
+
+static void *adopt(uint32_t item)
+{
+    for (struct parked **link = &parked; *link; link = &(*link)->next) {
+        struct parked *p = *link;
+        for (uint32_t i = 0; i < p->left; i++) {
+            if (p->rows[i].item != item)
+                continue;
+            void *data = p->rows[i].data;
+            p->rows[i] = p->rows[--p->left];
+            if (!p->left) {
+                *link = p->next;
+                Heap_Free(p);
+            }
+            return data;
+        }
+    }
+    return NULL;
+}
 
 
 static const char *const root_names[RV_ROOT_COUNT] = {
@@ -186,9 +218,11 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->index = (uint8_t)n;
         r->stale = 0;
         r->container = root == CORE_ROOT_CONTAINER ? core_settings_owner(e->in) : 0;
+        r->data = adopt(item);
         if (root < RV_ROOT_COUNT && !roots[root].table) {
             r->after = 0;
-            r->data = Heap_AllocateZeroed(11);
+            if (!r->data)
+                r->data = Heap_AllocateZeroed(11);
             if (!r->data)
                 return RV_NO_MEMORY;
             core_screens_handler_name(r->data, item);
@@ -206,20 +240,57 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             core_set_source2(bank, item + 1, item, item + 1, SourceDestination_InlineValue);
         else
             core_set_source(bank, item + 1, item, 1);
+        apply_visibility(r);
     }
     core_menus_changed();
     return RV_OK;
 }
 
-void core_menus_release(struct rv_extension_record *owner)
+static void hide(struct row *r)
 {
-    EACH_ROW(r)
-        if (r->entry && r->owner == owner) {
-            r->entry = NULL;
-            r->stale = 1;
-            apply_visibility(r);
+    r->entry = NULL;
+    r->stale = 1;
+    apply_visibility(r);
+}
+
+int core_menus_release(struct rv_extension_record *owner)
+{
+    uint32_t key = core_resource_owner(owner), held = 0;
+    for (struct row_set *set = core_menu_sets; set; set = set->next)
+        for (uint32_t i = 0; set->key == key && i < set->count; i++)
+            held += set->rows[i].data != NULL;
+    struct parked *p = held ? Heap_AllocateZeroed(sizeof *p + held * sizeof p->rows[0]) : NULL;
+    if (held && !p) {
+        EACH_ROW(r)
+            if (r->entry && r->owner == owner)
+                hide(r);
+        core_menus_changed();
+        return 0;
+    }
+    for (struct row_set **link = &core_menu_sets; *link;) {
+        struct row_set *set = *link;
+        if (set->key != key) {
+            link = &set->next;
+            continue;
         }
+        for (uint32_t i = 0; i < set->count; i++) {
+            struct row *r = &set->rows[i];
+            if (r->entry)
+                hide(r);
+            if (r->data) {
+                p->rows[p->left].item = r->item;
+                p->rows[p->left++].data = r->data;
+            }
+        }
+        *link = set->next;
+        Heap_Free(set);
+    }
+    if (p) {
+        p->next = parked;
+        parked = p;
+    }
     core_menus_changed();
+    return 1;
 }
 
 void core_menus_retire(const struct rv_entry *entry)
@@ -320,6 +391,10 @@ int core_menus_owns(uint32_t id)
     EACH_ROW(r)
         if (id - r->item < 2)
             return 1;
+    for (struct parked *p = parked; p; p = p->next)
+        for (uint32_t i = 0; i < p->left; i++)
+            if (id - p->rows[i].item < 2)
+                return 1;
     return 0;
 }
 

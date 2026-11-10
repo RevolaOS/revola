@@ -21,8 +21,10 @@ enum rv_root {
 /* Registers the descriptor's entries as rows of the native menus. */
 int core_menus_register(struct rv_extension_record *owner, const struct rv_entry *entries,
                         uint32_t count);
-/* Hides the owner's rows; they stay allocated because Apple keeps pointers. */
-void core_menus_release(struct rv_extension_record *owner);
+/* Hides the owner's rows and frees their records; the row data Apple keeps
+ * pointers to is parked for the owner's next load. 0 when the heap had no room
+ * to park it: the rows then stay as stale records and keep their ids. */
+int core_menus_release(struct rv_extension_record *owner);
 /* Hides the core's row of this entry. */
 void core_menus_retire(const struct rv_entry *entry);
 /* Rows came or went: updates the rows that open containers and marks the
@@ -46,7 +48,7 @@ const struct rv_entry *core_menus_entry(uint32_t item, struct rv_extension_recor
 /* 1 when `id` is a Settings row's pane handler id; shows that row in the pane
  * unless `argument` is the support query. */
 int core_menus_pane(uint32_t id, uint32_t argument);
-/* 1 when `id` is the item or source id of a row, live or stale. */
+/* 1 when `id` is the item or source id of a row, live, stale or parked. */
 int core_menus_owns(uint32_t id);
 
 /* The n-th live row of a context menu: its label's string id and the handler
