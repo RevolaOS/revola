@@ -81,6 +81,9 @@ void core_screens_tick(void);
 int core_screens_first_activation(void *controller);
 /* The navigator's top controller. */
 void *core_screens_top_controller(void);
+/* The canvas the navigator shows on top, or NULL when the top is another
+ * screen. */
+struct core_screen *core_screens_top_canvas(void);
 /* The controller whose row, choice or input callback is running; NULL outside
  * one. A split list opened from it takes its layout. */
 extern void *core_screens_caller;

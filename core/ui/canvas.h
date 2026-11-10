@@ -12,8 +12,8 @@ struct rv_rect;
 int core_canvas_prepare(void);
 /* Gives a created canvas or slider controller that vtable. */
 void core_canvas_attach(void *controller);
-/* Redraws the canvas view, or `rect` of it in canvas coordinates, when a canvas
- * is the top canvas screen. */
+/* Redraws the canvas view, or `rect` of it in canvas coordinates; the caller
+ * checks that a canvas is on top. */
 void core_canvas_invalidate(const struct rv_rect *rect);
 /* Answers the slider's bar (Property_Control) and value text (Property_String);
  * 0 for anything else. */

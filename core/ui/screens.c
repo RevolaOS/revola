@@ -118,6 +118,12 @@ void *core_screens_top_controller(void)
     return *(void **)((uint8_t *)Navigator_Get() + Navigator_top_controller);
 }
 
+struct core_screen *core_screens_top_canvas(void)
+{
+    struct core_screen *s = core_screens_of_controller(core_screens_top_controller());
+    return s && s->declaration && s->declaration->kind == RV_SCREEN_KIND_CANVAS ? s : NULL;
+}
+
 struct core_screen *core_screens_of_controller(void *controller)
 {
     for (uint32_t i = 0; i < open_count; i++)
@@ -368,7 +374,7 @@ void core_screens_pop(struct rv_extension_record *owner)
 
 void core_screens_invalidate(struct rv_extension_record *owner, const struct rv_rect *rect)
 {
-    struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
+    struct core_screen *s = core_screens_top_canvas();
     if (s && s->owner == owner)
         core_canvas_invalidate(rect);
 }

@@ -72,7 +72,7 @@ static void *create(void *owner, void *parent, void *event_target, const void *d
 
 void core_canvas_invalidate(const struct rv_rect *rect)
 {
-    if (!canvas_view || !core_screens_top(RV_SCREEN_KIND_CANVAS))
+    if (!canvas_view)
         return;
     /* View rectangles are {top, left, bottom, right} in the root's space. */
     const int32_t *view = (const int32_t *)((uint8_t *)canvas_view + View_bounds);
@@ -201,8 +201,8 @@ static int event(void *controller, void *event)
 static uint32_t hold_changed(uint32_t system, uint32_t locked, const struct core_next *next)
 {
     uint32_t result = core_next_call(next, system, locked, 0, 0);
-    struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
-    if (s && s->declaration && s->declaration->canvas.input) {
+    struct core_screen *s = core_screens_top_canvas();
+    if (s && s->declaration->canvas.input) {
         struct rv_input in = {RV_INPUT_HOLD, 0, (int16_t)(locked != 0)};
         struct rv_context ctx;
         core_screens_context(s, &ctx);
