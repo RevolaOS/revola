@@ -58,10 +58,11 @@ const void *core_context_item(uint8_t menu, void *controller, void *item, int32_
             Genius_GetItem(genius, (uint32_t)Genius_MapVisibleRow(genius, menu_row), item);
         } else {
             void *model = LibraryModelRef_Get((uint8_t *)controller + MediaListController_model);
-            void (*get)(void *, void *, int32_t) =
-                FIELD(FIELD(model, 0, void **), SongModel_get_item_method, void *);
-            if (model)
+            if (model) {
+                void (*get)(void *, void *, int32_t) =
+                    FIELD(FIELD(model, 0, void **), SongModel_get_item_method, void *);
                 get(item, model, menu_row);
+            }
         }
     } else {
         return NULL;
