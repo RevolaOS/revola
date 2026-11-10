@@ -39,6 +39,42 @@ static void set(uint32_t type, uint32_t id, const void *data, uint32_t bytes)
  * stock view it copies is missing. */
 typedef int (*template_writer)(struct core_writer *w, uint32_t id, const void *views);
 
+/* A TMLT's record for layout kind `kind`, or NULL. */
+static uint8_t *style_record(const void *tmlt, uint32_t kind)
+{
+    struct core_block block;
+    if (!tmlt || !core_block_at(tmlt, 0, &block) ||
+        block.bytes < TemplateResource_styles + (kind + 1) * TemplateStyle_bytes)
+        return NULL;
+    return (uint8_t *)block.data + TemplateResource_styles + kind * TemplateStyle_bytes;
+}
+
+/* Stock firmware gives the Brightness template enter and leave styles only for
+ * a split list (the window slides in from the right and back out); template
+ * `id`'s copy gets them for every list kind a core screen opens from. The
+ * bank's copy is changed in place, before the template is built from it. */
+static void slide_like_brightness(uint32_t id)
+{
+    static const uint8_t kinds[] = {LayoutKind_Menu, LayoutKind_SplitList, LayoutKind_List};
+    uint32_t bytes;
+    const uint8_t *from =
+        style_record(stock(Resource_TMLT, RES_Settings_Brightness_Template, &bytes), LayoutKind_SplitList);
+    const void *copy = stock(Resource_TMLT, id, &bytes);
+    struct core_block block;
+    if (!from || !copy || !core_block_at(copy, 0, &block))
+        return;
+    for (uint32_t i = 0; i < sizeof kinds; i++) {
+        uint8_t *to = style_record(copy, kinds[i]);
+        if (!to)
+            return;
+        for (uint32_t b = 0; b < 2; b++) {
+            to[TemplateStyle_enter + b] = from[TemplateStyle_enter + b];
+            to[TemplateStyle_leave + b] = from[TemplateStyle_leave + b];
+        }
+    }
+    ((uint8_t *)block.data)[TemplateResource_has_styles] = 1;
+}
+
 /* Takes `ids` ids, writes the View with `write` (measured first) and stores it
  * with the stock template's TMLT. The bank keeps the only copy: the
  * enumeration yields it and the template builds its child views from it. */
@@ -171,5 +207,7 @@ void core_templates_init(void *resource_bank)
     core_template_text = build(RES_Settings_Legal_Template, 2 + CORE_MAX_PARAGRAPHS, write_text);
     core_template_slider = build(RES_Settings_Brightness_Template, 3, write_slider);
     core_template_canvas = build(RES_FullScreenImage_Template, 2, write_canvas);
+    slide_like_brightness(core_template_slider);
+    slide_like_brightness(core_template_canvas);
     core_hook_bind(&next_template_hook);
 }

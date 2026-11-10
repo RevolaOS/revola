@@ -36,7 +36,9 @@ static uint32_t wheel[WheelAccumulator_bytes / 4];
 static void draw(void *view, void *argument, const int32_t *clip)
 {
     struct core_screen *s = core_screens_top(RV_SCREEN_CANVAS);
-    if (!s || !s->declaration->canvas.draw) {
+    if (!s)
+        s = core_screens_popped_canvas();
+    if (!s || !s->declaration || !s->declaration->canvas.draw) {
         View_Draw(view, argument, clip);
         return;
     }

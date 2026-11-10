@@ -80,7 +80,7 @@ static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, u
     uint32_t vslt[5] = {1, 8, ViewBinding_ItemTable, RES_SettingsList_View, s->id + 3};
     core_resource_set(Resource_VSlt, screen, vslt, sizeof vslt);
     struct layout_clone c = {RES_Settings_MainMenu_Layout, screen + 1, RES_StatusBarWhite_Text,
-                             s->id + 2, 0, stock_pane, pane_id, 0, NULL};
+                             s->id + 2, 0, stock_pane, pane_id, NULL};
     return core_clone_layout(&c, next, scratch, bytes);
 }
 
@@ -163,7 +163,7 @@ static int clone_layouts(struct core_screen *s, int split, const void *events,
     uint32_t screen = core_lists_screen_id(s, split), next = split ? screen + 2 : s->id + 4;
     uint32_t last = split ? CORE_LIST_PANE_CAPTION(screen) : CORE_SCREEN_ROWS(s);
     struct layout_clone c = {RES_Notes_List_Screen_Alt_Default, screen + 1, RES_StatusBarWhite_Text,
-                             s->id + 2, s->id + 3, 0, 0, 0, NULL};
+                             s->id + 2, s->id + 3, 0, 0, NULL};
     if (!(split ? clone_split(s, screen, &next, scratch, scratch_bytes)
                 : core_clone_layout(&c, &next, scratch, scratch_bytes)) ||
         next > last)

@@ -30,7 +30,6 @@ struct layout_clone {
     uint32_t items;      /* ITEM table for the list binding, 0 to keep */
     uint32_t from, to;   /* template or VLyt id replaced, 0 for none; a new VLyt id needs a
                             TEVT stored under it, or loading the layout's events aborts */
-    uint32_t drop;       /* template whose instances are removed, 0 for none */
     const struct view_sources *extra; /* sources for the views of template `to` */
 };
 

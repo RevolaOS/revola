@@ -59,6 +59,9 @@ struct core_screen *core_screens_of_id(uint32_t id);
 struct core_screen *core_screens_of_controller(void *controller);
 /* The most recently pushed open screen of a kind, or NULL. */
 struct core_screen *core_screens_top(uint8_t kind);
+/* The canvas just popped, while its leaving copy may still be drawn; NULL once
+ * another screen is pushed or while another canvas is open. */
+struct core_screen *core_screens_popped_canvas(void);
 /* Opens a screen on top of `controller`'s screen; loads its module first. */
 int core_screens_push(struct core_screen *screen, void *controller);
 /* The controller whose row, choice or input callback is running; NULL outside

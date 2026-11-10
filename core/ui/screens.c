@@ -95,6 +95,16 @@ struct core_screen *core_screens_top(uint8_t kind)
     return NULL;
 }
 
+/* The canvas popped last while no other canvas stays open, until the next
+ * push. A pop deactivates the controller before the transition draws the
+ * leaving screen once more, into the copy that slides out. */
+static struct core_screen *popped_canvas;
+
+struct core_screen *core_screens_popped_canvas(void)
+{
+    return popped_canvas;
+}
+
 static void screen_left(void *controller)
 {
     for (uint32_t i = 0; i < open_count; i++) {
@@ -114,6 +124,9 @@ static void screen_left(void *controller)
             core_extensions_closed(s);
         if (s->owner && s->declaration)
             core_loader_screen_popped(s->declaration->name);
+        if (s->declaration && s->declaration->kind == RV_SCREEN_CANVAS &&
+            !core_screens_top(RV_SCREEN_CANVAS))
+            popped_canvas = s;
         return;
     }
 }
@@ -184,6 +197,24 @@ static int build(struct core_screen *s, int split, uint32_t screen)
     return built;
 }
 
+/* The transition that opens `s` over the layout on screen now.
+ * - A split list shares the status bar, background and pane with Settings, so
+ *   only its list moves in, as stock half-screen Settings lists do.
+ * - A slider or canvas slides in as Settings > About does, through its
+ *   template's styles (templates.c). Over another full screen the two share
+ *   the template, which then would not move, so the whole screen slides.
+ * - Text pages and other lists slide the whole screen (Settings opens Legal's
+ *   page kind with a foreground push whatever is asked). */
+static uint32_t opening(const struct core_screen *s, uint8_t kind)
+{
+    uint8_t from = FIELD(UI_GetLayoutManager(), LayoutManager_kind, uint8_t);
+    if (s->split)
+        return Transition_Standard;
+    if (kind != RV_SCREEN_SLIDER && kind != RV_SCREEN_CANVAS)
+        return Transition_ScreenPush;
+    return from == LayoutKind_FullScreen ? Transition_ScreenPush : Transition_Standard;
+}
+
 int core_screens_push(struct core_screen *s, void *controller)
 {
     uint8_t kind = s->declaration->kind;
@@ -191,15 +222,14 @@ int core_screens_push(struct core_screen *s, void *controller)
     int split = core_lists_kind(kind) && split_from(s, controller);
     if (open_count == MAX_OPEN || (input && !core_canvas_prepare()) || !core_indexed_prepare(s))
         return 0;
+    popped_canvas = NULL;
     if (s->owner)
         core_loader_screen_pushed(s->declaration->name);
     s->split = (uint8_t)split;
     uint32_t screen = core_lists_screen_id(s, split);
     if (!build(s, split, screen))
         return 0;
-    /* A split list shares the status bar, background and pane with Settings,
-     * so only its list moves in, as stock half-screen Settings lists do. */
-    uint32_t transition = split ? Transition_Standard : Transition_ScreenPush;
+    uint32_t transition = opening(s, kind);
     void *created =
         UI_CreateScreenController(UI_GetControllerRegistry(), screen, screen + 1, transition);
     if (!created)

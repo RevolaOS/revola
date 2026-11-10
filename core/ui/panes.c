@@ -132,7 +132,7 @@ static int build(void)
         uint32_t next = SSIN;
         struct layout_clone c = {RES_SettingsMenus_Legal_Layout, layout, 0, 0, 0,
                                  core_panes_stock_layout(RES_SettingsMenus_Legal_Layout), PANE,
-                                 0, NULL};
+                                 NULL};
         built = core_clone_layout(&c, &next, scratch, scratch_bytes) && next <= PANE;
     }
     if (built) {

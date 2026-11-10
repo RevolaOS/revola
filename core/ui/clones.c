@@ -140,18 +140,6 @@ int core_clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scr
                 break;
             uint8_t *words = (uint8_t *)instance.data;
             uint32_t template = core_word_at(words, SsinInstance_template);
-            if (c->drop && template == c->drop) {
-                /* Removed, not zeroed: leaving a layout calls each old instance's
-                 * template unchecked, and template 0 resolves to none. */
-                uint8_t *from = words + ((instance.bytes + 3) & ~3u), *to = words - 8;
-                uint8_t *end = ssin_copy + ssin_bytes;
-                ssin_bytes -= (uint32_t)(from - to);
-                while (from < end)
-                    *to++ = *from++;
-                put_word(ssin_copy, core_blocks_count(ssin_copy) - 1);
-                n--;
-                continue;
-            }
             uint32_t view_id = core_word_at(words, SsinInstance_view_bindings), vcvs_bytes;
             const void *vcvs = view_id ? stock(Resource_VCvs, view_id, &vcvs_bytes) : NULL;
             const struct view_sources *sources = c->from && template == c->from ? c->extra : NULL;
@@ -242,7 +230,7 @@ int core_clone_text(struct core_screen *s)
         core_set_source(rows + i, rows + i, 1);
     uint32_t none = 0; /* the Legal controller handles Menu itself: no layout events */
     struct layout_clone c = {RES_Settings_Legal_Layout, s->id + 1, RES_StatusBarWhite_Text,
-                             s->id + 2, 0, RES_Settings_Legal_Template, core_template_text, 0,
+                             s->id + 2, 0, RES_Settings_Legal_Template, core_template_text,
                              &paragraphs};
     int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= rows;
     if (built) {
@@ -256,11 +244,12 @@ int core_clone_text(struct core_screen *s)
 
 /* Ids of a slider or canvas: id screen, +1 layout, +2 title, +3.. layout clones,
  * +8 the bar's source, +9 the value text's. Both are the Brightness layout over
- * a plain resource screen controller, whose event slot canvas.c replaces; the
- * full-screen background is kept under the slider and dropped under a canvas,
- * which paints its whole area. */
+ * a plain resource screen controller, whose event slot canvas.c replaces. The
+ * full-screen background stays under a canvas too: Settings shares it, so it
+ * holds still when the screen opens or closes. Otherwise it enters into the
+ * window on a pop, in front of the layer the leaving screen slides out on. */
 static int clone_brightness(struct core_screen *s, uint32_t template, const struct view_sources *views,
-                            uint32_t drop, const void *events, uint32_t event_bytes)
+                            const void *events, uint32_t event_bytes)
 {
     uint32_t next = s->id + 3;
     if (!template)
@@ -271,7 +260,7 @@ static int clone_brightness(struct core_screen *s, uint32_t template, const stru
     core_set_source(s->id + 2, s->id + 2, 1);
     struct layout_clone c = {RES_Settings_Brightness_Screen_Default, s->id + 1,
                              RES_StatusBar_Title_Text, s->id + 2, 0,
-                             RES_Settings_Brightness_Template, template, drop, views};
+                             RES_Settings_Brightness_Template, template, views};
     int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= CORE_SCREEN_ROWS(s);
     if (built) {
         uint32_t none = 0;
@@ -293,14 +282,14 @@ int core_clone_slider(struct core_screen *s)
         return 0;
     core_set_source(rows, rows, 1);
     core_set_source(rows + 1, rows + 1, 1);
-    return clone_brightness(s, core_template_slider, &views, 0, events, bytes);
+    return clone_brightness(s, core_template_slider, &views, events, bytes);
 }
 
 /* No layout events: every key reaches the extension first. */
 int core_clone_canvas(struct core_screen *s)
 {
     uint32_t none = 0;
-    return clone_brightness(s, core_template_canvas, NULL, RES_FullScreenImage_Template, &none, 4);
+    return clone_brightness(s, core_template_canvas, NULL, &none, 4);
 }
 
 void core_clones_init(void *resource_bank)
