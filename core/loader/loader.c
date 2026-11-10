@@ -747,6 +747,9 @@ static int api_hook_bind(rv_extension_handle self, const struct rv_hook *hook)
     int site = record ? site_index(record, hook->site) : -1;
     if (site < 0)
         return record ? RV_BAD_SITE : RV_BAD_ARGUMENT;
+    const struct core_hook *bound_copy = core_hook_find((uint32_t)site, hook->handler);
+    if (bound_copy && header_of((void *)bound_copy)->owner == record)
+        return RV_ALREADY_BOUND;
     struct core_hook *copy = allocate(record, sizeof *copy);
     if (!copy)
         return RV_NO_MEMORY;

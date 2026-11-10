@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 26
+#define RV_API_MINOR 27
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -45,6 +45,7 @@ enum rv_result {
     RV_BAD_SITE,   /* no site with that id in this core */
     RV_BAD_ARGUMENT,
     RV_NOT_FOUND,
+    RV_ALREADY_BOUND, /* this extension already has the handler at that site */
 };
 
 enum rv_hook_mode {
@@ -396,7 +397,8 @@ struct rv_api {
     uint32_t version; /* RV_API_VERSION of the core */
 
     /* Bind beyond the descriptor; unbind only what hook_bind bound (the
-     * descriptor's hooks are unbound by the loader). */
+     * descriptor's hooks are unbound by the loader). A handler the extension
+     * already has at the site returns RV_ALREADY_BOUND and binds nothing. */
     int (*hook_bind)(rv_extension_handle self, const struct rv_hook *hook);
     int (*hook_unbind)(rv_extension_handle self, const struct rv_hook *hook);
     /* Continue a filter chain; unused trailing arguments are 0. */
