@@ -200,7 +200,7 @@ int core_screens_push(struct core_screen *s, void *controller)
     uint32_t screen = core_lists_kind(kind) ? core_lists_screen_id(s, split) : s->id;
     /* A split list shares the status bar, background and pane with Settings,
      * so only its list moves in, as stock half-screen Settings lists do. */
-    uint32_t transition = split ? Transition_Standard : Transition_ForegroundPush;
+    uint32_t transition = split ? Transition_Standard : Transition_ScreenPush;
     void *created =
         UI_CreateScreenController(UI_GetControllerRegistry(), screen, screen + 1, transition);
     if (!created)
