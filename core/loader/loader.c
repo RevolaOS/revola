@@ -912,7 +912,7 @@ static void api_ui_invalidate(rv_extension_handle self)
 {
     struct rv_extension_record *record = valid_handle(self);
     if (record)
-        core_screens_invalidate(record);
+        core_screens_invalidate(record, NULL);
 }
 
 static void *api_asset_load(rv_extension_handle self, const char *name, uint32_t *bytes)
@@ -997,6 +997,13 @@ static uint32_t api_format_size(char *out, uint32_t capacity, uint32_t bytes)
     return out && capacity ? (uint32_t)(core_format_size(out, out + capacity, bytes) - out) : 0;
 }
 
+static void api_ui_invalidate_rect(rv_extension_handle self, const struct rv_rect *rect)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (record && rect)
+        core_screens_invalidate(record, rect);
+}
+
 static struct rv_timer *api_timer_start(rv_extension_handle self, uint32_t ms, int repeat,
                                         void (*callback)(void *arg), void *arg)
 {
@@ -1038,6 +1045,7 @@ static const struct rv_api api = {
     .format_size = api_format_size,
     .timer_start = api_timer_start,
     .timer_stop = api_timer_stop,
+    .ui_invalidate_rect = api_ui_invalidate_rect,
 };
 
 /* Modules */

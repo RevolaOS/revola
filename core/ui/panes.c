@@ -174,10 +174,20 @@ void core_panes_show(uint32_t item)
 
 /* The box behind an icon, or a transparent pixel for a row without one: an
  * image view keeps its last bitmap when it is answered NULL. */
-static const void *box_for(const struct rv_menu_entry *e)
+/* The entry's pane icon now. */
+static const struct rv_bitmap *icon_of(const struct rv_menu_entry *e,
+                                       struct rv_extension_record *owner)
+{
+    if (!e->bitmap_for)
+        return e->bitmap;
+    struct rv_context ctx = {owner, NULL, NULL, NULL, -1};
+    return e->bitmap_for(&ctx);
+}
+
+static const void *box_for(const struct rv_menu_entry *e, struct rv_extension_record *owner)
 {
     static uint32_t clear[(BMap_payload + 4) / 4];
-    if (e->bitmap && !e->plain_icon)
+    if (icon_of(e, owner) && !e->plain_icon)
         return ResourceService_GetBitmap(UI_GetResourceService(),
                                          RES_SettingsPreview_Background_Image);
     if (!clear[0]) {
@@ -198,12 +208,16 @@ int core_panes_property(uint32_t type, uint32_t id, uint32_t out)
     if (!layout || id - CAPTION >= 4 || !(e = core_menus_entry(current, &owner)))
         return 0;
     if (id == ICON && type == Property_Bitmap)
-        *(const void **)out = core_bitmap(owner, e->bitmap);
+        *(const void **)out = core_bitmap(owner, icon_of(e, owner));
     else if (id == BOX && type == Property_Bitmap)
-        *(const void **)out = box_for(e);
+        *(const void **)out = box_for(e, owner);
     else if (id == CAPTION && type == Property_String)
         *(const char **)out = core_row_label(&e->row, owner, NULL);
-    else if (id == DETAIL && type == Property_String)
+    else if (id == DETAIL && type == Property_String && e->caption_text) {
+        struct rv_context ctx = {owner, NULL, NULL, NULL, -1};
+        const char *text = e->caption_text(&ctx);
+        *(const char **)out = text ? text : "";
+    } else if (id == DETAIL && type == Property_String)
         *(const char **)out = e->caption ? e->caption : "";
     else
         return 0;

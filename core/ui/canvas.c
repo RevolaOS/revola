@@ -70,10 +70,20 @@ static void *create(void *owner, void *parent, void *event_target, const void *d
     return view;
 }
 
-void core_canvas_invalidate(void)
+void core_canvas_invalidate(const struct rv_rect *rect)
 {
-    if (canvas_view && core_screens_top(RV_SCREEN_KIND_CANVAS))
-        View_InvalidateRect(UI_GetRootView(), (const int32_t *)((uint8_t *)canvas_view + View_bounds));
+    if (!canvas_view || !core_screens_top(RV_SCREEN_KIND_CANVAS))
+        return;
+    /* View rectangles are {top, left, bottom, right} in the root's space. */
+    const int32_t *view = (const int32_t *)((uint8_t *)canvas_view + View_bounds);
+    int32_t part[4];
+    if (rect) {
+        part[0] = view[0] + rect->y;
+        part[1] = view[1] + rect->x;
+        part[2] = part[0] + rect->height;
+        part[3] = part[1] + rect->width;
+    }
+    View_InvalidateRect(UI_GetRootView(), rect ? part : view);
 }
 
 /* Slider */
@@ -186,6 +196,24 @@ static int event(void *controller, void *event)
     return consumed ? 1 : handle_event(controller, event);
 }
 
+/* The hold switch reaches the canvas on top as an input; the system handles
+ * it as before. */
+static uint32_t hold_changed(uint32_t system, uint32_t locked, const struct core_next *next)
+{
+    uint32_t result = core_next_call(next, system, locked, 0, 0);
+    struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
+    if (s && s->declaration && s->declaration->canvas.input) {
+        struct rv_input in = {RV_INPUT_HOLD, 0, (int16_t)(locked != 0)};
+        struct rv_context ctx;
+        core_screens_context(s, &ctx);
+        s->declaration->canvas.input(&ctx, &in);
+    }
+    return result;
+}
+
+static const struct core_hook hold_hook = {CORE_SITE_SystemUI_HandleHoldChange_call,
+                                           CORE_HOOK_FILTER, 0, hold_changed};
+
 /* The vtable of the plain resource screen the clones name. */
 int core_canvas_prepare(void)
 {
@@ -208,4 +236,5 @@ void core_canvas_init(void)
         view_vtable[i] = ((void *const *)from)[i];
     view_vtable[PREFIX_WORDS + View_draw_method / 4] = (void *)draw;
     UI_RegisterViewFactory(CORE_VIEW_CANVAS, (void *)create);
+    core_hook_bind(&hold_hook);
 }

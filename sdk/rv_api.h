@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 21
+#define RV_API_MINOR 22
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -175,7 +175,7 @@ enum rv_transition {
 struct rv_bitmap {
     const char *asset;
 };
-#define RV_BITMAP(name) (&(const struct rv_bitmap){(name)})
+#define RV_BITMAP(name) (&(const struct rv_bitmap){.asset = (name)})
 
 /* Drawing, for canvas screens. Coordinates count from the top left of the
  * canvas, below the title bar; the canvas is clipped for the extension. */
@@ -236,7 +236,9 @@ struct rv_gfx {
                  const struct rv_bitmap *icon);
 };
 
-enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
+/* RV_INPUT_HOLD: the hold switch moved; `delta` is 1 when it locked, 0 when it
+ * unlocked. What the input callback returns for it is ignored. */
+enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE, RV_INPUT_HOLD };
 enum rv_button { RV_BUTTON_CENTER, RV_BUTTON_MENU, RV_BUTTON_PREVIOUS, RV_BUTTON_NEXT, RV_BUTTON_PLAY };
 
 struct rv_input {
@@ -291,6 +293,9 @@ struct rv_screen {
             const char *(*row)(const struct rv_context *ctx, uint32_t index,
                                const char **detail);
             int (*select)(const struct rv_context *ctx, uint32_t index); /* 1 pops the screen */
+            /* The row highlighted when the screen opens; NULL keeps the list's
+             * own, which may be a row of the last list shown. */
+            uint32_t (*initial)(const struct rv_context *ctx);
             uint8_t detail;                /* rv_detail: where the detail goes */
         } dynamic;
     };
@@ -337,6 +342,13 @@ struct rv_menu_entry {
     struct rv_row row;
     const char *caption;
     const struct rv_bitmap *bitmap;
+    /* When set, the pane's caption and icon each time the row is highlighted,
+     * instead of `caption` and `bitmap`. */
+    const char *(*caption_text)(const struct rv_context *ctx);
+    const struct rv_bitmap *(*bitmap_for)(const struct rv_context *ctx);
+    /* Context menus: asked each time the menu opens, with the item and row it
+     * opened on; 0 leaves the row out. NULL always shows it. */
+    int (*available)(const struct rv_context *ctx);
 };
 
 /* Where a debugger finds core state in memory. The record offsets are into the
@@ -448,6 +460,10 @@ struct rv_api {
     struct rv_timer *(*timer_start)(rv_extension_handle self, uint32_t ms, int repeat,
                                     void (*callback)(void *arg), void *arg);
     void (*timer_stop)(rv_extension_handle self, struct rv_timer *timer);
+
+    /* ui_invalidate for `rect` of the canvas, in its coordinates; the draw
+     * callback runs as for ui_invalidate. */
+    void (*ui_invalidate_rect)(rv_extension_handle self, const struct rv_rect *rect);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its

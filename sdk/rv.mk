@@ -19,6 +19,7 @@ CC := $(CROSS_COMPILE)gcc
 CFLAGS := -mcpu=arm926ej-s -mthumb -mthumb-interwork -mlong-calls -Os -std=c11 \
     -ffreestanding -fno-builtin -fno-common -fno-pic -fno-jump-tables \
     -fno-unwind-tables -fno-asynchronous-unwind-tables -Wall -Wextra -Werror \
+    -Wno-missing-field-initializers \
     -I$(SDK) $(EXTRA_CFLAGS)
 ARM_CFLAGS := $(filter-out -mthumb,$(CFLAGS)) -marm -fno-optimize-sibling-calls
 LDFLAGS := -nostdlib -Wl,-T,$(SDK)/rvx.lds -Wl,--emit-relocs -Wl,--gc-sections \

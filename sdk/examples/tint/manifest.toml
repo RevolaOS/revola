@@ -4,7 +4,7 @@ description = "Tints the background behind Cover Flow and album art."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.21"
+api = "1.22"
 enabled = true
 
 [[module]]

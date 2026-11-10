@@ -35,6 +35,11 @@ static uint32_t menu_opening(uint32_t controller, const struct core_next *next)
     return core_next_call(next, controller, 0, 0, 0);
 }
 
+void *core_context_list(void)
+{
+    return menu_list;
+}
+
 const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row)
 {
     *row = -1;

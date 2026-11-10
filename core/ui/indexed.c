@@ -171,16 +171,25 @@ static uint32_t list_view(const struct core_screen *s)
     return notes_view;
 }
 
-/* Highlights the current choice. The Settings list controller builds its list
- * while it activates, so the row is selected right after that. */
+/* Highlights the current choice, or a dynamic list's initial row. The Settings
+ * list controller builds its list while it activates, so the row is selected
+ * right after that. */
 static void select_current(const struct core_screen *s)
 {
+    const struct rv_screen *d = s->declaration;
     void *model = UI_GetSelectionModel();
     void *(*find)(void *, uint32_t) =
         FIELD(FIELD(model, 0, void **), SelectionModel_find_view_method, void *);
     void *view = find(model, list_view(s));
     void *list = view ? Object_GetInterface(view, Interface_List) : NULL;
-    int32_t index = setting(s);
+    int32_t index;
+    if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST) {
+        struct rv_context ctx;
+        core_screens_context(s, &ctx);
+        index = (int32_t)d->dynamic.initial(&ctx);
+    } else {
+        index = setting(s);
+    }
     if (!list || index < 0 || (uint32_t)index >= row_count(s))
         return;
     void (*select)(void *, uint32_t) =
@@ -195,14 +204,21 @@ static uint32_t choice_activate(void *controller, uint32_t entering)
 {
     uint32_t result = activate_original(controller, entering);
     struct core_screen *s = core_screens_of_controller(controller);
-    if (entering && s && s->declaration)
+    if (entering && s && s->declaration && core_screens_first_activation(controller))
         select_current(s);
     return result;
 }
 
+/* Screens whose opening row the core sets. */
+static int selects(const struct rv_screen *d)
+{
+    return d->kind == RV_SCREEN_KIND_CHOICE ||
+           (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST && d->dynamic.initial);
+}
+
 int core_indexed_prepare(struct core_screen *s)
 {
-    if (s->declaration->kind != RV_SCREEN_KIND_CHOICE || choice_vtable)
+    if (!selects(s->declaration) || choice_vtable)
         return 1;
     choice_vtable = core_controller_vtable(SettingsMenuListController_vtable,
                                            ScreenController_activate_method, choice_activate,
@@ -212,7 +228,7 @@ int core_indexed_prepare(struct core_screen *s)
 
 void core_indexed_attach(struct core_screen *s, void *controller)
 {
-    if (s->declaration->kind == RV_SCREEN_KIND_CHOICE)
+    if (selects(s->declaration))
         core_controller_attach(controller, choice_vtable);
 }
 

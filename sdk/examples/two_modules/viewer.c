@@ -18,7 +18,8 @@ static void tick(void *arg)
 {
     (void)arg;
     seconds++;
-    api->ui_invalidate(self);
+    static const struct rv_rect line = {0, 40, 320, 40}; /* the two text lines */
+    api->ui_invalidate_rect(self, &line);
 }
 
 static void draw(const struct rv_context *ctx, const struct rv_gfx *g, int width, int height)

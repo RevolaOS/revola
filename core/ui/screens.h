@@ -72,6 +72,9 @@ void core_screens_context(const struct core_screen *screen, struct rv_context *c
 /* Runs the closed callback of the screen popped last, if it still waits:
  * after a popped canvas's last draw, at the next push and at the grace tick. */
 void core_screens_closed(void);
+/* 1 the first time it is asked for a pushed controller, 0 after: an activation
+ * that is the screen opening, not a return to it. */
+int core_screens_first_activation(void *controller);
 /* The navigator's top controller. */
 void *core_screens_top_controller(void);
 /* The controller whose row, choice or input callback is running; NULL outside
@@ -79,8 +82,8 @@ void *core_screens_top_controller(void);
 extern void *core_screens_caller;
 /* Pops the top screen when `owner` declared it. */
 void core_screens_pop(struct rv_extension_record *owner);
-/* Redraws the canvas on top when `owner` declared it. */
-void core_screens_invalidate(struct rv_extension_record *owner);
+/* Redraws the canvas on top, or `rect` of it, when `owner` declared it. */
+void core_screens_invalidate(struct rv_extension_record *owner, const struct rv_rect *rect);
 /* The Settings model, as last seen on the property slot. */
 void *core_screens_settings_model(void);
 /* Tells the Settings model a property's text changed, so its views redraw. */

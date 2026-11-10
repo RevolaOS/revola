@@ -268,7 +268,7 @@ static int page_input(const struct rv_context *ctx, const struct rv_input *input
         struct core_screen *list = core_screens_find(NULL, "core.extensions");
         if (list)
             core_screens_refresh(list);
-        core_screens_invalidate(NULL);
+        core_screens_invalidate(NULL, NULL);
     }
     return 1;
 }

@@ -36,7 +36,8 @@ void *core_screens_caller;
 static struct {
     void *controller;
     struct core_screen *screen;
-    void *arg; /* what ui_push passed */
+    void *arg;        /* what ui_push passed */
+    uint8_t selected; /* the first activation set its selection */
 } open[MAX_OPEN];
 static uint32_t open_count;
 
@@ -92,6 +93,16 @@ void core_screens_closed(void)
         return;
     struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1};
     s->declaration->closed(&ctx);
+}
+
+int core_screens_first_activation(void *controller)
+{
+    for (uint32_t i = 0; i < open_count; i++)
+        if (open[i].controller == controller && !open[i].selected) {
+            open[i].selected = 1;
+            return 1;
+        }
+    return 0;
 }
 
 void *core_screens_top_controller(void)
@@ -324,6 +335,7 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
     open[open_count].controller = created;
     open[open_count].screen = s;
     open[open_count].arg = arg;
+    open[open_count].selected = 0;
     open_count++;
     s->open++;
     if (s->owner && s->declaration->id)
@@ -345,11 +357,11 @@ void core_screens_pop(struct rv_extension_record *owner)
         Navigator_PopTop(0x10);
 }
 
-void core_screens_invalidate(struct rv_extension_record *owner)
+void core_screens_invalidate(struct rv_extension_record *owner, const struct rv_rect *rect)
 {
     struct core_screen *s = core_screens_top(RV_SCREEN_KIND_CANVAS);
     if (s && s->owner == owner)
-        core_canvas_invalidate();
+        core_canvas_invalidate(rect);
 }
 
 static const struct core_hook hooks[] = {

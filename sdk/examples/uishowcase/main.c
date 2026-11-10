@@ -52,6 +52,21 @@ static void count_up(const struct rv_context *ctx)
               ctx->item ? "a song" : "no song");
 }
 
+/* The song menus offer Count up on even rows only, to show .available. */
+static int even_row(const struct rv_context *ctx)
+{
+    return ctx->row >= 0 && ctx->row % 2 == 0;
+}
+
+/* The Settings pane's caption, computed each time the row is highlighted. */
+static const char *pane_caption(const struct rv_context *ctx)
+{
+    static char text[24];
+    (void)ctx;
+    rv_format(text, sizeof text, "%lu presses so far", presses);
+    return text;
+}
+
 static const char *context_text(const struct rv_context *ctx)
 {
     (void)ctx;
@@ -159,6 +174,13 @@ static const char *moon_row(const struct rv_context *ctx, uint32_t index, const 
     return moons[index][0];
 }
 
+/* The full-width list opens on Titan. */
+static uint32_t moon_initial(const struct rv_context *ctx)
+{
+    (void)ctx;
+    return 4;
+}
+
 static int moon_select(const struct rv_context *ctx, uint32_t index)
 {
     (void)ctx;
@@ -249,6 +271,8 @@ static int canvas_input(const struct rv_context *ctx, const struct rv_input *inp
         box_left = box_left < 0 ? 0 : box_left > 280 ? 280 : box_left;
     } else if (input->button == RV_BUTTON_MENU) {
         return 0; /* left to the system, which pops the canvas */
+    } else if (input->kind == RV_INPUT_HOLD) {
+        last_input = input->delta ? "Hold on" : "Hold off";
     } else if (input->kind == RV_INPUT_PRESS) {
         last_input = keys[input->button];
         if (input->button == RV_BUTTON_CENTER)
@@ -397,7 +421,7 @@ static const struct rv_screen screens[] = {
     RV_SCREEN_LIST("screens", "Screens", screen_rows),
     RV_SCREEN_TEXT("text", "Text page", text_page),
     RV_SCREEN_DYNAMIC_LIST("dynamic", "Dynamic list", moon_count, moon_row, moon_select,
-                           .layout = RV_LAYOUT_FULL),
+                           .layout = RV_LAYOUT_FULL, .dynamic.initial = moon_initial),
     RV_SCREEN_DYNAMIC_LIST("stacked", "Stacked", moon_count, moon_row, moon_select,
                            .layout = RV_LAYOUT_SPLIT, .dynamic.detail = RV_DETAIL_BELOW),
     RV_SCREEN_DYNAMIC_LIST("counter", "Counter", counter_count, counter_row, counter_select),
@@ -412,13 +436,14 @@ static const struct rv_screen screens[] = {
 
 static const struct rv_menu_entry entries[] = {
     RV_MENU_ENTRY(RV_MENU_SETTINGS, RV_SETTINGS_LEGAL, RV_ROW_PUSH("UI Showcase", "menu"),
-             .caption = "Every SDK screen", .bitmap = RV_BITMAP("pane")),
+                  .caption_text = pane_caption, .bitmap = RV_BITMAP("pane")),
     RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_EXTRAS, RV_ROW_PUSH("UI Showcase", "menu"),
                   .shown_by = KEY_IN_MAIN),
     RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .shown_by = KEY_IN_MUSIC),
     RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("UI Showcase", "menu")),
     RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
-    RV_MENU_ENTRY(RV_MENU_SONG_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
+    RV_MENU_ENTRY(RV_MENU_SONG_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up),
+                  .available = even_row),
     RV_MENU_ENTRY(RV_MENU_ALBUM_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
     RV_MENU_ENTRY(RV_MENU_ARTIST_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
 };

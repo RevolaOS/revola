@@ -90,6 +90,12 @@ SITE(NestedPlaylists_DispatchAction_entry, SITE_NestedPlaylists_DispatchAction_e
 SITE(Genius_DispatchAction_entry, SITE_Genius_DispatchAction_entry, ENTRY,
      REPLAY(Genius_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
 
+/* The system dispatcher tells the UI the hold switch moved: (system, locked).
+ * Screen controllers never see the change themselves. */
+SITE(SystemUI_HandleHoldChange_call, SITE_SystemUI_HandleHoldChange_call, CALL,
+     ADDR_SystemUI_HandleHoldChange,
+     BL(SITE_SystemUI_HandleHoldChange_call, ADDR_SystemUI_HandleHoldChange), 0, 1, 2, 0)
+
 /* Every media list controller opens its context menu here: (controller). The
  * highlighted row is the selection's then. Only the two dispatchers on the UI
  * task call it. */
