@@ -15,12 +15,4 @@ struct core_screen;
  * canvas `screen`. */
 void core_gfx_begin(void *context, const int32_t *bounds, struct core_screen *screen);
 
-/* Draws the top `rows` of a BMap at (x, y) inside a canvas draw; a coverage
- * mask in colour `c`. */
-void core_gfx_part(int x, int y, const void *bmap, int rows, rv_color c);
-
-/* Repeats a BMap across `width` columns from (x, y) inside a canvas draw; the
- * last copy is cut to fit. */
-void core_gfx_tile(int x, int y, int width, const void *bmap);
-
 #endif

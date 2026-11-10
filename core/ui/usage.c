@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* Settings > Extensions > Usage: a page in the style of Settings > About
- * (cards.c) with the memory used and free on the band, then a bar drawn from
+ * (rv_gfx card) with the memory used and free on the band, then a bar drawn from
  * the About screen's capacity pieces and a legend with each part's size. The
  * parts are Apple's heap use (mostly the music library), the playback cache
  * (the block cache, carved from the heap), the core (its image and the heap it
@@ -12,9 +12,7 @@
 #include "ui/usage.h"
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
-#include "ui/cards.h"
-#include "ui/gfx.h"
-#include "ui/page.h"
+#include "ui/format.h"
 #include "ui/resources.h"
 #include "ui/screens.h"
 #include <stddef.h>
@@ -36,7 +34,7 @@ static uint32_t active_count(void)
 
 const char *core_usage_active(char *out, const char *end)
 {
-    core_put_text(core_page_number(out, end, active_count()), end, " active");
+    core_put_text(core_format_number(out, end, active_count()), end, " active");
     return out;
 }
 
@@ -108,7 +106,7 @@ static void layout_parts(const uint32_t *bytes, int width, int *widths)
     widths[largest] += width - sum;
 }
 
-static void draw_bar(int width, const uint32_t *bytes)
+static void draw_bar(const struct rv_gfx *g, int width, const uint32_t *bytes)
 {
     int widths[PARTS], x = BAR_LEFT;
     layout_parts(bytes, width - 2 * BAR_LEFT, widths);
@@ -119,14 +117,14 @@ static void draw_bar(int width, const uint32_t *bytes)
             continue;
         int from = x, to = x + widths[i];
         if (i == APPLE) {
-            core_gfx_part(from, BAR_TOP, left, rows_of(left), 0);
+            g->bmap_part(from, BAR_TOP, left, rows_of(left), 0);
             from += CAP;
         }
         if (i == FREE)
             to -= CAP;
-        core_gfx_tile(from, BAR_TOP, to - from, fill);
+        g->bmap_tile(from, BAR_TOP, to - from, fill);
         if (i == FREE)
-            core_gfx_part(to, BAR_TOP, right, rows_of(right), 0);
+            g->bmap_part(to, BAR_TOP, right, rows_of(right), 0);
         x += widths[i];
     }
 }
@@ -139,28 +137,30 @@ static void draw_legend(const struct rv_gfx *g, int width, const uint32_t *bytes
         int y = LEGEND_TOP + LEGEND_STEP * i;
         const void *swatch = piece(parts[i].swatch);
         if (swatch)
-            core_gfx_part(LEGEND_LEFT, y + (text_height - rows_of(swatch)) / 2, swatch,
-                          rows_of(swatch), 0);
+            g->bmap_part(LEGEND_LEFT, y + (text_height - rows_of(swatch)) / 2, swatch,
+                         rows_of(swatch), 0);
         char size[16];
-        core_page_size(size, size + sizeof size, bytes[i]);
+        core_format_size(size, size + sizeof size, bytes[i]);
         g->text(LEGEND_LEFT + 20, y, RV_FONT_TITLE, WHITE, parts[i].label);
         g->text(width - LEGEND_LEFT - g->measure(RV_FONT_TITLE, size), y, RV_FONT_TITLE, WHITE,
                 size);
     }
 }
 
+static const struct rv_bitmap icon = {"extensions"};
+
 static void draw(const struct rv_gfx *g, int width, int height)
 {
     uint32_t bytes[PARTS];
     char used[24], available[24];
     measure_parts(bytes);
-    core_put_text(core_page_size(used, used + sizeof used,
-                                  bytes[APPLE] + bytes[CORE] + bytes[EXTENSIONS] + bytes[PLAYBACK]),
+    core_put_text(core_format_size(used, used + sizeof used,
+                                   bytes[APPLE] + bytes[CORE] + bytes[EXTENSIONS] + bytes[PLAYBACK]),
                   used + sizeof used, " Used");
-    core_put_text(core_page_size(available, available + sizeof available, bytes[FREE]),
+    core_put_text(core_format_size(available, available + sizeof available, bytes[FREE]),
                   available + sizeof available, " Free");
-    core_cards_frame(g, width, height, used, available);
-    draw_bar(width, bytes);
+    g->card(width, height, used, available, &icon);
+    draw_bar(g, width, bytes);
     draw_legend(g, width, bytes);
 }
 

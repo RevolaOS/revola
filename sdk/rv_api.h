@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 10
+#define RV_API_MINOR 11
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -172,12 +172,16 @@ enum rv_color_role {
     RV_COLOR_HIGHLIGHT,      /* the selected row */
     RV_COLOR_HIGHLIGHT_TEXT, /* text on the selected row */
     RV_COLOR_DIM,            /* secondary text, such as a row's detail */
+    RV_COLOR_PARAGRAPH,      /* the text of a text page */
     RV_COLOR_ROLE_COUNT,
 };
 
 /* The stock fonts: the title bar's, the text pages' and the preview pane's
  * large caption. */
 enum rv_font { RV_FONT_TITLE, RV_FONT_TEXT, RV_FONT_LARGE, RV_FONT_COUNT };
+
+/* The height of a row drawn by rv_gfx.row, as the stock list rows. */
+#define RV_GFX_ROW_HEIGHT 25
 
 /* What a canvas draws with. Valid inside the draw callback only. Append-only
  * like rv_api: check `size` before using a newer entry. */
@@ -194,6 +198,22 @@ struct rv_gfx {
     void (*bitmap)(int x, int y, const struct rv_bitmap *bitmap);
     /* A BMap the extension made or holds itself. */
     void (*bmap)(int x, int y, const void *bmap);
+    /* `utf8` wrapped at spaces to `width` from (x, y), at most `lines` lines;
+     * returns the y below the last. */
+    int (*paragraph)(int x, int y, int width, uint8_t font, rv_color color, const char *utf8,
+                     uint32_t lines);
+    /* A list row RV_GFX_ROW_HEIGHT tall at `y` across `width`: the label left,
+     * `value` (may be NULL) right, on the stock highlight when `highlighted`. */
+    void (*row)(int y, int width, const char *label, const char *value, int highlighted);
+    /* The top `rows` of a BMap at (x, y); a coverage mask draws in `tint`. */
+    void (*bmap_part)(int x, int y, const void *bmap, int rows, rv_color tint);
+    /* A BMap repeated across `width` columns from (x, y), the last copy cut to fit. */
+    void (*bmap_tile)(int x, int y, int width, const void *bmap);
+    /* A page in the style of Settings > About: the background, `icon` (a menu
+     * bitmap of the extension, NULL for none) on the box of the Settings icons,
+     * and `left` and `right` on either side of it. */
+    void (*card)(int width, int height, const char *left, const char *right,
+                 const struct rv_bitmap *icon);
 };
 
 enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE };
@@ -360,6 +380,12 @@ struct rv_api {
     void *(*asset_load)(rv_handle self, const char *name, uint32_t *bytes);
     int (*asset_read)(rv_handle self, const char *name, uint32_t offset, void *out,
                       uint32_t bytes, uint32_t *got);
+
+    /* Text into `out`, NUL-terminated within `capacity`; the length. A number
+     * with thousands separators ("12,345"); bytes as KB or MB with one decimal
+     * ("6.0 KB"). */
+    uint32_t (*format_number)(char *out, uint32_t capacity, uint32_t value);
+    uint32_t (*format_size)(char *out, uint32_t capacity, uint32_t bytes);
 };
 
 /* Every module exports this. The entry of the main module returns the

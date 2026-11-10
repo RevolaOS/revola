@@ -32,6 +32,7 @@
 #include "hooks/sites.h"
 #include "storage.h"
 #include "ui/bitmaps.h"
+#include "ui/format.h"
 #include <stddef.h>
 
 #define ROOT "/Revola/Extensions"
@@ -859,13 +860,24 @@ static void api_log(rv_handle self, const char *line)
     core_loader_last_log = line;
 }
 
+static uint32_t api_format_number(char *out, uint32_t capacity, uint32_t value)
+{
+    return out && capacity ? (uint32_t)(core_format_number(out, out + capacity, value) - out) : 0;
+}
+
+static uint32_t api_format_size(char *out, uint32_t capacity, uint32_t bytes)
+{
+    return out && capacity ? (uint32_t)(core_format_size(out, out + capacity, bytes) - out) : 0;
+}
+
 static const struct rv_api api = {
     sizeof api,           RV_API_VERSION,     api_hook_bind,      api_hook_unbind,
     api_next,             api_setting_get,    api_setting_set,    core_settings_flush,
     api_alloc,            api_free,           api_module_load,    api_module_unload,
     api_container_declare, api_container_release, api_log,
     api_ui_push,          api_ui_pop,            api_ui_refresh,     api_ui_invalidate,
-    api_debug_info,       api_asset_load,     api_asset_read,
+    api_debug_info,       api_asset_load,     api_asset_read,     api_format_number,
+    api_format_size,
 };
 
 /* Modules */

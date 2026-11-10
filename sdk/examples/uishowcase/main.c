@@ -3,7 +3,7 @@
 /* Every UI declaration of the SDK behind a row that names it: the row kinds
  * with the screen calls of rv_api, the screen kinds with their layouts, and the
  * menus an entry can appear in. Open it from Settings, Main, Music (after
- * Settings > Music Menu turns it on) or Extras. It declares nine screens and
+ * Settings > Music Menu turns it on) or Extras. It declares eleven screens and
  * the core makes three more from the settings. Its assets are in
  * manifest.toml: the pane icon, the canvas bitmap and a note the canvas reads
  * back and draws. */
@@ -198,6 +198,59 @@ static int canvas_input(const struct rv_input *input)
     return 1;
 }
 
+/* Page: a wrapped paragraph over list rows, the wheel moves the highlight. */
+static int page_row;
+
+static void page_draw(const struct rv_gfx *g, int width, int height)
+{
+    static const char *const labels[] = {"First", "Second", "Third"};
+    struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
+    g->fill(&all, g->color(RV_COLOR_BACKGROUND));
+    g->paragraph(10, 10, width - 20, RV_FONT_TEXT, g->color(RV_COLOR_PARAGRAPH),
+                 "A paragraph wraps at spaces to the width it is given and stops after "
+                 "the number of lines it may use, here three of them.",
+                 3);
+    int y = height - (int)RV_COUNT(labels) * RV_GFX_ROW_HEIGHT;
+    for (int i = 0; i < (int)RV_COUNT(labels); i++)
+        g->row(y + i * RV_GFX_ROW_HEIGHT, width, labels[i], i == page_row ? "Selected" : 0,
+               i == page_row);
+}
+
+static int page_input(const struct rv_input *input)
+{
+    if (input->kind != RV_INPUT_WHEEL)
+        return input->key != RV_KEY_MENU; /* Menu pops the page */
+    page_row += input->delta > 0 ? 1 : -1;
+    page_row = page_row < 0 ? 0 : page_row > 2 ? 2 : page_row;
+    api->ui_invalidate(self);
+    return 1;
+}
+
+/* Card: the Settings > About card with the pane icon and formatted figures,
+ * then the disc bitmap cut to its top half and tiled across the width. */
+static void card_draw(const struct rv_gfx *g, int width, int height)
+{
+    char number[16], size[16];
+    api->format_number(number, sizeof number, 1234567);
+    api->format_size(size, sizeof size, 6 * 1024 + 100);
+    g->card(width, height, number, size, RV_BITMAP("pane"));
+    if (!disc)
+        disc = api->asset_load(self, "disc", 0);
+    if (disc) {
+        g->bmap_part(10, 130, disc, 16, 0);
+        g->bmap_tile(0, 170, width, disc);
+    }
+}
+
+static int card_input(const struct rv_input *input)
+{
+    if (input->kind == RV_INPUT_WHEEL || input->key != RV_KEY_MENU)
+        return 1;
+    api->free(self, disc);
+    disc = 0;
+    return 0; /* Menu pops the card */
+}
+
 /* Counter: a runtime list whose rows change, redrawn with ui_refresh. */
 static uint32_t counter_count(void)
 {
@@ -243,6 +296,8 @@ static const struct rv_row screen_rows[] = {
     RV_PUSH("Runtime list, split", "stacked"),
     RV_PUSH("Counter, refreshed", "counter"),
     RV_PUSH("Canvas", "canvas"),
+    RV_PUSH("Page canvas", "page"),
+    RV_PUSH("Card canvas", "card"),
 };
 
 /* Entries. */
@@ -274,6 +329,8 @@ static const struct rv_screen screens[] = {
                     .layout = RV_LAYOUT_SPLIT, .runtime.detail = RV_DETAIL_BELOW),
     RV_RUNTIME_LIST("counter", "Counter", counter_count, counter_row, counter_select),
     RV_CANVAS("canvas", "Canvas", canvas_draw, canvas_input),
+    RV_CANVAS("page", "Page", page_draw, page_input),
+    RV_CANVAS("card", "Card", card_draw, card_input),
     RV_TEXT("entries", "Entries", entries_text),
 };
 
