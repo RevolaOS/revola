@@ -15,6 +15,10 @@ extern uint32_t core_template_text;
 extern uint32_t core_template_slider;
 extern uint32_t core_template_canvas;
 
+/* Template `template`'s enter style when the layout it enters from has kind
+ * `kind`, -1 for none. */
+int16_t core_templates_enter_style(uint32_t template, uint32_t kind);
+
 /* Builds the templates and binds the template enumeration hook; the canvas
  * view type must be registered first. */
 void core_templates_init(void *bank);

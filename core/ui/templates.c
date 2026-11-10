@@ -49,6 +49,15 @@ static uint8_t *style_record(const void *tmlt, uint32_t kind)
     return (uint8_t *)block.data + TemplateResource_styles + kind * TemplateStyle_bytes;
 }
 
+int16_t core_templates_enter_style(uint32_t template, uint32_t kind)
+{
+    uint32_t bytes;
+    const uint8_t *record = style_record(stock(Resource_TMLT, template, &bytes), kind);
+    if (!record)
+        return -1;
+    return (int16_t)(record[TemplateStyle_enter] | record[TemplateStyle_enter + 1] << 8);
+}
+
 /* Stock firmware gives the Brightness template enter and leave styles only for
  * a split list (the window slides in from the right and back out); template
  * `id`'s copy gets them for every list kind a core screen opens from. The

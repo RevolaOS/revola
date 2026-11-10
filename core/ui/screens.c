@@ -197,21 +197,41 @@ static int build(struct core_screen *s, int split, uint32_t screen)
     return built;
 }
 
+/* The template of a screen that opens as Settings > Brightness, 0 for others. */
+static uint32_t template_of(uint8_t kind)
+{
+    switch (kind) {
+    case RV_SCREEN_SLIDER:
+        return core_template_slider;
+    case RV_SCREEN_CANVAS:
+        return core_template_canvas;
+    default:
+        return 0;
+    }
+}
+
 /* The transition that opens `s` over the layout on screen now.
  * - A split list shares the status bar, background and pane with Settings, so
  *   only its list moves in, as stock half-screen Settings lists do.
  * - A slider or canvas slides in as Settings > About does, through its
- *   template's styles (templates.c). Over another full screen the two share
- *   the template, which then would not move, so the whole screen slides.
+ *   template's styles (templates.c); from a split list it may instead start at
+ *   the pane, as Extras > Stopwatch does, with Stopwatch's own style. Over
+ *   another full screen the two share the template, which then would not move,
+ *   so the whole screen slides.
  * - Text pages and other lists slide the whole screen (Settings opens Legal's
  *   page kind with a foreground push whatever is asked). */
 static uint32_t opening(const struct core_screen *s, uint8_t kind)
 {
     uint8_t from = FIELD(UI_GetLayoutManager(), LayoutManager_kind, uint8_t);
+    uint32_t template = template_of(kind);
     if (s->split)
         return Transition_Standard;
-    if (kind != RV_SCREEN_SLIDER && kind != RV_SCREEN_CANVAS)
+    if (!template)
         return Transition_ScreenPush;
+    int pane = s->declaration->opening == RV_OPENING_FROM_PANE && from == LayoutKind_SplitList;
+    core_clone_set_style(s->id + 1, template,
+                         pane ? core_templates_enter_style(RES_Stopwatch_Template, LayoutKind_SplitList)
+                              : -1);
     return from == LayoutKind_FullScreen ? Transition_ScreenPush : Transition_Standard;
 }
 

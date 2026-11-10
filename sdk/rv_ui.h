@@ -4,7 +4,8 @@
  * setting each, with counts taken from the arrays. `rows`, `labels` and
  * `paragraphs` must be arrays, not pointers, because RV_COUNT measures them.
  * Macros with `...` take trailing designated overrides, for example
- * RV_LIST("planets", "Planets", rows, .layout = RV_LAYOUT_SPLIT). */
+ * RV_LIST("planets", "Planets", rows, .layout = RV_LAYOUT_SPLIT) or
+ * RV_CANVAS("clock", "Clock", draw, input, .opening = RV_OPENING_FROM_PANE). */
 
 #ifndef RV_UI_H
 #define RV_UI_H
@@ -40,8 +41,9 @@
 #define RV_SLIDER(name_, title_, key_, labels_, ...)                                             \
     {.name = (name_), .title = (title_), .kind = RV_SCREEN_SLIDER,                             \
      .choice = {(key_), 0, (labels_), RV_COUNT(labels_)} __VA_OPT__(, ) __VA_ARGS__}
-#define RV_CANVAS(name_, title_, draw_, input_)                                                  \
-    {.name = (name_), .title = (title_), .kind = RV_SCREEN_CANVAS, .canvas = {(draw_), (input_)}}
+#define RV_CANVAS(name_, title_, draw_, input_, ...)                                             \
+    {.name = (name_), .title = (title_), .kind = RV_SCREEN_CANVAS,                             \
+     .canvas = {(draw_), (input_)} __VA_OPT__(, ) __VA_ARGS__}
 #define RV_RUNTIME_LIST(name_, title_, count_, row_, select_, ...)                                \
     {.name = (name_), .title = (title_), .kind = RV_SCREEN_RUNTIME_LIST,                       \
      .runtime.count = (count_), .runtime.row = (row_), .runtime.select = (select_)            \

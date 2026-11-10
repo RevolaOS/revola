@@ -45,6 +45,10 @@ int core_clone_layout(const struct layout_clone *clone, uint32_t *next, uint8_t 
 int core_clone_screen(uint32_t screen, uint32_t layout, uint32_t controller_screen,
                       uint32_t layouts_screen, const void *events, uint32_t event_bytes,
                       uint8_t *scratch, uint32_t scratch_bytes);
+/* Sets the enter and leave style of the instance showing `template` in layout
+ * clone `layout`, -1 to leave them to the template. The bank's SSin copy is
+ * changed in place: prepared layouts read it there. */
+void core_clone_set_style(uint32_t layout, uint32_t template, int16_t style);
 /* Layout events: Menu pops the screen, holding it returns to the main menu. */
 void core_clone_layout_events(struct core_writer *w);
 /* Store the clones a screen is made of under its ids; 0 when a stock resource

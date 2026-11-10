@@ -322,7 +322,7 @@ static const struct rv_screen screens[] = {
     RV_RUNTIME_LIST("counter", "Counter", counter_count, counter_row, counter_select),
     RV_CANVAS("canvas", "Canvas", canvas_draw, canvas_input),
     RV_CANVAS("page", "Page", page_draw, page_input),
-    RV_CANVAS("card", "Card", card_draw, card_input),
+    RV_CANVAS("card", "Card", card_draw, card_input, .opening = RV_OPENING_FROM_PANE),
     RV_TEXT("entries", "Entries", entries_text),
 };
 

@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 12
+#define RV_API_MINOR 13
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -148,6 +148,15 @@ enum rv_layout {
     RV_LAYOUT_SPLIT, /* the list on the left, the Settings preview pane on the right */
 };
 
+/* How a slider or canvas screen opens. */
+enum rv_opening {
+    RV_OPENING_SLIDE,     /* slides in from the right, as Settings > About */
+    RV_OPENING_FROM_PANE, /* opened from a split list, it starts where the preview pane is
+                             and slides into place, as Extras > Stopwatch; from anywhere
+                             else as RV_OPENING_SLIDE. The whole screen moves, so this
+                             suits a screen whose picture continues what the pane showed */
+};
+
 /* A bitmap asset of the extension by name, from a PNG in manifest.toml:
  * `.bitmap = RV_BITMAP("eq-icon")`. Menu bitmaps (an entry's .bitmap) are
  * assets with `menu = true`: 78 x 121 coverage masks the system draws in its own
@@ -240,8 +249,9 @@ struct rv_screen {
     const char *name;
     const char *title;
     uint8_t kind;
-    uint8_t layout; /* rv_layout, list kinds only */
-    uint8_t reserved[2];
+    uint8_t layout;  /* rv_layout, list kinds only */
+    uint8_t opening; /* rv_opening, slider and canvas only */
+    uint8_t reserved[1];
     union {
         struct {
             const struct rv_row *rows;

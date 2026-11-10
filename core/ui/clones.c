@@ -196,6 +196,27 @@ int core_clone_screen(uint32_t screen, uint32_t layout, uint32_t controller_scre
     return 1;
 }
 
+void core_clone_set_style(uint32_t layout, uint32_t template, int16_t style)
+{
+    uint32_t bytes;
+    const void *slyt = stock(Resource_SLyt, layout, &bytes);
+    for (uint32_t l = 0; slyt && l < core_blocks_count(slyt); l++) {
+        struct core_block list, instance;
+        if (!core_block_at(slyt, l, &list))
+            return;
+        const void *ssin = stock(Resource_SSin, core_word_at(list.data, 0), &bytes);
+        for (uint32_t n = 0; ssin && core_block_at(ssin, n, &instance); n++) {
+            uint8_t *words = (uint8_t *)instance.data;
+            if (core_word_at(words, SsinInstance_template) != template)
+                continue;
+            for (uint32_t b = 0; b < 2; b++) {
+                words[SsinInstance_enter_style + b] = (uint8_t)((uint16_t)style >> (8 * b));
+                words[SsinInstance_leave_style + b] = (uint8_t)((uint16_t)style >> (8 * b));
+            }
+        }
+    }
+}
+
 /* Menu pops the screen, holding it returns to the main menu. */
 void core_clone_layout_events(struct core_writer *w)
 {
