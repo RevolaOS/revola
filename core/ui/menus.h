@@ -25,11 +25,6 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
  * pointers to is parked for the owner's next load. 0 when the heap had no room
  * to park it: the rows then stay as stale records and keep their ids. */
 int core_menus_release(struct rv_extension_record *owner);
-/* Hides the core's row of this entry. */
-void core_menus_retire(const struct rv_entry *entry);
-/* Rows came or went: updates the rows that open containers and marks the
- * containers' screens for a rebuild. */
-void core_menus_changed(void);
 /* The entry row whose item or source id is `id`, or NULL; *owner receives its
  * extension and *item its item id. */
 const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **owner,

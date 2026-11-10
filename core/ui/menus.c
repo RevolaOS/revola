@@ -11,7 +11,6 @@
 #include "ui/menus.h"
 #include "ui/menurows.h"
 #include "ui/lists.h"
-#include "loader/containers.h"
 #include "ui/panes.h"
 #include "ui/clones.h"
 #include "osos-2.0.5.h"
@@ -100,7 +99,7 @@ static int same(const char *a, const char *b)
     return *a == *b;
 }
 
-/* The root an entry names, -1 for a container id. */
+/* The root an entry names, -1 for none. */
 static int root_of(const char *in)
 {
     for (int i = 0; in && i < RV_ROOT_COUNT; i++)
@@ -122,8 +121,6 @@ static int shown(const struct row *r)
     uint32_t mask;
     if (r->stale)
         return 0;
-    if (!r->owner || r->root == CORE_ROOT_CONTAINER || r->entry->row.kind == RV_ROW_STOCK)
-        return core_submenus_shown(r);
     if (!toggleable(r))
         return 1;
     if (core_settings_get(r->owner->owner, RV_KEY_MENU_VISIBILITY, &mask, 4) == 4)
@@ -136,9 +133,7 @@ static int shown(const struct row *r)
  * carries the visibility, and an open list rebuilds on the item notification. */
 static void apply_visibility(struct row *r)
 {
-    uint8_t *visible = r->data && r->root < RV_ROOT_COUNT && roots[r->root].table
-                           ? (uint8_t *)r->data + MenuRow_visible
-                           : NULL;
+    uint8_t *visible = r->data && roots[r->root].table ? (uint8_t *)r->data + MenuRow_visible : NULL;
     if (!visible || *visible == shown(r))
         return;
     *visible = (uint8_t)shown(r);
@@ -147,21 +142,6 @@ static void apply_visibility(struct row *r)
         *(void **)(*(uint8_t **)service + Model_notify_method);
     notify(service, Property_ItemChanged, r->item);
     notify(service, Notify_None, r->item);
-}
-
-void core_menus_changed(void)
-{
-    core_containers_changed();
-    EACH_ROW(r)
-        if (!r->owner && r->entry)
-            apply_visibility(r);
-}
-
-/* The menu an entry names, or CORE_ROOT_CONTAINER for a container id. */
-static int root_or_container(const char *in)
-{
-    int root = root_of(in);
-    return root < 0 ? CORE_ROOT_CONTAINER : root;
 }
 
 /* The owner's stale row of this root and label, or NULL. */
@@ -179,9 +159,9 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
 {
     uint32_t key = core_resource_owner(owner), fresh = 0;
     for (uint32_t n = 0; n < count; n++) {
-        if (!entries[n].in)
+        if (root_of(entries[n].in) < 0)
             return RV_BAD_ARGUMENT;
-        fresh += !stale_row(key, root_or_container(entries[n].in),
+        fresh += !stale_row(key, root_of(entries[n].in),
                             core_settings_owner(entries[n].row.label));
     }
     struct row_set *set = NULL;
@@ -199,7 +179,7 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
     }
     for (uint32_t n = 0; n < count; n++) {
         const struct rv_entry *e = &entries[n];
-        int root = root_or_container(e->in);
+        int root = root_of(e->in);
         uint32_t label = core_settings_owner(e->row.label);
         struct row *r = stale_row(key, root, label);
         if (r) {
@@ -222,12 +202,9 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
         r->root = (uint8_t)root;
         r->index = (uint8_t)n;
         r->stale = 0;
-        r->container = root == CORE_ROOT_CONTAINER ? core_settings_owner(e->in) : 0;
-        r->after = root < RV_ROOT_COUNT && roots[root].table ? e->after ? e->after
-                                                                    : roots[root].anchor
-                                                           : 0;
+        r->after = roots[root].table ? e->after ? e->after : roots[root].anchor : 0;
         r->data = adopt(item, owner, CORE_ROW_DATA_BYTES(r));
-        if (root < RV_ROOT_COUNT && !roots[root].table) {
+        if (!roots[root].table) {
             if (!r->data)
                 r->data = core_heap_allocate(owner, CORE_HANDLER_BYTES);
             if (!r->data)
@@ -248,7 +225,6 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_entry
             core_set_source(item + 1, item, 1);
         apply_visibility(r);
     }
-    core_menus_changed();
     return RV_OK;
 }
 
@@ -281,7 +257,6 @@ int core_menus_release(struct rv_extension_record *owner)
                     hide(r);
             }
         }
-        core_menus_changed();
         return 0;
     }
     if (p)
@@ -309,18 +284,7 @@ int core_menus_release(struct rv_extension_record *owner)
         p->next = parked;
         parked = p;
     }
-    core_menus_changed();
     return 1;
-}
-
-void core_menus_retire(const struct rv_entry *entry)
-{
-    EACH_ROW(r)
-        if (r->entry == entry) {
-            r->entry = NULL;
-            r->stale = 1;
-            apply_visibility(r);
-        }
 }
 
 const struct rv_row *core_menus_row(uint32_t id, struct rv_extension_record **owner,
@@ -426,9 +390,7 @@ static uint32_t append_rows(uint32_t list, uint32_t data, uint32_t bytes, uint32
                             const struct core_next *next)
 {
     uint32_t id = bytes == ROW_BYTES ? core_word_at((void *)data, MenuRow_id) : 0;
-    /* A stock Settings row moved into a container is left out; rows anchored on
-     * it still follow. */
-    uint32_t result = id && core_submenus_moves(id, (const void *)data) ? 0 : core_next_call(next, list, data, bytes, metadata);
+    uint32_t result = core_next_call(next, list, data, bytes, metadata);
     if (bytes != ROW_BYTES)
         return result;
     EACH_ROW(r) {

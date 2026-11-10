@@ -10,7 +10,7 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 |---|---|
 | `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), boot order (`init.c`), settings store (`settings.c`), grace timer (`timer.c`), panic screen (`panic.c`) |
 | `core/hooks/` | Hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`) |
-| `core/loader/` | Extension loader and lifecycle (`loader.c`, `containers.c`), file access |
+| `core/loader/` | Extension loader and lifecycle (`loader.c`), file access |
 | `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), list screens full width or beside the Settings preview pane (`lists.c`) and their rows expanded by index (`indexed.c`), templates built at boot (`templates.c`), canvas view and slider input (`canvas.c`), the drawing table canvases draw with (`gfx.c`), controller vtable copies (`controllers.c`), menu rows (`menus.c`) and the Settings preview pane (`panes.c`), Main and Music Menu settings rows (`toggles.c`), Settings properties and actions (`properties.c`), resource helpers, About and Extensions rows |
 | `core/memory/` | Memory rules (`memory.c`, `artwork.c`, `trackcount.c`) |
 | `sdk/` | What extensions build against: `rv_api.h` and the `rv_ui.h` declaration helpers, the module linker script, the Make include, the fixture extensions under `examples/` |
@@ -73,12 +73,6 @@ Failsafe: the panic screen writes the owner of the extension whose code was runn
 ## SDK
 
 `sdk/` is what extensions build against; `python3 tools/build.py sdk` stages it with the generated `rv_sites.h`, `rv_menus.h` (the stock menu rows an entry can follow, from the symbols header's `RES_*Menu_*_Item` names), `rv_firmware.h`/`.mk`, the symbols header and linker script and rvx-pack with its two modules, and writes `build/revola-sdk-<version>.tar.gz`. `sdk/README.md` describes the files. `sdk/api.lock` records the API version and the hash of every shipped file; the build and the `sdk` workflow fail when a file under `sdk/` changes at the same version, so an API change is always a visible version bump (`RV_API_MINOR` for additions, `RV_API_MAJOR` when an entry changes meaning), followed by `python3 tools/sdklock.py update`.
-
-## Menu containers
-
-An extension declares a submenu it wants to contribute to by id and parent (`struct rv_container`); the core deduplicates by id, keeps the first label, and refuses a second declaration with another parent. While declared, a container is a list screen of the core (`core/loader/containers.c`, `core/ui/submenus.c`) with a row in its parent menu or container, and an entry names it in `rv_entry.in`. Its screen lists the shown entries that name it in registration order and is rebuilt on its next push after entries come or go; the row shows while one of those entries shows, nested containers included, and goes with the last. Entry rows keep their own ids, so their text and actions resolve as in any menu.
-
-A stock Settings row can move into a container under Settings (`RV_ROW_STOCK`, any row but Legal, which anchors the About rows): while Apple builds the Settings table the core leaves that row out, and the container lists a copy of it with the stock row's `CEVT` bindings. The Settings list controller class runs the container's screens, so the stock handlers work there. The bindings' layout switch is dropped, because the stock layouts carry the title "Settings", and the container's layout events carry the stock Settings layouts' `controller.Goto*` events that some stock handlers post. The row returns to Settings when its entry goes.
 
 ## About and Extensions rows
 

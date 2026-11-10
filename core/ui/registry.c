@@ -103,15 +103,6 @@ void core_screens_release(struct rv_extension_record *owner)
     }
 }
 
-void core_screens_retire(const struct rv_screen *declaration)
-{
-    EACH_SCREEN(s)
-        if (s->declaration == declaration) {
-            s->declaration = NULL;
-            s->stale = 1;
-        }
-}
-
 struct core_screen *core_screens_find(struct rv_extension_record *owner, const char *name)
 {
     EACH_SCREEN(s)

@@ -21,7 +21,6 @@
 #define RV_TOGGLE(label_, key_) {.label = (label_), .kind = RV_ROW_TOGGLE, .key = (key_)}
 #define RV_ACTION(label_, fn_) {.label = (label_), .kind = RV_ROW_ACTION, .action = (fn_)}
 #define RV_SETTING(label_, key_) {.label = (label_), .kind = RV_ROW_SETTING, .key = (key_)}
-#define RV_STOCK(label_, row_) {.label = (label_), .kind = RV_ROW_STOCK, .stock = (row_)}
 /* A row that shows text_() as its label and does nothing when chosen. */
 #define RV_LIVE(label_, text_) {.label = (label_), .kind = RV_ROW_ACTION, .text = (text_)}
 
@@ -55,9 +54,6 @@
 #define RV_ENTRY(in_, after_, row_, ...)                                                        \
     {.in = (in_), .visible = 1, .after = (after_), .row = row_ __VA_OPT__(, ) __VA_ARGS__}
 
-/* A submenu shared by id: RV_CONTAINER("settings.sound", "settings", "Sound"). */
-#define RV_CONTAINER(id_, parent_, label_) {.id = (id_), .parent = (parent_), .label = (label_)}
-
 /* Settings. The labelled ones open their screen from an RV_SETTING row. */
 #define RV_SETTING_FLAG(key_, label_, fallback_)                                                \
     {.key = (key_), .type = RV_SETTING_BOOL, .fallback = (fallback_), .maximum = 1,            \
@@ -80,7 +76,6 @@
 /* The descriptor's arrays with their counts: `RV_HOOKS(hooks), RV_SCREENS(screens)`. */
 #define RV_HOOKS(array) .hooks = (array), .hook_count = RV_COUNT(array)
 #define RV_SETTINGS(array) .settings = (array), .setting_count = RV_COUNT(array)
-#define RV_CONTAINERS(array) .containers = (array), .container_count = RV_COUNT(array)
 #define RV_SCREENS(array) .screens = (array), .screen_count = RV_COUNT(array)
 #define RV_ENTRIES(array) .entries = (array), .entry_count = RV_COUNT(array)
 

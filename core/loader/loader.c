@@ -19,7 +19,6 @@
 
 #include "loader/file.h"
 #include "loader/loader.h"
-#include "loader/containers.h"
 #include "loader/lz.h"
 #include "ui/menus.h"
 #include "ui/resources.h"
@@ -744,19 +743,6 @@ static void api_module_unload(rv_handle self, uint32_t module)
 }
 
 
-static int api_container_declare(rv_handle self, const struct rv_container *container)
-{
-    struct rv_extension_record *record = valid_handle(self);
-    return record ? core_containers_declare(record, container) : RV_BAD_ARGUMENT;
-}
-
-static void api_container_release(rv_handle self, const struct rv_container *container)
-{
-    struct rv_extension_record *record = valid_handle(self);
-    if (record)
-        core_containers_release(record, container);
-}
-
 static int api_ui_push(rv_handle self, const char *screen)
 {
     struct rv_extension_record *record = valid_handle(self);
@@ -873,10 +859,9 @@ static const struct rv_api api = {
     sizeof api,           RV_API_VERSION,     api_hook_bind,      api_hook_unbind,
     api_next,             api_setting_get,    api_setting_set,    core_settings_flush,
     api_alloc,            api_free,           api_module_load,    api_module_unload,
-    api_container_declare, api_container_release, api_log,
-    api_ui_push,          api_ui_pop,            api_ui_refresh,     api_ui_invalidate,
-    api_debug_info,       api_asset_load,     api_asset_read,     api_format_number,
-    api_format_size,
+    api_log,              api_ui_push,        api_ui_pop,         api_ui_refresh,
+    api_ui_invalidate,    api_debug_info,     api_asset_load,     api_asset_read,
+    api_format_number,    api_format_size,
 };
 
 /* Modules */
@@ -973,9 +958,6 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
             unload_module(record, 0);
             return 0;
         }
-        /* Declared first: an unload after a failure below releases them. */
-        for (uint32_t i = 0; i < descriptor->container_count; i++)
-            core_containers_declare(record, &descriptor->containers[i]);
         int registered = core_screens_register(record, descriptor->screens, descriptor->screen_count);
         uint32_t synthesized =
             core_screens_from_settings(descriptor->settings, descriptor->setting_count, NULL);
@@ -1013,8 +995,6 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
             descriptor->unload();
             core_panic_extension = 0;
         }
-        for (uint32_t i = 0; i < descriptor->container_count; i++)
-            core_containers_release(record, &descriptor->containers[i]);
         int parked = core_menus_release(record);
         core_screens_release(record);
         if (record->setting_screens) {

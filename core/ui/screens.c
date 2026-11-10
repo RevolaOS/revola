@@ -6,7 +6,6 @@
  * (resources.c) when it unloads. */
 
 #include "ui/screens.h"
-#include "ui/submenus.h"
 #include "ui/extensions.h"
 #include "ui/bitmaps.h"
 #include "ui/canvas.h"
@@ -162,19 +161,15 @@ static int build(struct core_screen *s, int split, uint32_t screen)
 {
     uint8_t bit = split ? CORE_BUILT_SPLIT : CORE_BUILT_FULL;
     uint32_t bytes;
-    if (!s->open && core_submenus_stale(s))
-        s->built = 0;
     /* An owner loaded again before its last release finished finds its
      * clones still in the bank; a controller may still read them. */
-    else if (s->owner && ResourceBank_GetResource(bank, Resource_SCST, screen, &bytes))
+    if (s->owner && ResourceBank_GetResource(bank, Resource_SCST, screen, &bytes))
         s->built |= bit;
     if (s->built & bit)
         return 1;
     int built = 0;
     switch (s->declaration->kind) {
     case RV_SCREEN_LIST:
-        built = core_submenus_of(s) ? core_submenus_clone(s, split) : core_clone_list(s, split);
-        break;
     case RV_SCREEN_CHOICE:
     case RV_SCREEN_MULTI_CHOICE:
     case RV_SCREEN_RUNTIME_LIST:
@@ -290,7 +285,6 @@ void core_screens_init(void *resource_bank)
     core_clones_init(bank);
     core_panes_init(bank);
     core_lists_init(bank);
-    core_submenus_init(bank);
     core_toggles_init(bank);
     core_indexed_init(bank);
     core_canvas_init();

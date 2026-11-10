@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 13
+#define RV_API_MINOR 14
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Compiles a function as ARM. Needed for DSP instructions that exist only in ARM
@@ -90,24 +90,10 @@ struct rv_setting {
     uint32_t label_count;
 };
 
-/* A submenu of a menu, shared with every other extension that declares the
- * same id. Ids are stable names such as "settings.sound"; the parent is a menu
- * name (see rv_entry) or another container's id. The first declaration fixes
- * the parent and the label. The submenu's row appears in its parent while an
- * entry that names the container shows, and goes with the last one. */
-struct rv_container {
-    const char *id;
-    const char *parent;
-    const char *label;
-};
-
 enum rv_row_kind {
-    RV_ROW_PUSH,   /* opens `screen` */
-    RV_ROW_TOGGLE, /* flips the bool setting `key`; the row shows On or Off */
-    RV_ROW_ACTION, /* calls `action` */
-    RV_ROW_STOCK,  /* a stock Settings row (an RV_SETTINGS_* row of rv_menus.h in `stock`,
-                      any but Legal) moved here with its stock behaviour; only inside a
-                      container under Settings, and back in Settings when the entry goes */
+    RV_ROW_PUSH,    /* opens `screen` */
+    RV_ROW_TOGGLE,  /* flips the bool setting `key`; the row shows On or Off */
+    RV_ROW_ACTION,  /* calls `action` */
     RV_ROW_SETTING, /* the declared setting `key`: shows its value; flips a bool, opens the
                        screen of an int with labels */
 };
@@ -122,7 +108,6 @@ struct rv_row {
     uint16_t key;
     const char *screen;
     void (*action)(void);
-    uint32_t stock;
     const char *(*text)(void);
 };
 
@@ -291,7 +276,7 @@ struct rv_screen {
 /* A row the extension adds to a menu. `in` names the menu: "main", "music",
  * "extras", "settings", the menu a long press of Select opens on Now Playing
  * ("nowplaying") or on a song, album or artist row ("song", "album",
- * "artist"), or a container id such as "settings.sound". `after` is a stock
+ * "artist"). `after` is a stock
  * row of that menu from rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under
  * Settings the preview pane shows the label, `caption` as the line below and
  * `bitmap` as the icon while the row is highlighted; either may be NULL, and
@@ -328,8 +313,6 @@ struct rv_extension {
     uint32_t hook_count;
     const struct rv_setting *settings;
     uint32_t setting_count;
-    const struct rv_container *containers;
-    uint32_t container_count;
     void (*unload)(void); /* before the hooks are unbound; may be NULL */
     const struct rv_screen *screens;
     uint32_t screen_count;
@@ -362,9 +345,6 @@ struct rv_api {
     /* Manual-trigger modules by their index in the manifest. */
     int (*module_load)(rv_handle self, uint32_t module);
     void (*module_unload)(rv_handle self, uint32_t module);
-
-    int (*container_declare)(rv_handle self, const struct rv_container *container);
-    void (*container_release)(rv_handle self, const struct rv_container *container);
 
     /* Kept for the emulator; nothing on the device shows it. */
     void (*log)(rv_handle self, const char *text);
