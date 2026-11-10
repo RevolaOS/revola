@@ -609,6 +609,78 @@ static int result_of(int core_result)
     }
 }
 
+/* Declarations are checked once at load, so a mistake fails the load instead
+ * of misbehaving later. */
+static int valid_row(const struct rv_row *row)
+{
+    switch (row->kind) {
+    case RV_ROW_PUSH:
+        return row->label && row->screen;
+    case RV_ROW_TOGGLE:
+    case RV_ROW_SETTING:
+        return row->label && row->key != RV_KEY_ENABLED && row->key != RV_KEY_MENU_VISIBILITY;
+    case RV_ROW_ACTION:
+        return row->label && (row->action || row->text);
+    default:
+        return 0;
+    }
+}
+
+static int valid_screen(const struct rv_screen *s)
+{
+    if (!s->name || !s->title || s->layout > RV_LAYOUT_SPLIT || s->opening > RV_OPENING_FROM_PANE)
+        return 0;
+    switch (s->kind) {
+    case RV_SCREEN_LIST:
+        for (uint32_t i = 0; i < s->list.count; i++)
+            if (!valid_row(&s->list.rows[i]))
+                return 0;
+        return s->list.rows || !s->list.count;
+    case RV_SCREEN_CHOICE:
+    case RV_SCREEN_SLIDER:
+    case RV_SCREEN_MULTI_CHOICE:
+        return s->choice.labels && s->choice.count &&
+               (s->kind != RV_SCREEN_MULTI_CHOICE || s->choice.count <= 32);
+    case RV_SCREEN_TEXT:
+        return s->text.paragraphs || !s->text.count;
+    case RV_SCREEN_CANVAS:
+        return s->canvas.draw != NULL;
+    case RV_SCREEN_RUNTIME_LIST:
+        return s->runtime.count && s->runtime.row && s->runtime.detail <= RV_DETAIL_BELOW_SUBMENU;
+    default:
+        return 0;
+    }
+}
+
+static int valid_descriptor(const struct rv_extension *d)
+{
+    for (uint32_t i = 0; i < d->hook_count; i++)
+        if (d->hooks[i].mode > RV_HOOK_REPLACE || d->hooks[i].reserved)
+            return 0;
+    for (uint32_t i = 0; i < d->setting_count; i++) {
+        const struct rv_setting *setting = &d->settings[i];
+        if (setting->key == RV_KEY_ENABLED || setting->key == RV_KEY_MENU_VISIBILITY ||
+            setting->type < RV_SETTING_BOOL || setting->type > RV_SETTING_BLOB ||
+            setting->style > RV_STYLE_MULTI ||
+            (setting->style == RV_STYLE_MULTI && setting->label_count > 32))
+            return 0;
+        for (uint32_t j = 0; j < i; j++)
+            if (d->settings[j].key == setting->key)
+                return 0;
+    }
+    for (uint32_t i = 0; i < d->screen_count; i++) {
+        if (!valid_screen(&d->screens[i]))
+            return 0;
+        for (uint32_t j = 0; j < i; j++)
+            if (fnv1a(d->screens[j].name) == fnv1a(d->screens[i].name))
+                return 0;
+    }
+    for (uint32_t i = 0; i < d->entry_count; i++)
+        if (!d->entries[i].in || !valid_row(&d->entries[i].row))
+            return 0;
+    return 1;
+}
+
 /* Binds `count` hooks into core-owned copies; on failure unbinds what it bound
  * and leaves the reason on the record. */
 static int bind_hooks(struct rv_extension_record *record, const struct rv_hook *hooks,
@@ -882,6 +954,10 @@ static const struct rv_extension *enter(struct rv_extension_record *record, void
 static int load_module(struct rv_extension_record *record, uint32_t index)
 {
     struct core_module *module = &record->modules[index];
+    if ((((const struct manifest_header *)record->manifest)->api & 0xffff) > RV_API_MINOR) {
+        record->failure = CORE_EXTENSION_TOO_NEW;
+        return 0;
+    }
     struct rvx_header file;
     struct rvx_entry entry;
     struct rvx_module header;
@@ -947,8 +1023,9 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     module->idle = 0;
     const struct rv_extension *descriptor = enter(record, image, header.entry);
     if (index == 0) {
-        if (!descriptor || descriptor->size != sizeof *descriptor) {
-            record->failure = CORE_EXTENSION_NO_DESCRIPTOR;
+        if (!descriptor || descriptor->size != sizeof *descriptor ||
+            !valid_descriptor(descriptor)) {
+            record->failure = CORE_EXTENSION_BAD_DESCRIPTOR;
             unload_module(record, 0);
             return 0;
         }
