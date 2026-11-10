@@ -188,15 +188,13 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     case RV_ROW_KIND_ACTION:
         if (row->action) {
             struct rv_context ctx;
-            uint32_t item[MediaItem_bytes / 4];
+            uint32_t media[MediaItem_bytes / 4];
             core_screens_context(s, &ctx);
             ctx.self = owner;
             ctx.controller = controller;
-            if (!s) {
-                const struct rv_menu_entry *e =
-                    (const void *)((const uint8_t *)row - offsetof(struct rv_menu_entry, row));
-                ctx.item = core_context_item(e->menu, controller, item, &ctx.row);
-            }
+            const struct rv_menu_entry *e = s ? NULL : core_menus_entry(found, &owner);
+            if (e)
+                ctx.item = core_context_item(e->menu, controller, media, &ctx.row);
             row->action(&ctx);
         }
         break;

@@ -172,8 +172,6 @@ void core_panes_show(uint32_t item)
     core_screens_notify(BOX);
 }
 
-/* The box behind an icon, or a transparent pixel for a row without one: an
- * image view keeps its last bitmap when it is answered NULL. */
 /* The entry's pane icon now. */
 static const struct rv_bitmap *icon_of(const struct rv_menu_entry *e,
                                        struct rv_extension_record *owner)
@@ -184,6 +182,8 @@ static const struct rv_bitmap *icon_of(const struct rv_menu_entry *e,
     return e->bitmap_for(&ctx);
 }
 
+/* The box behind an icon, or a transparent pixel for a row without one: an
+ * image view keeps its last bitmap when it is answered NULL. */
 static const void *box_for(const struct rv_menu_entry *e, struct rv_extension_record *owner)
 {
     static uint32_t clear[(BMap_payload + 4) / 4];
