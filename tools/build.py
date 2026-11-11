@@ -16,7 +16,7 @@ import sdklock
 import setup
 import sites
 from recipes.companion import build_recipe as build_companion_recipe
-from recipes.osos import build_recipe
+from recipes.firmware import build_recipe
 from toolchain import run
 from version import identity
 
@@ -69,7 +69,7 @@ def assemble(config, files, out, inputs, nor=None):
         image.replace(out)
 
 
-def build_osos(config, out, inputs, build, recipe_only=False, selftest=False):
+def build_firmware(config, out, inputs, build, recipe_only=False, selftest=False):
     print("Building core recipe...", flush=True)
     fingerprint = firmware.load()["inputs"]["osos.bin"]
     defines = [
@@ -93,9 +93,9 @@ def build_osos(config, out, inputs, build, recipe_only=False, selftest=False):
         image,
         defines,
     )
-    files = recipe.save(out, "osos")
+    files = recipe.save(out, "firmware")
     if not recipe_only:
-        assemble(config, files, out / "osos-cfw.bin", inputs)
+        assemble(config, files, out / "revola.bin", inputs)
 
 
 def build_apple(config, out, inputs, recipe_only=False, nor=None):
@@ -109,7 +109,7 @@ def build_apple(config, out, inputs, recipe_only=False, nor=None):
     )
     files = recipe.save(out, "companion")
     if not recipe_only:
-        assemble(config, files, out / "cfw-loader.bin", inputs, nor=nor)
+        assemble(config, files, out / "loader.bin", inputs, nor=nor)
 
 
 SDK_FILES = (
@@ -280,8 +280,8 @@ def main():
         nargs="?",
         choices=[
             "all",
-            "osos",
-            "osos-recipe",
+            "firmware",
+            "firmware-recipe",
             "loader",
             "loader-recipe",
             "bootloader",
@@ -317,13 +317,13 @@ def main():
     except ValueError as error:
         parser.error(str(error))
     config = BuildConfig(ROOT / ".build", prefix, args.jobs, args.assembler)
-    if args.target in ("all", "osos", "osos-recipe"):
-        build_osos(
+    if args.target in ("all", "firmware", "firmware-recipe"):
+        build_firmware(
             config,
             out,
             args.inputs,
             identity(ROOT, args.tag),
-            args.target == "osos-recipe",
+            args.target == "firmware-recipe",
             args.selftest,
         )
     if args.target == "examples":

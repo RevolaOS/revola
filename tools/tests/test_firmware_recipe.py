@@ -7,14 +7,14 @@ import unittest
 import declarations
 import sites
 from declarations import Copy, Kind, Write
-from recipes import fingerprint, osos
+from recipes import fingerprint, firmware
 
 
 def word(kind, address, expected, symbol="", value=0):
     return Write(kind, address, struct.pack("<I", expected), value, symbol)
 
 
-class OsosTests(unittest.TestCase):
+class FirmwareRecipeTests(unittest.TestCase):
     def setUp(self):
         self.load_offset = 0xB798
         self.original = bytearray(self.load_offset + 256)
@@ -33,7 +33,7 @@ class OsosTests(unittest.TestCase):
         self.fingerprint = fingerprint(self.original)
 
     def build(self, patches):
-        return osos.build(self.code, patches, self.symbols, self.fingerprint)
+        return firmware.build(self.code, patches, self.symbols, self.fingerprint)
 
     def replay(self, recipe):
         output = bytearray()
@@ -50,11 +50,11 @@ class OsosTests(unittest.TestCase):
 
     def test_hooks_header_lengths_and_deferred_preimages(self):
         patches = [
-            word(Kind.POINTER, osos.BASE, 0x12345678, "table"),
-            word(Kind.CALL, osos.BASE + 4, 0xE350006B, "hook"),
+            word(Kind.POINTER, firmware.BASE, 0x12345678, "table"),
+            word(Kind.CALL, firmware.BASE + 4, 0xE350006B, "hook"),
             Write(
                 Kind.JUMP,
-                osos.BASE + 8,
+                firmware.BASE + 8,
                 struct.pack("<II", 0xE2400064, 0xE3500015),
                 symbol="hook",
             ),
@@ -76,10 +76,10 @@ class OsosTests(unittest.TestCase):
 
     def test_site_preimages_map_dram_and_iram_to_file_offsets(self):
         table = [
-            sites.Site(osos.BASE + 8, 0, 0xEB000001, 0, sites.CALL, 1, 1),
+            sites.Site(firmware.BASE + 8, 0, 0xEB000001, 0, sites.CALL, 1, 1),
             sites.Site(0x22000010, 0, 0xE92D4010, 0xE1A04000, sites.ENTRY, 1, 1),
         ]
-        recipe = osos.build(self.code, [], self.symbols, self.fingerprint, table)
+        recipe = firmware.build(self.code, [], self.symbols, self.fingerprint, table)
         self.assertIn(
             {"name": "osos", "offset": self.load_offset + 8, "hex": "010000eb"},
             recipe.checks,
@@ -90,11 +90,11 @@ class OsosTests(unittest.TestCase):
         )
         outside = [sites.Site(0x22000000 + self.load_offset, 0, 0, 0, sites.CALL, 0, 1)]
         with self.assertRaisesRegex(ValueError, "outside"):
-            osos.build(self.code, [], self.symbols, self.fingerprint, outside)
+            firmware.build(self.code, [], self.symbols, self.fingerprint, outside)
 
     def test_native_array_copies_preserve_adjacent_literals(self):
         self.code = bytes(40) + b"CFW!" + bytes(84)
-        recipe = self.build([Copy("table", 0, 12, osos.BASE, 8)])
+        recipe = self.build([Copy("table", 0, 12, firmware.BASE, 8)])
         image = self.replay(recipe)
         self.assertEqual(
             image[len(self.original) + 32 : len(self.original) + 44], b"native!!CFW!"
@@ -107,7 +107,7 @@ class OsosTests(unittest.TestCase):
         self.symbols["__core_limit"] = start + 328 * 1024
         self.code = b"CFW!" + bytes(124)
         image = self.replay(
-            self.build([word(Kind.POINTER, osos.BASE, 0, "__core_limit")])
+            self.build([word(Kind.POINTER, firmware.BASE, 0, "__core_limit")])
         )
         self.assertEqual(len(image), len(self.original) + 328 * 1024)
         self.assertEqual(
@@ -120,24 +120,24 @@ class OsosTests(unittest.TestCase):
             image[len(self.original) + len(self.code) :],
             bytes(328 * 1024 - len(self.code)),
         )
-        for offset in osos.IMAGE_SIZE_FIELDS:
+        for offset in firmware.IMAGE_SIZE_FIELDS:
             self.assertEqual(
                 struct.unpack_from("<I", image, offset)[0], len(image) - 0x800
             )
 
     def test_rejects_overlap_and_invalid_write_ranges(self):
-        valid = word(Kind.WORD, osos.BASE, 0, value=42)
+        valid = word(Kind.WORD, firmware.BASE, 0, value=42)
         for patches in (
             [valid, valid],
-            [word(Kind.WORD, osos.BASE - 4, 0)],
-            [word(Kind.WORD, osos.BASE + 256, 0)],
-            [word(Kind.WORD, osos.BASE + 1, 0)],
+            [word(Kind.WORD, firmware.BASE - 4, 0)],
+            [word(Kind.WORD, firmware.BASE + 256, 0)],
+            [word(Kind.WORD, firmware.BASE + 1, 0)],
         ):
             with self.subTest(patches=patches), self.assertRaises(ValueError):
                 self.build(patches)
 
     def test_rejects_missing_thumb_and_out_of_range_symbols(self):
-        patch = word(Kind.CALL, osos.BASE, 0, "hook")
+        patch = word(Kind.CALL, firmware.BASE, 0, "hook")
         for destination in (0x08B3BFFC, 0x08B3C001, 0x08B3C080, 0x08B3C100):
             self.symbols["hook"] = destination
             with self.subTest(destination=destination), self.assertRaises(ValueError):
@@ -154,13 +154,13 @@ class OsosTests(unittest.TestCase):
             self.symbols[name] = value
 
     def test_rejects_invalid_and_overlapping_copies(self):
-        valid = Copy("table", 0, 16, osos.BASE, 8)
+        valid = Copy("table", 0, 16, firmware.BASE, 8)
         cases = [
             [valid, valid],
-            [Copy("table", 12, 16, osos.BASE, 8)],
-            [Copy("table", 0, 16, osos.BASE - 1, 8)],
-            [Copy("table", 0, 16, osos.BASE + 252, 8)],
-            [Copy("table", 96, 128, osos.BASE, 8)],
+            [Copy("table", 12, 16, firmware.BASE, 8)],
+            [Copy("table", 0, 16, firmware.BASE - 1, 8)],
+            [Copy("table", 0, 16, firmware.BASE + 252, 8)],
+            [Copy("table", 96, 128, firmware.BASE, 8)],
         ]
         for patches in cases:
             with self.subTest(patches=patches), self.assertRaises(ValueError):
@@ -170,11 +170,13 @@ class OsosTests(unittest.TestCase):
             self.build([])
 
     def test_metadata_decodes_explicit_fields(self):
-        raw = declarations.RECORD.pack(5, osos.BASE, 4, 12, 8, b"table")
-        self.assertEqual(declarations.parse(raw), [Copy("table", 4, 12, osos.BASE, 8)])
+        raw = declarations.RECORD.pack(5, firmware.BASE, 4, 12, 8, b"table")
+        self.assertEqual(
+            declarations.parse(raw), [Copy("table", 4, 12, firmware.BASE, 8)]
+        )
         for data in (raw[:-1], bytes(declarations.RECORD.size), raw[:20] + b"x" * 64):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 declarations.parse(data)
-        for destination in (osos.BASE + 1, osos.BASE + (1 << 25) + 8):
+        for destination in (firmware.BASE + 1, firmware.BASE + (1 << 25) + 8):
             with self.assertRaises(ValueError):
-                osos.arm_call(osos.BASE, destination)
+                firmware.arm_call(firmware.BASE, destination)

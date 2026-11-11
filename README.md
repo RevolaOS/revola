@@ -24,12 +24,14 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 Requires Python 3.11+, Rockbox's `arm-elf-eabi-` GCC 9.5.0 (`firmware/apple.json` pins the version),, decrypted 2.0.5 inputs produced by the installer tooling, and the `revola` CLI from the installer repository on PATH (`cargo build --release -p revola-cli`), which applies the recipe.
 
 ```sh
-python3 tools/build.py osos --inputs /path/to/firmware-2.0.5 --cross-prefix /path/to/arm-elf-eabi-
+python3 tools/build.py firmware --inputs /path/to/firmware-2.0.5 --cross-prefix /path/to/arm-elf-eabi-
 python3 tools/build.py loader-recipe
 cd tools && python3 -m unittest discover -s tests
 ```
 
-`osos` writes `build/osos.json`, `build/osos.data` and the assembled `build/osos-cfw.bin`; `osos-recipe` stops before assembly and needs no Apple inputs, so it skips the checks of the site table against the image. `--selftest` compiles the dispatcher and loader self-test into the core (results in `core_selftest`, read with `ipodvm peek`). `examples` builds the fixture extensions in `sdk/examples` against a staged SDK into `build/examples/<id>/<id>.rvx`; `sdk` writes the SDK tarball. Boot the image in the emulator with `ipodvm launch --firmware build/osos-cfw.bin --disk <test disk>` from this directory; `ipodvm disk --copy` puts extension files on a disk clone.
+The bootloader reads `/Revola/Firmware/revola.bin` and `/Revola/Firmware/loader.bin` from the data partition. Holding Play during boot selects a separately installed Rockbox (`/.rockbox/rockbox.ipod`, with `/rockbox.ipod` as its fallback).
+
+`firmware` writes `build/firmware.json`, `build/firmware.data` and the assembled `build/revola.bin`; `firmware-recipe` stops before assembly and needs no Apple inputs, so it skips the checks of the site table against the image. `--selftest` compiles the dispatcher and loader self-test into the core (results in `core_selftest`, read with `ipodvm peek`). `examples` builds the fixture extensions in `sdk/examples` against a staged SDK into `build/examples/<id>/<id>.rvx`; `sdk` writes the SDK tarball. Boot the image in the emulator with `ipodvm launch --firmware build/revola.bin --disk <test disk>` from this directory; `ipodvm disk --copy` puts extension files on a disk clone.
 
 The build prints the core's resident bytes; the link fails above `CORE_BYTES` (96 KiB) in `core/layout.h`.
 

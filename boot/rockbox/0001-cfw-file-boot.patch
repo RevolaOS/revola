@@ -157,11 +157,11 @@ new file mode 100644
 +void cfw_run_file(void) __attribute__((noreturn));
 +void cfw_run_file(void)
 +{
-+    printf("Loading /osos-cfw.bin");
-+    uint32_t osos_bytes = load_file("/osos-cfw.bin", CFW_STAGE_START,
++    printf("Loading /Revola/Firmware/revola.bin");
++    uint32_t firmware_bytes = load_file("/Revola/Firmware/revola.bin", CFW_STAGE_START,
 +                                    1, CFW_COMPANION_START - CFW_STAGE_START);
-+    printf("Loading /cfw-loader.bin");
-+    uint32_t companion_bytes = load_file("/cfw-loader.bin", CFW_COMPANION_START,
++    printf("Loading /Revola/Firmware/loader.bin");
++    uint32_t companion_bytes = load_file("/Revola/Firmware/loader.bin", CFW_COMPANION_START,
 +                                         CFW_BOOTSTRAP_BYTES,
 +                                         CFW_STAGE_END - CFW_COMPANION_START);
 +    const void *companion = S5L8702_UNCACHED_ADDR((void *)CFW_COMPANION_START);
@@ -179,7 +179,7 @@ new file mode 100644
 +
 +    /* r0/r1: firmware address/length; r2/r3: companion address/length. */
 +    typedef void (*entry_fn)(uint32_t, uint32_t, uint32_t, uint32_t);
-+    ((entry_fn)IRAM0_ORIG)(CFW_STAGE_START, osos_bytes,
++    ((entry_fn)IRAM0_ORIG)(CFW_STAGE_START, firmware_bytes,
 +                         CFW_COMPANION_START, companion_bytes);
 +    while (1);
 +}
