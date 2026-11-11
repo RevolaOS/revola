@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 29
+#define RV_API_MINOR 30
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -58,11 +58,15 @@ enum rv_hook_mode {
  * the first stack argument for four), then any arguments Apple passes on the
  * stack. Site ids are RV_SITE_* from rv_sites.h, or RV_RAW_SITE(n) for the n-th
  * [[site]] of the extension's manifest. The struct must live as long as the
- * binding. */
+ * binding. Word sites use REPLACE mode and the uint32_t word member instead of
+ * a handler. The core writes the instruction directly; it is never called. */
 #define RV_RAW_SITE(index) (0xffffff00u | (index))
 struct rv_hook {
     uint32_t site;
-    void *handler;
+    union {
+        void *handler;
+        uint32_t word;
+    };
     int16_t priority; /* lower runs first */
     uint8_t mode;     /* rv_hook_mode */
     uint8_t reserved;

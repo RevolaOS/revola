@@ -24,6 +24,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | Declaration | What the user sees |
 |---|---|
 | `RV_HOOK_FILTER(site, fn)`, `RV_HOOK_FILTER_AT(site, fn, priority)`, `RV_HOOK_REPLACE(site, fn)` | nothing directly: a handler on a hook site |
+| `RV_HOOK_WORD(site, word)` | nothing directly: an exclusive instruction replacement at a word site |
 | `RV_SETTING_BOOL`, `RV_SETTING_INT`, `RV_SETTING_CHOICE`, `RV_SETTING_SLIDER`, `RV_SETTING_MULTI` | a setting with its labels; an `RV_ROW_SETTING(label, key)` row shows its value and flips it or opens its screen |
 | `RV_SCREEN_LIST(id, title, rows)` of `RV_ROW_PUSH`, `RV_ROW_ACTION`, `RV_ROW_SETTING`, `RV_ROW_INFO` rows | a menu, full width or beside the Settings preview pane as the screen it opens from decides (`.layout` overrides) |
 | `RV_SCREEN_CHOICE`, `RV_SCREEN_MULTI_CHOICE`, `RV_SCREEN_SLIDER` | a screen over a setting with a title of its own; a labelled setting's `RV_ROW_SETTING` row opens one the core makes |

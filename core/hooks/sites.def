@@ -280,6 +280,24 @@ SITE(IAP_VerifyDeviceSignatureAlternate_call, SITE_IAP_VerifyDeviceSignatureAlte
      BL(SITE_IAP_VerifyDeviceSignatureAlternate_call, ADDR_IAP_VerifyDeviceSignatureAlternate),
      0, 0, 3, 0)
 
+/* Regional volume policy: tst r0, #0x80 on SysInfo, movs of 222 for the EU ceiling with the
+ * limit off and the default limit, two calls to Platform_UsesVolumeWarningPolicy, the beq
+ * past the 18-hour exposure reset and the first instruction of the 20-hour exposure event.
+ * The startup clamp runs after Preferences_LoadFile_call, so these are bound before it. */
+SITE(VolumePolicy_RegionTest_word, SITE_VolumePolicy_RegionTest_word, WORD, 0, 0xe3100080, 0,
+     0, 0, 0)
+SITE(Volume_EUOffCeiling_word, SITE_Volume_EUOffCeiling_word, WORD, 0, 0x03a000de, 0, 0, 0, 0)
+SITE(Volume_EUDefaultLimit_word, SITE_Volume_EUDefaultLimit_word, WORD, 0, 0xe3a000de, 0, 0, 0,
+     0)
+SITE(VolumePolicy_WarningPolicyTest_word, SITE_VolumePolicy_WarningPolicyTest_word, WORD, 0,
+     0xebfbc66e, 0, 0, 0, 0)
+SITE(Volume_StartupClampTest_word, SITE_Volume_StartupClampTest_word, WORD, 0, 0xebffba86, 0,
+     0, 0, 0)
+SITE(VolumeExposure_TrackFinishTest_word, SITE_VolumeExposure_TrackFinishTest_word, WORD, 0,
+     0x0a00000f, 0, 0, 0, 0)
+SITE(MediaPlayer_PostVolumeExposureLimitEvent_word,
+     SITE_MediaPlayer_PostVolumeExposureLimitEvent_word, WORD, 0, 0xe3a00005, 0, 0, 0, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */
