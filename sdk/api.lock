@@ -1,9 +1,9 @@
 {
-  "api": "1.28",
+  "api": "1.29",
   "sha256": {
     "README.md": "9db8b8f1fc9803188ca30e9bd558835defb1cbdf62dfa1d133c5df5e3f79e9f4",
     "rv.mk": "641e935294e27cedf1d4f38431b88e779afebce126eafa70f3571ecbbce63131",
-    "rv_api.h": "8ce434cbdc692f2292c5ccc1896c24a07fd1ee0d25002bb14b189c610b72130f",
+    "rv_api.h": "ef3d18ac2e187ed7ac6ed7ea04ca81c5e7e5aaec8a336b27755104751b165d4d",
     "rv_libc.c": "d5da926821e94f9d5379b5315a77ebe5c1fa254a3479468550456819cb1e7a04",
     "rv_libc.h": "941884c24d0d2a96e38c9661bacb7937cbad1b8a6466a4f65b8ead5a19be1ca8",
     "rv_ui.h": "463b3e1b54c2b0e4ff11b1c9165b6431fe554e787c5eaaf25491afa74914d518",
