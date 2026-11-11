@@ -5,6 +5,7 @@
 
 #include "loader/lz.h"
 #include "loader/file.h"
+#include "trace.h"
 
 void core_lz_from_memory(struct core_lz_input *in, const void *stream, uint32_t stored)
 {
@@ -36,7 +37,7 @@ static int next_byte(struct core_lz_input *in)
     return *in->next++;
 }
 
-int core_lz_decode(struct core_lz_input *in, uint8_t *out, uint32_t bytes)
+static int decode(struct core_lz_input *in, uint8_t *out, uint32_t bytes)
 {
     uint32_t done = 0;
     while (done < bytes) {
@@ -64,4 +65,12 @@ int core_lz_decode(struct core_lz_input *in, uint8_t *out, uint32_t bytes)
         }
     }
     return !in->have && !in->left;
+}
+
+int core_lz_decode(struct core_lz_input *in, uint8_t *out, uint32_t bytes)
+{
+    core_trace(RV_TRACE_DECODE_BEGIN, bytes);
+    int ok = decode(in, out, bytes);
+    core_trace(RV_TRACE_DECODE_END, ok);
+    return ok;
 }

@@ -26,6 +26,7 @@
 #include "osos-2.0.5.h"
 #include "panic.h"
 #include "timer.h"
+#include "trace.h"
 #include "rv_api.h"
 #include "loader/rvx.h"
 #include "ui/screens.h"
@@ -490,7 +491,7 @@ const void *core_loader_resident(const struct rv_extension_record *record, uint3
     return (const uint8_t *)record->resident + e->offset;
 }
 
-void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
+static void *load_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
                         uint8_t *kind)
 {
     const struct rvx_entry *r;
@@ -528,6 +529,15 @@ void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint3
         *kind = entry.kind;
     }
     return out;
+}
+
+void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
+                        uint8_t *kind)
+{
+    core_trace(RV_TRACE_ASSET_BEGIN, record->owner);
+    void *block = load_asset(record, name, bytes, kind);
+    core_trace(RV_TRACE_ASSET_END, record->owner);
+    return block;
 }
 
 void *core_loader_block(uint32_t bytes)
@@ -986,6 +996,9 @@ static struct rv_debug_info debug = {
     offsetof(struct rv_extension_record, peak),
     offsetof(struct rv_extension_record, failure),
     0,
+    core_loader_set_enabled,
+    core_site_argc,
+    &core_trace_probe,
 };
 
 /* MainHeap is set while Apple boots, after this table is linked. */
@@ -996,6 +1009,7 @@ static const struct rv_debug_info *api_debug_info(void)
 }
 
 const char *core_loader_last_log;
+void (*volatile core_trace_probe)(uint32_t kind, uint32_t argument);
 
 static void api_log(rv_extension_handle self, const char *line)
 {
@@ -1141,7 +1155,7 @@ static const struct rv_descriptor *enter(struct rv_extension_record *record, voi
 /* Reads, relocates and enters one module; the main module brings the resident
  * assets. The relocation table is consumed in chunks through the stack, so a
  * module costs text + data + bss and no more. */
-static int load_module(struct rv_extension_record *record, uint32_t index)
+static int load_module_now(struct rv_extension_record *record, uint32_t index)
 {
     struct core_module *module = &record->modules[index];
     if ((((const struct manifest_header *)record->manifest)->api & 0xffff) > RV_API_MINOR) {
@@ -1257,11 +1271,20 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     return 1;
 }
 
+static int load_module(struct rv_extension_record *record, uint32_t index)
+{
+    core_trace(RV_TRACE_LOAD_BEGIN, record->owner);
+    int loaded = load_module_now(record, index);
+    core_trace(RV_TRACE_LOAD_END, record->owner);
+    return loaded;
+}
+
 static void unload_module(struct rv_extension_record *record, uint32_t index)
 {
     struct core_module *module = &record->modules[index];
     if (!module->loaded)
         return;
+    core_trace(RV_TRACE_UNLOAD, record->owner);
     core_timer_stop_code(record, index ? module->image : NULL,
                          (uint8_t *)module->image + module->bytes);
     const struct rv_descriptor *descriptor = module->descriptor;

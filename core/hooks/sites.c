@@ -440,6 +440,19 @@ void core_raw_release(uint32_t site)
     raw->state = RAW_RETIRING;
 }
 
+int core_site_argc(uint32_t id)
+{
+    for (uint32_t i = 0; i < CORE_SITE_COUNT; i++) {
+        if (core_site_ids[i] != id)
+            continue;
+        uint8_t kind = core_sites[i].kind;
+        if (kind == CORE_SITE_WORD || kind == CORE_SITE_INSERT || kind == CORE_SITE_ENTRY_NORETURN)
+            return -1;
+        return core_sites[i].argc;
+    }
+    return -1;
+}
+
 uint32_t core_raw_owner_of(uint32_t address)
 {
     uint32_t start = (uint32_t)raw_stubs;

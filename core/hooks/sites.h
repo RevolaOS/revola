@@ -91,6 +91,9 @@ int core_raw_claim(uint32_t owner, uint32_t address, uint8_t kind, uint32_t expe
 /* Unbinds anything left on the site and frees it two grace ticks later, when no
  * task can still be inside its stub. */
 void core_raw_release(uint32_t site);
+/* The argc column of the core row with id `id` (core_site_ids), -1 when there is
+ * none or its kind takes no filter. */
+int core_site_argc(uint32_t id);
 /* Owner of the raw site whose stub contains `address`, 0 when none. */
 uint32_t core_raw_owner_of(uint32_t address);
 

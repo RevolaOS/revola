@@ -14,6 +14,7 @@
 #include "loader/file.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
+#include "trace.h"
 #include "hooks/sites.h"
 #include <stddef.h>
 
@@ -322,7 +323,10 @@ void core_settings_flush(void)
     uint8_t target = current ^ 1;
     header()->generation = generation + 1;
     header()->checksum = checksum(store, header()->length);
-    if (!write_file(files[target], store, header()->length))
+    core_trace(RV_TRACE_FLUSH_BEGIN, header()->length);
+    int written = write_file(files[target], store, header()->length);
+    core_trace(RV_TRACE_FLUSH_END, written);
+    if (!written)
         return; /* stays dirty; the next flush point retries */
     generation = header()->generation;
     current = target;

@@ -96,6 +96,14 @@ SITE(SystemUI_HandleHoldChange_call, SITE_SystemUI_HandleHoldChange_call, CALL,
      ADDR_SystemUI_HandleHoldChange,
      BL(SITE_SystemUI_HandleHoldChange_call, ADDR_SystemUI_HandleHoldChange), 0, 1, 2, 0)
 
+/* The hold switch's logical state, read over the PMU's I2C bus on every call; no
+ * arguments, 1 when locked. Input_HandleButton on the wheel task reads it for each
+ * button press and release, and the system dispatcher and idle sleep on their
+ * tasks; nothing reads it while core_boot runs during UI start-up unless a button
+ * moves then. A replace handler answers without touching the bus. */
+SITE(HoldSwitch_GetLogicalState_entry, SITE_HoldSwitch_GetLogicalState_entry, ENTRY,
+     REPLAY(HoldSwitch_GetLogicalState_entry), 0xe92d4008, 0xe1a0000d, 0, 0, 0)
+
 /* Every media list controller opens its context menu here: (controller). The
  * highlighted row is the selection's then. Only the two dispatchers on the UI
  * task call it. */
@@ -142,6 +150,13 @@ SITE(ResourceBank_NextTemplate_call, SITE_ResourceBank_NextTemplate_call, CALL,
 /* A layout's event tables were loaded; observers append bindings: (layout). */
 SITE(UI_LoadLayoutEvents_call, SITE_UI_LoadLayoutEvents_call, CALL, ADDR_UI_LoadLayoutEventTables,
      BL(SITE_UI_LoadLayoutEvents_call, ADDR_UI_LoadLayoutEventTables), 0, 1, 1, 0)
+
+/* A layout is shown without a transition animation: (manager, layout). The first
+ * call after boot shows the main menu; LayoutManager_layout holds the shown id once
+ * it returns. */
+SITE(UI_DisplayPreparedLayout_call, SITE_UI_DisplayPreparedLayout_call, CALL,
+     ADDR_UI_DisplayPreparedLayout,
+     BL(SITE_UI_DisplayPreparedLayout_call, ADDR_UI_DisplayPreparedLayout), 0, 1, 2, 0)
 
 /* Light sleep: the disk powers down inside, so stores are written on the way in. */
 SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_Power_EnterLightSleep,
@@ -245,6 +260,13 @@ SITE(IRQ_Dispatch_entry, SITE_IRQ_Dispatch_entry, ENTRY, REPLAY(IRQ_Dispatch_ent
  * is inside it while core_boot runs during UI start-up. */
 SITE(TextView_DrawString_entry, SITE_TextView_DrawString_entry, ENTRY,
      REPLAY(TextView_DrawString_entry), 0xe92d40f0, 0xe1a04000, 1, 3, 0)
+
+/* A scrolling (marquee) text view sets its colour before copying its pre-rendered
+ * text bitmap: (context, rgba, view) with the view copied from r4. No string passes
+ * through the draw; view + TextView_text points to it. */
+SITE(MarqueeTextView_DrawColor_call, SITE_MarqueeTextView_DrawColor_call, CALL,
+     ADDR_GraphicsContext_SetColor,
+     BL(SITE_MarqueeTextView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, 4)
 
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
