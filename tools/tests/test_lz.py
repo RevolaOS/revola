@@ -11,12 +11,14 @@ from pathlib import Path
 import rvx
 
 CORE = Path(__file__).resolve().parents[2] / "core"
+SDK = Path(__file__).resolve().parents[2] / "sdk"
 # Feeds core_lz_decode from stdin as a file (in chunks) or from memory.
 DRIVER = r"""
 #include "loader/file.h"
 #include "loader/lz.h"
 #include <stdio.h>
 #include <stdlib.h>
+void (*volatile core_trace_probe)(uint32_t kind, uint32_t argument);
 int core_file_read(void *handle, void *buffer, uint32_t bytes, uint32_t *got)
 {
     *got = (uint32_t)fread(buffer, 1, bytes, handle);
@@ -58,6 +60,8 @@ class CoreLzTests(unittest.TestCase):
                 "-Werror",
                 "-I",
                 CORE,
+                "-I",
+                SDK,
                 directory / "driver.c",
                 CORE / "loader/lz.c",
                 "-o",
