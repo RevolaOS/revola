@@ -323,3 +323,14 @@ SITE(PodcastEpisodes_Action_slot, SITE_PodcastEpisodes_Action_slot, VTABLE,
  * IsStopped vtable method with blx r1 here. */
 SITE(MediaPlayer_ToggleStopped_call, SITE_MediaPlayer_ToggleStopped_call, CALL,
      ADDR_MediaPlayer_IsStopped, 0xe12fff31, 0, 1, 1, 0)
+
+/* Native list status drawables borrow pixels until replacement or model destruction. */
+SITE(MediaListModel_IndexedProperty_slot, SITE_MediaListModel_IndexedProperty_slot, VTABLE,
+     ADDR_MediaListModel_GetIndexedProperty, ADDR_MediaListModel_GetIndexedProperty, 0, 1,
+     4 | STACK(1), 0)
+SITE(MediaListModel_Destroy_slot, SITE_MediaListModel_Destroy_slot, VTABLE,
+     ADDR_MediaListModel_Destroy, ADDR_MediaListModel_Destroy, 0, 1, 1, 0)
+/* The deleting destructor calls the non-deleting destructor directly. */
+SITE(MediaListModel_Destroy_call, SITE_MediaListModel_Destroy_call, CALL,
+     ADDR_MediaListModel_Destroy,
+     BL(SITE_MediaListModel_Destroy_call, ADDR_MediaListModel_Destroy), 0, 1, 1, 0)
