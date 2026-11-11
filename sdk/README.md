@@ -42,21 +42,21 @@ Include `rv_menus.h` and choose an `after` constant from the menu receiving the 
 
 ```c
 static const struct rv_menu_entry entries[] = {
-    RV_MENU_ENTRY(RV_MENU_MUSIC, RV_MUSIC_AUDIOBOOKS, RV_ROW_PUSH("Up Next", "queue"),
+    RV_MENU_ENTRY(RV_MENU_MUSIC, RV_MUSIC_AUDIOBOOKS, RV_ROW_PUSH("Queue", "queue"),
                   .shown_by = KEY_IN_MUSIC),
-    RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_AUDIOBOOKS, RV_ROW_PUSH("Up Next", "queue"),
+    RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_AUDIOBOOKS, RV_ROW_PUSH("Queue", "queue"),
                   .shown_by = KEY_IN_MAIN),
 };
 
 static const struct rv_setting settings[] = {
-    RV_SETTING_BOOL(KEY_IN_MUSIC, "Up Next in Music", 1),
-    RV_SETTING_BOOL(KEY_IN_MAIN, "Up Next in Main Menu", 0),
+    RV_SETTING_BOOL(KEY_IN_MUSIC, "Queue in Music", 1),
+    RV_SETTING_BOOL(KEY_IN_MAIN, "Queue in Main Menu", 0),
 };
 ```
 
 The example requires a `queue` screen and two distinct, nonzero setting keys. Register the entries and settings in the extension descriptor.
 
-Settings > Main Menu places an entry after its Main Menu anchor and uses that stock row’s indentation. `RV_MAIN_AUDIOBOOKS` places Up Next under Music, immediately after Audiobooks and before Search. An `after` value of `0` uses the menu’s default end anchor; on Main this is Sleep, so the editor displays the entry at root level. The Music declaration alone does not create a Main Menu entry.
+Settings > Main Menu places an entry after its Main Menu anchor and uses that stock row’s indentation. `RV_MAIN_AUDIOBOOKS` places Queue under Music, immediately after Audiobooks and before Search. An `after` value of `0` uses the menu’s default end anchor; on Main this is Sleep, so the editor displays the entry at root level. The Music declaration alone does not create a Main Menu entry.
 
 For an Extras item offered on Main, likewise declare both entries and use the corresponding anchors, such as `RV_EXTRAS_STOPWATCH` and `RV_MAIN_STOPWATCH`. The Main Menu editor also has stock Video anchors, such as `RV_MAIN_MOVIES`; the SDK currently has no `RV_MENU_VIDEOS` destination.
 
