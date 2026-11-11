@@ -16,6 +16,7 @@
 #include "patch.h"
 #include "ui/screens.h"
 #include "settings.h"
+#include "recovery.h"
 #include "hooks/sites.h"
 #include "timer.h"
 
@@ -27,6 +28,7 @@ static uint32_t core_preferences_init(void *preferences, const struct core_next 
 {
     uint32_t result = core_next_call(next, (uint32_t)preferences, 0, 0, 0);
     core_settings_load();
+    core_recovery_prepare();
     core_memory_bind();
     core_artwork_bind();
     core_timer_init();

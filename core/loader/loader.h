@@ -10,13 +10,6 @@ struct core_screen;
 
 struct rvx_entry;
 
-/* Owner of the extension whose code was running at the last panic; survives a
- * warm reset so the next boot disables it. Below the companion's context word
- * at the top of IRAM; neither Apple's warm-boot descriptor (IRAM_BASE + 0x3ff00
- * to +0x3ff2f) nor the bootloader (code and stack low in IRAM1) use it. TODO:
- * confirm retention across a hardware reset. */
-#define CORE_CRASH_SCRATCH (*(volatile uint32_t *)(IRAM_BASE + 0x3fff8))
-
 /* Why an enabled extension is not running. */
 enum core_extension_failure {
     CORE_EXTENSION_OK,
@@ -28,6 +21,8 @@ enum core_extension_failure {
     CORE_EXTENSION_BAD_DESCRIPTOR, /* none returned, or a declaration failed its check */
     CORE_EXTENSION_TOO_NEW,     /* the manifest asks for a newer API minor than this core's */
     CORE_EXTENSION_SITE_MISMATCH, /* a raw site's word differs; conflict_site names it */
+    CORE_EXTENSION_INCOMPATIBLE, /* unsupported package, manifest, API or firmware */
+    CORE_EXTENSION_UNREADABLE,  /* missing, truncated or invalid package metadata */
 };
 
 /* One per enabled extension found at boot or enabled since, heap-allocated. */
@@ -91,14 +86,16 @@ struct core_installed {
     char name[23];
     uint32_t owner;
     uint8_t duplicate; /* another file with this id loads instead */
+    uint8_t failure;   /* package inspection; rejected files have no trusted owner/name */
 };
 /* Scans the extensions and reads each manifest's name into a heap list, one
- * entry per readable manifest; the entries, 0 with `*out` NULL when the heap
- * refuses. Free with core_heap_free(NULL, *out, count * sizeof **out). */
+ * entry per extension file, including rejected packages; 0 with `*out` NULL
+ * when the heap refuses. Free with core_heap_free(NULL, *out, count * sizeof **out). */
 uint32_t core_loader_installed(struct core_installed **out);
 
 /* Manifests: an installed extension's read into `buffer` (CORE_MANIFEST_MAX
- * bytes), 0 when unreadable; a text field of one (an unset note is empty);
+ * bytes), 0 on failure (written to `failure` when non-NULL); a text field
+ * of one (an unset note is empty);
  * its flags (bit 0 enabled, then CORE_MANIFEST_STABILITY). */
 enum core_manifest_text {
     CORE_MANIFEST_ID,
@@ -112,7 +109,7 @@ enum core_manifest_text {
 };
 #define CORE_MANIFEST_MAX 1024
 #define CORE_MANIFEST_STABILITY(flags) ((flags) >> 1 & 3) /* 0 unset, alpha, beta, stable */
-uint32_t core_loader_manifest(const char *file, uint8_t *buffer);
+uint32_t core_loader_manifest(const char *file, uint8_t *buffer, uint8_t *failure);
 const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifest_text field);
 uint32_t core_loader_manifest_flags(const uint8_t *manifest);
 

@@ -29,7 +29,7 @@ static struct page {
     uint32_t manifest_bytes;
 } *page;
 
-static char title[sizeof listed->name];
+static char title[sizeof listed->file];
 /* The Extensions row's icon. */
 static const struct rv_bitmap extensions_icon = {"extensions"};
 static char meter[24];
@@ -42,6 +42,8 @@ static int enabled(const struct rv_extension_record *record)
 
 static const char *state_text(const struct core_installed *e)
 {
+    if (e->failure != CORE_EXTENSION_OK)
+        return e->failure == CORE_EXTENSION_INCOMPATIBLE ? "Incompatible" : "Unreadable";
     struct rv_extension_record *record = core_loader_find(e->owner);
     if (e->duplicate)
         return "Duplicate";
@@ -107,11 +109,11 @@ static const char *list_row(const struct rv_context *ctx, uint32_t index, const 
     const struct core_installed *e = &listed[index - 1];
     struct rv_extension_record *record = core_loader_find(e->owner);
     char *out = core_put_text(line, line + sizeof line, state_text(e));
-    if (enabled(record) && record->failure == CORE_EXTENSION_OK)
+    if (e->failure == CORE_EXTENSION_OK && enabled(record) && record->failure == CORE_EXTENSION_OK)
         core_format_size(core_put_text(out, line + sizeof line, ", "), line + sizeof line,
                           record->live);
     *detail = line;
-    return e->name;
+    return e->failure == CORE_EXTENSION_OK ? e->name : e->file;
 }
 
 static int list_select(const struct rv_context *ctx, uint32_t index)
@@ -128,10 +130,11 @@ static int list_select(const struct rv_context *ctx, uint32_t index)
     page = core_heap_allocate(NULL, sizeof *page);
     if (!page)
         return 0;
-    const struct core_installed *e = &listed[index - 1];
+    struct core_installed *e = &listed[index - 1];
     page->index = index - 1;
-    page->manifest_bytes = core_loader_manifest(e->file, page->manifest);
-    core_put_text(title, title + sizeof title, e->name);
+    page->manifest_bytes = core_loader_manifest(e->file, page->manifest, &e->failure);
+    core_put_text(title, title + sizeof title,
+                  e->failure == CORE_EXTENSION_OK ? e->name : e->file);
     struct core_screen *s = core_screens_find(NULL, "core.extension");
     if (!s || !core_screens_push(s, core_screens_caller, NULL)) {
         core_heap_free(NULL, page, sizeof *page);
@@ -142,7 +145,7 @@ static int list_select(const struct rv_context *ctx, uint32_t index)
 
 /* The page. The status bar names the extension; below it the version and
  * author with the stability unless stable, the manifest's note when it has one,
- * the description, then the memory it holds and, always last, the Enabled row,
+ * the description, then its memory or crash status and, always last, the Enabled row,
  * highlighted since Select flips it. Menu goes back; the playback keys stay the
  * system's. */
 
@@ -180,7 +183,7 @@ static const char *problem(const struct core_installed *e, const struct rv_exten
     if (e->duplicate)
         return "Another file has the same id";
     if (!enabled(record))
-        return e->owner == core_loader_crashed ? "Turned off after a crash" : NULL;
+        return NULL;
     switch (record->failure) {
     case CORE_EXTENSION_OK:
         return NULL;
@@ -237,6 +240,18 @@ static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int 
     struct rv_extension_record *record = core_loader_find(e->owner);
     char text[64];
 
+    if (e->failure != CORE_EXTENSION_OK) {
+        g->text(LEFT, TOP, RV_FONT_TITLE, g->color(RV_COLOR_TEXT), state_text(e));
+        const char *reason = e->failure == CORE_EXTENSION_INCOMPATIBLE
+                                 ? "Install a version of this extension made for this RevolaOS."
+                                 : "This extension could not be read. Copy it to the iPod again.";
+        int y = TOP + g->line_height(RV_FONT_TITLE) + 10;
+        g->paragraph(LEFT, y, width - 2 * LEFT, RV_FONT_TEXT,
+                     g->color(RV_COLOR_PARAGRAPH), reason,
+                     (height - TOP - y) / (g->line_height(RV_FONT_TEXT) + CORE_GFX_PARAGRAPH_SPACING));
+        return;
+    }
+
     int y = TOP;
     const char *version = manifest_text(CORE_MANIFEST_VERSION);
     const char *author = manifest_text(CORE_MANIFEST_AUTHOR);
@@ -271,6 +286,9 @@ static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int 
         core_format_size(core_put_text(out, text + sizeof text, ", peak "), text + sizeof text,
                          record->peak);
         g->row(rows, width, "Memory", text, 0);
+    } else if (!enabled(record) && !e->duplicate && e->owner == core_loader_crashed) {
+        int baseline = rows + (RV_GFX_ROW_HEIGHT - g->line_height(RV_FONT_TITLE)) / 2;
+        g->text(8, baseline, RV_FONT_TITLE, PROBLEM, "Turned off after a crash");
     }
     g->row(rows + RV_GFX_ROW_HEIGHT, width, "Enabled", enabled(record) ? "On" : "Off", 1);
 }
@@ -282,6 +300,8 @@ static int page_input(const struct rv_context *ctx, const struct rv_input *input
         return 0; /* Menu pops the page; the other keys are the system's */
     if (input->kind == RV_INPUT_PRESS) {
         const struct core_installed *e = &listed[page->index];
+        if (e->failure != CORE_EXTENSION_OK)
+            return 1;
         core_loader_set_enabled(e->file, !enabled(core_loader_find(e->owner)));
         struct core_screen *list = core_screens_find(NULL, "core.extensions");
         if (list)

@@ -8,7 +8,8 @@ Supported devices: iPod Classic 6G, 6.5G and 7G on Apple firmware 2.0.5. FAT32 s
 
 | Path | Contents |
 |---|---|
-| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), boot order (`init.c`), settings store (`settings.c`), grace timer (`timer.c`), panic screen (`panic.c`) |
+| `core/` | Firmware payload linked at `CORE_BASE`: install-time patches (`boot.c`), boot order (`init.c`), settings store (`settings.c`), grace timer (`timer.c`) |
+| `core/panic/` | Exception entry points, panic screen, backlight polling and sad iPod bitmap |
 | `core/hooks/` | Hook site table and dispatcher (`sites.def`, `sites.c`, `stubs.S`) |
 | `core/loader/` | Extension loader and lifecycle (`loader.c`), file access |
 | `core/ui/` | Screen registry and clones (`screens.c`, `clones.c`), list screens full width or beside the Settings preview pane (`lists.c`) and their rows expanded by index (`indexed.c`), templates built at boot (`templates.c`), canvas view and slider input (`canvas.c`), the drawing table canvases draw with (`gfx.c`), controller vtable copies (`controllers.c`), menu rows (`menus.c`) and the Settings preview pane (`panes.c`), Main and Music Menu settings rows (`toggles.c`), Settings properties and actions (`properties.c`), resource helpers, About and Extensions rows |
@@ -61,7 +62,7 @@ The install-time recipe keeps only what must hold before the core runs: the heap
 
 ## Settings store
 
-`/Revola/Settings/system.a` and `system.b` hold the same record stream, for the core and every extension: a header `{magic RVST, version, length, generation, FNV-1a of the records}` and records `{owner hash32, key16, type8, size8, data}` padded to a word. The owner is the FNV-1a hash of the extension id (`core` for the core), so there is no key registry. At boot the newer valid file wins; a flush writes the other file with the generation advanced, so an interrupted write never destroys the last good copy. The buffer is sized from the file and regrown through Apple's allocator. Unknown records survive a rewrite. Values are at most 255 bytes.
+`/Revola/Settings/system.a` and `system.b` hold the same record stream, for the core and every extension: a header `{magic RVST, version, length, generation, FNV-1a of the records}` and records `{owner hash32, key16, type8, size8, data}` padded to a word. The owner is the FNV-1a hash of the extension id (`core` for the core), so there is no key registry. At boot the newer valid file wins; a flush writes the other file with the generation advanced, so the loader can reject an incomplete copy and use the other one. This does not guarantee FAT integrity or media durability across a forced reset. The buffer is sized from the file and regrown through Apple's allocator. Unknown records survive a rewrite. Values are at most 255 bytes.
 
 The store is loaded in `core_preferences_init`, the first point where the disk is readable. The first flush of a boot creates `/Revola/Settings` and any missing parent through `Directory_CreateWithParents`. Flush points: before light sleep (both `System_Sleep` calls), after Apple's own save-all (USB disk mode entry among its callers), three grace ticks after the last change if `Disk_GetPowerState` reports the disk powered, and `core_settings_flush` on request. Reset All Settings empties the store. Key 0 of every extension's owner is its enabled flag, and key 0xffff says which of its Main and Music rows are shown.
 
@@ -75,7 +76,9 @@ Lifecycle: the main module stays loaded while the extension is enabled; a `manua
 
 Assets are named bytes in the file: bitmaps (converted from PNG by `tools/bitmap.py`) and data. Bitmaps are always lz-compressed (`core/loader/lz.c`, 4 KB window); data is unless the manifest says `compress = false`, and anything lz cannot shrink is stored raw. Resident assets are read into one block with the main module and stay there as stored, so using them needs no disk access; the rest are found by streaming the catalog through the stack when asked for. `api->asset_load` decodes a copy, `api->asset_read` reads part of a raw one. Bitmaps are decoded in `core/ui/bitmaps.c`: a menu bitmap (the stock Settings pane icon format, a 78 x 121 coverage mask) into one block that lives until Apple asks for the next one, because Apple keeps drawing the last pane bitmap; canvas bitmaps into blocks held while their canvas is open. Every block is counted to its extension.
 
-Failsafe: the panic screen writes the owner of the extension whose code was running (the explicit entry call, else the image holding the faulting address, link register or any saved word) to a word at the top of IRAM that the boot chain leaves alone, and the next boot disables that extension and records it for the Extensions screen. Holding Previous while RevolaOS boots starts core-only mode: the loader reads the wheel driver's button mask, which the wheel interrupt keeps current, and loads nothing.
+Failsafe: the panic screen captures a checksummed crash record in reserved IRAM and waits for a fresh Center press before a controlled software restart. At the next boot, the core writes `/Revola/Crashes/<report-id>.txt`, verifies the captured bytes by reading them back, and disables the attributed extension before loading extensions. Settings > Extensions allows manual re-enable. The record includes the full extension ID, firmware/build IDs, saved registers and a bounded stack snapshot. Attribution identifies a possible cause, not proof. A physical reset or power loss can discard the pending report. Holding Previous while RevolaOS boots starts core-only mode and loads no extensions.
+
+For an attributed extension, the pending record is kept until a later boot reads both the saved report and the disabled-extension settings, or the user explicitly re-enables it. Same-boot report readback checks contents, not physical-media durability. An incomplete or conflicting report is preserved; the pending report is saved under an unused ID, which can differ from the panic screen’s ID. Read errors leave the pending report intact for a later boot. Use the panic screen's Center action to preserve the report rather than Menu + Center.
 
 ## SDK
 
@@ -83,7 +86,9 @@ Failsafe: the panic screen writes the owner of the extension whose code was runn
 
 ## About and Extensions rows
 
-Settings ends with four About rows after Legal (the RevolaOS version, the core's resident bytes, the heap's used and free bytes), then a meter row with the bytes extensions hold, then one row per installed extension with its state (On with its resident bytes, Off, Conflict, No memory, Failed, Off after crash). All are copies of the Legal row made while Apple builds the list, with titles bound to Settings model properties the core answers, so the text is current each time it is drawn. Selecting an extension row toggles it: the core adds a `list.pid.<row>.chosen` binding to the Settings screen's event table when Apple loads it, the binding names a handler the core's Settings action filter recognises, and the toggle notifies the model so the row and the meter redraw. The installed list is read from disk once, when Settings is first built, which happens at boot. TODO: a screen of its own with the detail page is part of the UI runtime.
+Settings > RevolaOS Info shows the build and project information. Settings > Extensions opens a list with Usage followed by installed extensions. Each extension's second line shows its state and, while running, its memory use. Usage opens Memory Usage. The list is read when opened and released when closed; selecting an extension opens its description and Enabled control.
+
+Rejected `.rvx` files remain visible by filename. Unsupported package or manifest formats, a different API major, or a different firmware ID show Incompatible; truncated or invalid metadata shows Unreadable. Their detail pages explain how to replace the package and do not offer an Enabled control. Version-2 manifests without the note field are incompatible. Build and package extensions with the SDK matching the installed core.
 
 ## Memory rules
 

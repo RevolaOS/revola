@@ -10,8 +10,13 @@
 #define CORE_FILE_WRITE 2
 
 int core_file_open(const char *path, int mode, void **handle);
+/* Native legacy status: zero success, otherwise a FileError_* or I/O error.
+ * Use when absence must be distinguished from an unreadable existing file. */
+int core_file_open_status(const char *path, int mode, void **handle);
 /* 1 on success; *got is the byte count read, short at the end of the file. */
 int core_file_read(void *handle, void *buffer, uint32_t bytes, uint32_t *got);
+/* Preserves FileError_EndOfFile and the partial byte count. */
+int core_file_read_status(void *handle, void *buffer, uint32_t bytes, uint32_t *got);
 /* Moves to `offset` bytes from the start; 1 on success. */
 int core_file_seek(void *handle, uint32_t offset);
 int core_file_write(void *handle, const void *buffer, uint32_t bytes);

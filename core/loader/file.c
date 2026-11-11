@@ -19,11 +19,16 @@ static void path_from(struct path *path, const char *text)
     path->text[i] = 0;
 }
 
-int core_file_open(const char *text, int mode, void **handle)
+int core_file_open_status(const char *text, int mode, void **handle)
 {
     struct path path;
     path_from(&path, text);
-    return File_OpenLegacyPath(&path, FORK_DATA, mode, handle) == 0;
+    return File_OpenLegacyPath(&path, FORK_DATA, mode, handle);
+}
+
+int core_file_open(const char *text, int mode, void **handle)
+{
+    return core_file_open_status(text, mode, handle) == 0;
 }
 
 int core_file_delete(const char *text)
@@ -49,10 +54,15 @@ void core_file_list(const char *folder, void (*each)(const char *name, int is_fo
     NativePath_Destroy(path);
 }
 
-int core_file_read(void *handle, void *buffer, uint32_t bytes, uint32_t *got)
+int core_file_read_status(void *handle, void *buffer, uint32_t bytes, uint32_t *got)
 {
     *got = 0;
-    return File_ReadLegacyHandle(handle, buffer, bytes, 0, got) == 0;
+    return File_ReadLegacyHandle(handle, buffer, bytes, 0, got);
+}
+
+int core_file_read(void *handle, void *buffer, uint32_t bytes, uint32_t *got)
+{
+    return core_file_read_status(handle, buffer, bytes, got) == 0;
 }
 
 int core_file_seek(void *handle, uint32_t offset)

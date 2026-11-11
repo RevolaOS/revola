@@ -3,6 +3,8 @@
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "panic.h"
+#include "recovery.h"
+#include "sad_ipod.h"
 #include <stddef.h>
 
 #define REG32(address) (*(volatile uint32_t *)(address))
@@ -11,8 +13,7 @@
  * over whatever the panel holds. Cleared before the panel is written directly. */
 #define DISP_CONTROL REG32(0x38900008u)
 #define DISP_LAYERS 0x70u
-/* An unknown C++ exception with less free heap than this is out of memory: the
- * 70k-track library panics with 2,592 B free. */
+/* Heap reserve used to classify unknown C++ exceptions as allocation failures. */
 #define OUT_OF_MEMORY_BYTES 0x10000u
 #define LCD_CONFIG REG32(LCD_BASE)
 #define LCD_COMMAND REG32(LCD_BASE + 0x04)
@@ -40,7 +41,7 @@ uint32_t core_panic_extension;
 static void render_line(const struct panic_frame *frame);
 
 /* Five-bit rows, most significant pixel first. */
-static const char alphabet[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-+:";
+static const char alphabet[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-+:./";
 static const uint8_t glyphs[][7] = {
     {14, 17, 19, 21, 25, 17, 14}, {4, 12, 4, 4, 4, 4, 14},
     {14, 17, 1, 2, 4, 8, 31},     {30, 1, 1, 14, 1, 1, 30},
@@ -61,7 +62,7 @@ static const uint8_t glyphs[][7] = {
     {17, 17, 17, 21, 21, 21, 10}, {17, 17, 10, 4, 10, 17, 17},
     {17, 17, 10, 4, 4, 4, 4},     {31, 1, 2, 4, 8, 16, 31},
     {0, 0, 0, 31, 0, 0, 0},       {0, 4, 4, 31, 4, 4, 0},
-    {0, 4, 4, 0, 4, 4, 0}};
+    {0, 4, 4, 0, 4, 4, 0}, {0, 0, 0, 0, 0, 6, 6}, {1, 2, 2, 4, 8, 8, 16}};
 
 static void text(unsigned x, unsigned y, unsigned scale, const char *value)
 {
@@ -69,8 +70,10 @@ static void text(unsigned x, unsigned y, unsigned scale, const char *value)
         return;
     unsigned row = (scan_y - y) / scale;
     for (; *value; value++, x += 6 * scale) {
+        char letter = *value;
+        if (letter >= 'a' && letter <= 'z') letter -= 'a' - 'A';
         unsigned index = 0;
-        while (alphabet[index] && alphabet[index] != *value)
+        while (alphabet[index] && alphabet[index] != letter)
             index++;
         if (!alphabet[index])
             continue;
@@ -84,6 +87,16 @@ static void text(unsigned x, unsigned y, unsigned scale, const char *value)
             }
         }
     }
+}
+
+static void sad_ipod(void)
+{
+    if (scan_y < 134 || scan_y >= 134 + sizeof sad_ipod_rows / sizeof *sad_ipod_rows)
+        return;
+    const uint8_t *row = sad_ipod_rows[scan_y - 134];
+    for (unsigned x = 0; x < 54; x++)
+        if (row[x / 8] & (0x80u >> (x % 8)))
+            pixels[WIDTH - 12 - 54 + x] = WHITE;
 }
 
 static char *decimal(char *out, uint32_t value)
@@ -313,6 +326,31 @@ static void render_line(const struct panic_frame *frame)
     for (unsigned x = 0; x < WIDTH; x++)
         pixels[x] = BACKGROUND;
 
+    if (core_recovery_valid() && CORE_CRASH_RECORD->report_id) {
+        text(12, 16, 2, "WE RAN INTO AN ERROR");
+        sad_ipod();
+        if (CORE_CRASH_RECORD->owner) {
+            char name[40];
+            unsigned i = 0;
+            for (; i < sizeof name - 1 && CORE_CRASH_RECORD->name[i]; i++)
+                name[i] = CORE_CRASH_RECORD->name[i];
+            name[i] = 0;
+            text(12, 52, 1, name[0] ? name : "EXTENSION ERROR");
+            text(12, 76, 1, "CENTER WILL RESTART WITHOUT");
+            text(12, 90, 1, "THIS EXTENSION.");
+        } else {
+            text(12, 60, 1, "CENTER WILL RESTART REVOLAOS.");
+        }
+        char path[32];
+        core_recovery_path(path, CORE_CRASH_RECORD->report_id);
+        text(12, 116, 1, "REPORT WILL BE SAVED AFTER RESTART:");
+        text(12, 130, 1, path);
+        text(12, 158, 1, "OPEN AN ISSUE AND ATTACH THE REPORT:");
+        text(12, 172, 1, "GITHUB.COM/REVOLAOS/REVOLA/ISSUES");
+        text(12, 210, 2, "CENTER TO RESTART");
+        return;
+    }
+
     const char *reason = "CPU EXCEPTION";
     uint32_t pc = frame->exception_lr;
     switch (frame->type) {
@@ -382,13 +420,16 @@ static uint32_t crashed_extension(const struct panic_frame *frame)
     return owner;
 }
 
+void core_panic_backlight(uint32_t result[4]);
+
 void core_panic_screen(const struct panic_frame *frame)
 {
     REG32(0x3c800000) = 0;
     core_panic_extension = crashed_extension(frame);
-    if (core_panic_extension)
-        CORE_CRASH_SCRATCH = core_panic_extension;
+    core_recovery_capture(frame, core_panic_extension);
+    uint32_t backlight[4];
+    core_panic_backlight(backlight);
+    core_recovery_backlight(backlight);
     show_pixels(frame);
-    for (;;) {
-    }
+    core_recovery_wait();
 }

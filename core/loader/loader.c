@@ -20,12 +20,13 @@
 #include "loader/data.h"
 #include "loader/file.h"
 #include "loader/loader.h"
+#include "recovery.h"
 #include "loader/lz.h"
 #include "ui/lists.h"
 #include "ui/menus.h"
 #include "ui/resources.h"
 #include "osos-2.0.5.h"
-#include "panic.h"
+#include "panic/panic.h"
 #include "timer.h"
 #include "trace.h"
 #include "rv_api.h"
@@ -266,40 +267,56 @@ static const char *text(const struct rv_extension_record *record, uint16_t offse
     return strings(record->manifest) + offset;
 }
 
-static int manifest_valid(const uint8_t *buffer, uint32_t bytes)
+static enum core_extension_failure manifest_valid(const uint8_t *buffer, uint32_t bytes)
 {
     const struct manifest_header *header = (const struct manifest_header *)buffer;
-    if (bytes < sizeof *header || header->magic != MANIFEST_MAGIC ||
-        header->version != MANIFEST_VERSION || header->module_count < 1 ||
-        header->module_count > MAX_MODULES || header->site_count > CORE_RAW_SITES ||
-        (header->api >> 16) != RV_API_MAJOR)
-        return 0;
+    if (bytes < offsetof(struct manifest_header, text) || header->magic != MANIFEST_MAGIC)
+        return CORE_EXTENSION_UNREADABLE;
+    if (header->version != MANIFEST_VERSION || (header->api >> 16) != RV_API_MAJOR)
+        return CORE_EXTENSION_INCOMPATIBLE;
+    if (header->module_count < 1 || header->module_count > MAX_MODULES ||
+        header->site_count > CORE_RAW_SITES || !header->strings_bytes ||
+        header->strings_bytes > bytes || buffer[bytes - 1] != 0)
+        return CORE_EXTENSION_UNREADABLE;
     uint32_t table = tables_bytes(header);
-    if (bytes != table + header->strings_bytes || !header->strings_bytes ||
-        buffer[bytes - 1] != 0)
-        return 0;
-    for (uint32_t i = 0; i < CORE_MANIFEST_TEXTS; i++)
+    uint32_t header_bytes = sizeof *header, texts = CORE_MANIFEST_TEXTS;
+    /* A version-2 layout with six text offsets and no reserved word is incompatible.
+     * Recognize it for diagnostics only; its modules must never be loaded. */
+    int legacy = bytes == table - 2 * sizeof(uint16_t) + header->strings_bytes;
+    if (legacy) {
+        header_bytes -= 2 * sizeof(uint16_t);
+        table -= 2 * sizeof(uint16_t);
+        texts--;
+    }
+    if (bytes != table + header->strings_bytes)
+        return CORE_EXTENSION_UNREADABLE;
+    for (uint32_t i = 0; i < texts; i++)
         if (header->text[i] >= header->strings_bytes)
-            return 0;
-    const struct manifest_site *sites = (const struct manifest_site *)(buffer + sizeof *header);
+            return CORE_EXTENSION_UNREADABLE;
+    const struct manifest_site *sites = (const struct manifest_site *)(buffer + header_bytes);
     for (uint32_t i = 0; i < header->site_count; i++)
         if (sites[i].name >= header->strings_bytes)
-            return 0;
+            return CORE_EXTENSION_UNREADABLE;
     const struct manifest_module *modules = (const struct manifest_module *)(sites + header->site_count);
     if (modules[0].trigger != TRIGGER_ALWAYS)
-        return 0;
+        return CORE_EXTENSION_UNREADABLE;
     for (uint32_t i = 0; i < header->module_count; i++)
         if (modules[i].name >= header->strings_bytes ||
             modules[i].screens >= header->strings_bytes || modules[i].trigger > TRIGGER_MANUAL)
-            return 0;
-    return buffer[table + header->text[CORE_MANIFEST_ID]] != 0; /* id present */
+            return CORE_EXTENSION_UNREADABLE;
+    if (!buffer[table + header->text[CORE_MANIFEST_ID]])
+        return CORE_EXTENSION_UNREADABLE;
+    return legacy ? CORE_EXTENSION_INCOMPATIBLE : CORE_EXTENSION_OK;
 }
 
 /* Opens ROOT "/" file SUFFIX and reads its header; 0 when either fails. */
-static int open_extension(const char *file, void **handle, struct rvx_header *header)
+static int open_extension(const char *file, void **handle, struct rvx_header *header,
+                          uint8_t *failure)
 {
     char path[PATH_MAX_BYTES];
     uint32_t n = 0, got = 0;
+    if (failure)
+        *failure = CORE_EXTENSION_UNREADABLE;
     const char *parts[3] = {ROOT "/", file, SUFFIX};
     for (uint32_t p = 0; p < 3; p++)
         for (const char *c = parts[p]; *c; c++) {
@@ -311,25 +328,34 @@ static int open_extension(const char *file, void **handle, struct rvx_header *he
     if (!core_file_open(path, CORE_FILE_READ, handle))
         return 0;
     if (core_file_read(*handle, header, sizeof *header, &got) && got == sizeof *header &&
-        header->magic == RVX_MAGIC && header->format == RVX_FORMAT)
-        return 1;
+        header->magic == RVX_MAGIC) {
+        if (header->format == RVX_FORMAT && (header->api >> 16) == RV_API_MAJOR &&
+            header->firmware == CORE_FIRMWARE_ID)
+            return 1;
+        if (failure)
+            *failure = CORE_EXTENSION_INCOMPATIBLE;
+    }
     core_file_close(*handle);
     return 0;
 }
 
 /* The manifest of `file` into `buffer`; its size, or 0 when it is unreadable. */
-static uint32_t read_manifest(const char *file, uint8_t *buffer)
+static uint32_t read_manifest(const char *file, uint8_t *buffer, uint8_t *failure)
 {
     void *handle;
     struct rvx_header header;
     uint32_t got = 0;
-    if (!open_extension(file, &handle, &header))
+    if (!open_extension(file, &handle, &header, failure))
         return 0;
     int ok = header.manifest_bytes <= MANIFEST_MAX &&
              core_file_read(handle, buffer, header.manifest_bytes, &got) &&
              got == header.manifest_bytes;
     core_file_close(handle);
-    return ok && manifest_valid(buffer, got) ? got : 0;
+    enum core_extension_failure result = ok ? manifest_valid(buffer, got)
+                                           : CORE_EXTENSION_UNREADABLE;
+    if (failure)
+        *failure = (uint8_t)result;
+    return result == CORE_EXTENSION_OK ? got : 0;
 }
 
 /* Catalog */
@@ -469,7 +495,7 @@ static int find_on_disk(const struct rv_extension_record *record, uint32_t name,
     struct rvx_header file;
     struct catalog c;
     const struct rvx_entry *e;
-    if (!open_extension(record->file, handle, &file))
+    if (!open_extension(record->file, handle, &file, NULL))
         return 0;
     if (file.manifest_bytes == record->manifest_bytes && file.entry_count == record->entry_count &&
         catalog_start(&c, record, *handle, record->module_count + record->resident_count,
@@ -1187,7 +1213,7 @@ static int load_module_now(struct rv_extension_record *record, uint32_t index)
     struct rvx_module header;
     void *handle;
     record->failure = CORE_EXTENSION_BAD_MODULE;
-    if (!open_extension(record->file, &handle, &file))
+    if (!open_extension(record->file, &handle, &file, NULL))
         return 0;
     if (index == 0) {
         record->entry_count = file.entry_count;
@@ -1362,12 +1388,13 @@ static struct rv_extension_record *load_extension(const char *file)
 {
     uint32_t words[MANIFEST_MAX / 4];
     uint8_t *buffer = (uint8_t *)words;
-    uint32_t bytes = read_manifest(file, buffer);
+    uint32_t bytes = read_manifest(file, buffer, NULL);
     if (!bytes || length(file) >= sizeof ((struct rv_extension_record *)0)->file)
         return NULL;
     const struct manifest_header *header = (const struct manifest_header *)buffer;
     uint32_t owner = fnv1a(strings(buffer) + header->text[CORE_MANIFEST_ID]);
-    if (!core_settings_get_int(owner, RV_SETTING_KEY_ENABLED, header->flags & MANIFEST_ENABLED))
+    if (owner == core_loader_crashed ||
+        !core_settings_get_int(owner, RV_SETTING_KEY_ENABLED, header->flags & MANIFEST_ENABLED))
         return NULL;
     uint32_t record_bytes = sizeof(struct rv_extension_record) +
                             header->module_count * sizeof(struct core_module) + bytes;
@@ -1409,7 +1436,7 @@ static void unload_extension(struct rv_extension_record *record)
 struct found {
     char file[sizeof ((struct rv_extension_record *)0)->file];
     uint8_t duplicate; /* another file with the same id loads instead */
-    uint8_t readable;
+    uint8_t failure;
     uint8_t named; /* the file is named after the id */
     uint32_t owner;
 };
@@ -1468,8 +1495,8 @@ static void pick(struct found *list, uint32_t count, uint8_t *buffer)
 {
     for (uint32_t i = 0; i < count; i++) {
         struct found *f = &list[i];
-        f->readable = read_manifest(f->file, buffer) != 0;
-        if (!f->readable)
+        read_manifest(f->file, buffer, &f->failure);
+        if (f->failure != CORE_EXTENSION_OK)
             continue;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
         const char *id = strings(buffer) + header->text[CORE_MANIFEST_ID];
@@ -1477,8 +1504,8 @@ static void pick(struct found *list, uint32_t count, uint8_t *buffer)
         f->named = (uint8_t)same_name(f->file, id);
     }
     for (uint32_t i = 0; i < count; i++)
-        for (uint32_t j = 0; j < count && list[i].readable && !list[i].duplicate; j++)
-            if (j != i && list[j].readable && list[j].owner == list[i].owner &&
+        for (uint32_t j = 0; j < count && list[i].failure == CORE_EXTENSION_OK && !list[i].duplicate; j++)
+            if (j != i && list[j].failure == CORE_EXTENSION_OK && list[j].owner == list[i].owner &&
                 (list[j].named > list[i].named || (list[j].named == list[i].named && j < i)))
                 list[i].duplicate = 1;
 }
@@ -1504,7 +1531,7 @@ static uint32_t body_hash_of(const char *file)
 {
     void *handle;
     struct rvx_header header;
-    if (!open_extension(file, &handle, &header))
+    if (!open_extension(file, &handle, &header, NULL))
         return 0;
     core_file_close(handle);
     return header.body_hash;
@@ -1551,12 +1578,6 @@ static const struct core_hook disk_mode_exit_hook = {
 
 void core_loader_boot(void)
 {
-    uint32_t crashed = CORE_CRASH_SCRATCH;
-    if (crashed) {
-        CORE_CRASH_SCRATCH = 0;
-        core_settings_set_int(crashed, RV_SETTING_KEY_ENABLED, 0);
-        core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, (int32_t)crashed);
-    }
     core_loader_crashed = (uint32_t)core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);
     if (held_buttons() & WheelButton_Previous) {
         core_loader_core_only = 1;
@@ -1565,6 +1586,26 @@ void core_loader_boot(void)
     uint32_t words[MANIFEST_MAX / 4];
     uint32_t count = 0;
     struct found *list = scan(&count, (uint8_t *)words);
+    uint32_t crashed = core_recovery_owner();
+    if (crashed && list) {
+        uint32_t i = 0;
+        for (; i < count; i++)
+            if (list[i].failure == CORE_EXTENSION_OK && !list[i].duplicate && list[i].owner == crashed)
+                break;
+        if (i < count) {
+            int persisted = core_loader_crashed == crashed &&
+                !core_settings_get_int(crashed, RV_SETTING_KEY_ENABLED, 1);
+            core_settings_set_int(crashed, RV_SETTING_KEY_ENABLED, 0);
+            core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, (int32_t)crashed);
+            core_loader_crashed = crashed;
+            core_settings_flush();
+            if (persisted && core_recovery_log_status == 2)
+                core_recovery_clear();
+        }
+    } else if (!crashed && core_recovery_log_status == 2) {
+        core_recovery_clear();
+    }
+
     for (uint32_t i = 0; i < count; i++)
         if (!list[i].duplicate)
             load_extension(list[i].file);
@@ -1582,15 +1623,19 @@ int core_loader_set_enabled(const char *file, int enabled)
     } else {
         uint32_t words[MANIFEST_MAX / 4];
         uint8_t *buffer = (uint8_t *)words;
-        if (!read_manifest(file, buffer))
+        if (!read_manifest(file, buffer, NULL))
             return RV_NOT_FOUND;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
         owner = fnv1a(strings(buffer) + header->text[CORE_MANIFEST_ID]);
     }
-    core_settings_set_int(owner, RV_SETTING_KEY_ENABLED, enabled != 0);
+    if (core_settings_set_int(owner, RV_SETTING_KEY_ENABLED, enabled != 0))
+        return RV_NO_MEMORY;
     if (enabled && owner == core_loader_crashed) {
+        if (core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0))
+            return RV_NO_MEMORY;
+        if (core_recovery_owner() == owner)
+            core_recovery_clear();
         core_loader_crashed = 0;
-        core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);
     }
     if (enabled && !record)
         return load_extension(file) ? RV_OK : RV_NOT_FOUND;
@@ -1693,19 +1738,16 @@ uint32_t core_loader_installed(struct core_installed **out)
     *out = NULL;
     if (!list)
         return 0;
-    for (uint32_t i = 0; i < found; i++)
-        count += list[i].readable;
+    count = found;
     struct core_installed *entries = count ? core_heap_allocate(NULL, count * sizeof *entries) : NULL;
-    for (uint32_t i = 0, n = 0; entries && i < found; i++) {
-        if (!list[i].readable)
-            continue;
-        struct core_installed *entry = &entries[n++];
+    for (uint32_t i = 0; entries && i < found; i++) {
+        struct core_installed *entry = &entries[i];
         copy(entry->file, list[i].file, sizeof entry->file);
-        entry->owner = list[i].owner;
         entry->duplicate = list[i].duplicate;
-        if (!read_manifest(list[i].file, buffer))
-            continue; /* removed since the scan: the row stays, without a name */
+        if (!read_manifest(list[i].file, buffer, &entry->failure))
+            continue;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
+        entry->owner = fnv1a(strings(buffer) + header->text[CORE_MANIFEST_ID]);
         const char *name = strings(buffer) + header->text[CORE_MANIFEST_NAME];
         for (uint32_t c = 0; name[c] && c < sizeof entry->name - 1; c++)
             entry->name[c] = name[c];
@@ -1715,9 +1757,9 @@ uint32_t core_loader_installed(struct core_installed **out)
     return entries ? count : 0;
 }
 
-uint32_t core_loader_manifest(const char *file, uint8_t *buffer)
+uint32_t core_loader_manifest(const char *file, uint8_t *buffer, uint8_t *failure)
 {
-    return read_manifest(file, buffer);
+    return read_manifest(file, buffer, failure);
 }
 
 const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifest_text field)
