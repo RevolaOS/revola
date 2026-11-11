@@ -31,7 +31,7 @@ def strings(data, start, offset):
 class ManifestTests(unittest.TestCase):
     def test_header_modules_and_strings(self):
         data = manifest.compile_manifest(DOCUMENT)
-        magic, version, api, flags, count, sites, bytes_, *texts = (
+        magic, version, api, flags, count, sites, bytes_, *texts, reserved = (
             manifest.HEADER.unpack_from(data)
         )
         self.assertEqual(
@@ -49,8 +49,10 @@ class ManifestTests(unittest.TestCase):
                 "0.1.0",
                 "Paul",
                 "GPL-3.0-only",
+                "",
             ],
         )
+        self.assertEqual(reserved, 0)
         modules = [
             manifest.MODULE.unpack_from(
                 data, manifest.HEADER.size + i * manifest.MODULE.size
@@ -66,6 +68,14 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(strings(data, table, after), "x")
         self.assertEqual(modules[0][1:3], (0, 0))
         self.assertEqual(modules[2][1:3], (2, 0))
+
+    def test_note(self):
+        data = manifest.compile_manifest({**DOCUMENT, "note": "Adapted from X"})
+        header = manifest.HEADER.unpack_from(data)
+        table = manifest.HEADER.size + header[4] * manifest.MODULE.size
+        self.assertEqual(strings(data, table, header[13]), "Adapted from X")
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest({**DOCUMENT, "note": 1})
 
     def test_enabled_flag(self):
         data = manifest.compile_manifest({**DOCUMENT, "enabled": True})

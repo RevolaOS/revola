@@ -140,9 +140,10 @@ static int list_select(const struct rv_context *ctx, uint32_t index)
 }
 
 /* The page. The status bar names the extension; below it the version and
- * author with the stability unless stable, the description, then the memory it
- * holds and, always last, the Enabled row, highlighted since Select flips it.
- * Menu goes back; the playback keys stay the system's. */
+ * author with the stability unless stable, the manifest's note when it has one,
+ * the description, then the memory it holds and, always last, the Enabled row,
+ * highlighted since Select flips it. Menu goes back; the playback keys stay the
+ * system's. */
 
 /* The rows sit low: the Enabled highlight ends as far above the bottom as the
  * version line's capitals start below the status bar (the font leaves 1 px
@@ -152,7 +153,7 @@ static int list_select(const struct rv_context *ctx, uint32_t index)
 #define ROWS_FROM_BOTTOM (2 * RV_GFX_ROW_HEIGHT + TOP - 1)
 #define PROBLEM 0xffc0392bu
 
-static const char *manifest_text(uint32_t field)
+static const char *manifest_text(enum core_manifest_text field)
 {
     return page->manifest_bytes ? core_loader_manifest_text(page->manifest, field) : "";
 }
@@ -166,7 +167,7 @@ static const char *conflict_holder(const struct rv_extension_record *record)
             continue;
         for (uint32_t i = 0; i < d->hook_count; i++)
             if (d->hooks[i].site == record->conflict_site)
-                return core_loader_manifest_text(r->manifest, 1);
+                return core_loader_manifest_text(r->manifest, CORE_MANIFEST_NAME);
     }
     return "RevolaOS";
 }
@@ -197,8 +198,12 @@ static const char *problem(const struct core_installed *e, const struct rv_exten
 }
 
 /* Alpha and beta as a pill in the stock highlight blue or the capacity bar's
- * orange, right-aligned on the line at `y`. */
-static void stability_pill(const struct rv_gfx *g, int width, int y)
+ * orange, right-aligned on the text line at `y`, its label on the same
+ * baseline. The box leaves 2 px above and below the capitals: the font leaves
+ * 1 px above them and the descender space below, so it starts 1 px above the
+ * line and is the line height less 1 px tall. Returns the y below it, or `y`
+ * when stable or unset. */
+static int stability_pill(const struct rv_gfx *g, int width, int y)
 {
     static const char *const names[] = {NULL, "Alpha", "Beta", NULL};
     uint32_t stability = page->manifest_bytes
@@ -206,16 +211,17 @@ static void stability_pill(const struct rv_gfx *g, int width, int y)
                              : 0;
     const char *name = names[stability];
     if (!name)
-        return;
+        return y;
     rv_color c = stability == 1 ? 0xffde894eu : 0xff0084dcu;
     int16_t w = (int16_t)(g->measure(RV_FONT_TEXT, name) + 12),
-            h = (int16_t)(g->line_height(RV_FONT_TEXT) + 2);
-    int16_t x = (int16_t)(width - LEFT - w);
-    struct rv_rect across = {x, (int16_t)(y + 1), w, (int16_t)(h - 2)},
-                   down = {(int16_t)(x + 1), (int16_t)y, (int16_t)(w - 2), h};
+            h = (int16_t)(g->line_height(RV_FONT_TEXT) - 1);
+    int16_t x = (int16_t)(width - LEFT - w), top = (int16_t)(y - 1);
+    struct rv_rect across = {x, (int16_t)(top + 1), w, (int16_t)(h - 2)},
+                   down = {(int16_t)(x + 1), top, (int16_t)(w - 2), h};
     g->fill(&across, c);
     g->fill(&down, c);
-    g->text(x + 6, y + 1, RV_FONT_TEXT, 0xffffffffu, name);
+    g->text(x + 6, y, RV_FONT_TEXT, 0xffffffffu, name);
+    return top + h;
 }
 
 static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int width,
@@ -231,19 +237,26 @@ static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int 
     char text[64];
 
     int y = TOP;
+    const char *version = manifest_text(CORE_MANIFEST_VERSION);
+    const char *author = manifest_text(CORE_MANIFEST_AUTHOR);
     char *out = core_put_text(text, text + sizeof text, "Version ");
-    out = core_put_text(out, text + sizeof text, *manifest_text(3) ? manifest_text(3) : "unknown");
-    if (*manifest_text(4))
-        core_put_text(core_put_text(out, text + sizeof text, " by "), text + sizeof text,
-                      manifest_text(4));
+    out = core_put_text(out, text + sizeof text, *version ? version : "unknown");
+    if (*author)
+        core_put_text(core_put_text(out, text + sizeof text, " by "), text + sizeof text, author);
     g->text(LEFT, y, RV_FONT_TITLE, g->color(RV_COLOR_TEXT), text);
-    stability_pill(g, width, y);
-    y += g->line_height(RV_FONT_TITLE) + 10;
+    int pill = stability_pill(g, width, y);
+    y += g->line_height(RV_FONT_TITLE);
+    if (y < pill)
+        y = pill;
+    const char *note = manifest_text(CORE_MANIFEST_NOTE);
+    if (*note)
+        y = g->paragraph(LEFT, y, width - 2 * LEFT, RV_FONT_TEXT, g->color(RV_COLOR_DIM), note, 1);
+    y += 10;
 
     char reason[48];
     const char *why = problem(e, record, reason, reason + sizeof reason);
     y = g->paragraph(LEFT, y, width - 2 * LEFT, RV_FONT_TEXT, g->color(RV_COLOR_PARAGRAPH),
-                     manifest_text(2), why ? 2 : 3);
+                     manifest_text(CORE_MANIFEST_DESCRIPTION), 3 - !!*note - !!why);
     if (why)
         g->text(LEFT, y, RV_FONT_TITLE, PROBLEM, why);
 

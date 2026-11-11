@@ -65,7 +65,8 @@ struct manifest_header {
     uint32_t module_count;
     uint32_t site_count;
     uint32_t strings_bytes;
-    uint16_t text[6]; /* id, name, description, version, author, license */
+    uint16_t text[CORE_MANIFEST_TEXTS];
+    uint16_t reserved;
 };
 
 struct manifest_module {
@@ -276,7 +277,7 @@ static int manifest_valid(const uint8_t *buffer, uint32_t bytes)
     if (bytes != table + header->strings_bytes || !header->strings_bytes ||
         buffer[bytes - 1] != 0)
         return 0;
-    for (uint32_t i = 0; i < 6; i++)
+    for (uint32_t i = 0; i < CORE_MANIFEST_TEXTS; i++)
         if (header->text[i] >= header->strings_bytes)
             return 0;
     const struct manifest_site *sites = (const struct manifest_site *)(buffer + sizeof *header);
@@ -290,7 +291,7 @@ static int manifest_valid(const uint8_t *buffer, uint32_t bytes)
         if (modules[i].name >= header->strings_bytes ||
             modules[i].screens >= header->strings_bytes || modules[i].trigger > TRIGGER_MANUAL)
             return 0;
-    return buffer[table + header->text[0]] != 0; /* id present */
+    return buffer[table + header->text[CORE_MANIFEST_ID]] != 0; /* id present */
 }
 
 /* Opens ROOT "/" file SUFFIX and reads its header; 0 when either fails. */
@@ -1346,7 +1347,7 @@ static struct rv_extension_record *load_extension(const char *file)
     if (!bytes || length(file) >= sizeof ((struct rv_extension_record *)0)->file)
         return NULL;
     const struct manifest_header *header = (const struct manifest_header *)buffer;
-    uint32_t owner = fnv1a(strings(buffer) + header->text[0]);
+    uint32_t owner = fnv1a(strings(buffer) + header->text[CORE_MANIFEST_ID]);
     if (!core_settings_get_int(owner, RV_SETTING_KEY_ENABLED, header->flags & MANIFEST_ENABLED))
         return NULL;
     uint32_t record_bytes = sizeof(struct rv_extension_record) +
@@ -1452,7 +1453,7 @@ static void pick(struct found *list, uint32_t count, uint8_t *buffer)
         if (!f->readable)
             continue;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
-        const char *id = strings(buffer) + header->text[0];
+        const char *id = strings(buffer) + header->text[CORE_MANIFEST_ID];
         f->owner = fnv1a(id);
         f->named = (uint8_t)same_name(f->file, id);
     }
@@ -1565,7 +1566,7 @@ int core_loader_set_enabled(const char *file, int enabled)
         if (!read_manifest(file, buffer))
             return RV_NOT_FOUND;
         const struct manifest_header *header = (const struct manifest_header *)buffer;
-        owner = fnv1a(strings(buffer) + header->text[0]);
+        owner = fnv1a(strings(buffer) + header->text[CORE_MANIFEST_ID]);
     }
     core_settings_set_int(owner, RV_SETTING_KEY_ENABLED, enabled != 0);
     if (enabled && owner == core_loader_crashed) {
@@ -1686,7 +1687,7 @@ uint32_t core_loader_installed(struct core_installed **out)
         if (!read_manifest(list[i].file, buffer))
             continue; /* removed since the scan: the row stays, without a name */
         const struct manifest_header *header = (const struct manifest_header *)buffer;
-        const char *name = strings(buffer) + header->text[1];
+        const char *name = strings(buffer) + header->text[CORE_MANIFEST_NAME];
         for (uint32_t c = 0; name[c] && c < sizeof entry->name - 1; c++)
             entry->name[c] = name[c];
     }
@@ -1700,10 +1701,10 @@ uint32_t core_loader_manifest(const char *file, uint8_t *buffer)
     return read_manifest(file, buffer);
 }
 
-const char *core_loader_manifest_text(const uint8_t *manifest, uint32_t field)
+const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifest_text field)
 {
     const struct manifest_header *header = (const struct manifest_header *)manifest;
-    return field < 6 ? strings(manifest) + header->text[field] : "";
+    return field < CORE_MANIFEST_TEXTS ? strings(manifest) + header->text[field] : "";
 }
 
 uint32_t core_loader_manifest_flags(const uint8_t *manifest)

@@ -98,13 +98,22 @@ struct core_installed {
 uint32_t core_loader_installed(struct core_installed **out);
 
 /* Manifests: an installed extension's read into `buffer` (CORE_MANIFEST_MAX
- * bytes), 0 when unreadable; field 0 to 5 of one (id, name, description,
- * version, author, license); its flags (bit 0 enabled, then
- * CORE_MANIFEST_STABILITY). */
+ * bytes), 0 when unreadable; a text field of one (an unset note is empty);
+ * its flags (bit 0 enabled, then CORE_MANIFEST_STABILITY). */
+enum core_manifest_text {
+    CORE_MANIFEST_ID,
+    CORE_MANIFEST_NAME,
+    CORE_MANIFEST_DESCRIPTION,
+    CORE_MANIFEST_VERSION,
+    CORE_MANIFEST_AUTHOR,
+    CORE_MANIFEST_LICENSE,
+    CORE_MANIFEST_NOTE,
+    CORE_MANIFEST_TEXTS,
+};
 #define CORE_MANIFEST_MAX 1024
 #define CORE_MANIFEST_STABILITY(flags) ((flags) >> 1 & 3) /* 0 unset, alpha, beta, stable */
 uint32_t core_loader_manifest(const char *file, uint8_t *buffer);
-const char *core_loader_manifest_text(const uint8_t *manifest, uint32_t field);
+const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifest_text field);
 uint32_t core_loader_manifest_flags(const uint8_t *manifest);
 
 /* The resident asset `name` (FNV-1a) of `record`: its payload as stored in RAM

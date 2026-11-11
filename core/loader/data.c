@@ -27,7 +27,7 @@ static struct rv_file *files;
 static int path_of(struct rv_extension_record *owner, const char *name, int folder,
                    char *path)
 {
-    const char *id = core_loader_manifest_text(owner->manifest, 0);
+    const char *id = core_loader_manifest_text(owner->manifest, CORE_MANIFEST_ID);
     const char *parts[] = {ROOT, id, "/", name};
     uint32_t n = 0;
     if (!name || (!*name && !folder) || *name == '/')

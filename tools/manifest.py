@@ -14,6 +14,7 @@ manifest.toml:
     api = "1.0"                  # minimum core API major.minor
     enabled = true               # state after install
     stability = "beta"           # optional: alpha, beta or stable, the author's word
+    note = "Adapted from X"      # optional: one line under the version, shown to listeners
 
     [[module]]                   # the first module is main, trigger always
     name = "main"
@@ -55,7 +56,7 @@ MAGIC = 0x464D5652  # RVMF
 VERSION = 2
 FLAG_ENABLED = 1
 STABILITY = {"alpha": 1, "beta": 2, "stable": 3}  # flags bits 1-2
-HEADER = struct.Struct("<7I6H")
+HEADER = struct.Struct("<7I8H")  # text offsets, the note's, a reserved half-word
 MODULE = struct.Struct("<HBBH")
 SITE = struct.Struct("<IIBBH")
 SITE_KINDS = {"call": 0, "vtable": 1, "word": 4}  # enum core_site_kind
@@ -85,7 +86,7 @@ LICENSES = {
 }
 MAX_MODULES = 15  # main and at most 14 more
 MAX_BYTES = 1024  # CORE_MANIFEST_MAX
-MANIFEST_KEYS = {*TEXT_FIELDS, "api", "enabled", "stability", "module", "site", "asset"}
+MANIFEST_KEYS = {*TEXT_FIELDS, "note", "api", "enabled", "stability", "module", "site", "asset"}
 MODULE_KEYS = {"name", "trigger", "screens"}
 SITE_KEYS = {"name", "address", "kind", "expected", "argc"}
 
@@ -151,6 +152,8 @@ def compile_manifest(document):
     for field in TEXT_FIELDS:
         if not isinstance(document.get(field), str):
             raise ValueError(f"missing {field}")
+    if not isinstance(document.get("note", ""), str):
+        raise ValueError("note is a string")
     if not isinstance(document.get("enabled", True), bool):
         raise ValueError("enabled is true or false")
     if not ID_PATTERN.fullmatch(document["id"]):
@@ -165,6 +168,7 @@ def compile_manifest(document):
     names = set()
     strings = Strings()
     texts = [strings.add(document[field]) for field in TEXT_FIELDS]
+    texts.append(strings.add(document.get("note", "")))
     records = []
     for module in modules:
         name = module.get("name", "")
@@ -215,6 +219,7 @@ def compile_manifest(document):
         len(site_records),
         len(strings.data),
         *texts,
+        0,
     )
     compiled = header + b"".join(site_records) + b"".join(records) + bytes(strings.data)
     if len(compiled) > MAX_BYTES:
