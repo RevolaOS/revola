@@ -44,6 +44,13 @@ Extensions name a site by id, the FNV-1a hash of its `sites.def` row name; the b
 
 Raw sites: an extension's manifest may declare sites of its own (`[[site]]`: address, kind, expected word, argument count), bound as `RV_RAW_SITE(n)`. Only `CALL`, `VTABLE` and `WORD` with at most four register arguments and no stack arguments are allowed, and each is exclusive. The loader claims them before entering the main module: the address must lie in the OSOS image below the heap, hold the expected word, and not fall inside a core site or another extension's raw site. A refusal leaves `Site mismatch`, `Conflict` (naming the core site when one covers the address) or `No memory` on the record. The core keeps a pool of eight raw sites after the core rows; each has a 36-byte stub in the core's bss, written at the claim, that holds its own slot and root continuation and records its owner for the panic attribution. A released site is reusable two grace ticks later. First-party extensions use core sites only; raw sites are for code no core row covers yet.
 
+Adding a site:
+
+1. Find the function and the patch site in Ghidra. Name them and set the prototype there.
+2. Add them to `reversing/symbols/osos-2.0.5/<subsystem>.toml` (`[functions]`, `[sites]`). Run `symbols.py refresh` and `push` against the project, then `generate`, `check` and `verify`. Commit in reversing.
+3. Copy `osos-2.0.5.{h,ld}` into `firmware/` unchanged (`cmp` must show them identical).
+4. Add the `sites.def` row using `SITE_<name>` and `ADDR_<callee>`.
+
 ## Grace tick
 
 One native UI event timer (`core/timer.c`) fires every second on the UI task. The tick frees retired handler lists and extension images, unloads what was disabled, ages idle on-demand modules and writes a dirty settings store once the disk is powered anyway. The recipient is a core object whose vtable has only the event slot; the timer re-arms itself on every delivery.
