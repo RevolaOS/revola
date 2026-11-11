@@ -14,6 +14,7 @@
 extern uint32_t core_template_text;
 extern uint32_t core_template_slider;
 extern uint32_t core_template_canvas;
+extern uint32_t core_template_empty;
 
 /* Template `template`'s enter style when the layout it enters from has kind
  * `kind`, -1 for none. */

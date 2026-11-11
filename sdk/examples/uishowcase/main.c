@@ -3,7 +3,7 @@
 /* Every UI declaration of the SDK behind a row that names it: the row kinds
  * with the screen calls of rv_api, the screen kinds with their layouts, and the
  * menus an entry can appear in. Open it from Settings, Main, Music (after
- * Settings > Music Menu turns it on) or Extras. It declares twelve screens and
+ * Settings > Music Menu turns it on) or Extras. It declares fifteen screens and
  * the core makes three more from the settings. Its assets are in
  * manifest.toml: the pane icon, the canvas bitmap and a note the canvas reads
  * back and draws. */
@@ -447,6 +447,35 @@ static int counter_select(const struct rv_context *ctx, uint32_t index)
     return 0;
 }
 
+static uint32_t empty_count(const struct rv_context *ctx)
+{
+    (void)ctx;
+    return 0;
+}
+
+static enum rv_row_status moon_status(const struct rv_context *ctx, uint32_t index)
+{
+    (void)ctx;
+    return index == 0 ? RV_ROW_STATUS_PLAYING : RV_ROW_STATUS_NONE;
+}
+
+static int counter_can_increment(const struct rv_context *ctx)
+{
+    return ctx->row == 1;
+}
+
+static void counter_increment(const struct rv_context *ctx)
+{
+    (void)ctx;
+    presses++;
+    api->ui_refresh(self, "counter");
+}
+
+static const struct rv_context_row counter_menu[] = {
+    RV_CONTEXT_ROW(RV_ROW_ACTION("Count up", counter_increment), .available = counter_can_increment),
+    RV_CONTEXT_ROW(RV_ROW_PUSH("Rows", "rows")),
+};
+
 /* The choice, slider and multi-choice screens are the ones the core makes from
  * the settings; their setting rows open them. List screens follow their
  * parent's layout unless .layout says otherwise; the two dynamic lists force
@@ -459,6 +488,8 @@ static const struct rv_row screen_rows[] = {
     RV_ROW_PUSH("Dynamic list, full", "dynamic"),
     RV_ROW_PUSH("Dynamic list, split", "stacked"),
     RV_ROW_PUSH("Counter, refreshed", "counter"),
+    RV_ROW_PUSH("Empty list, full", "empty"),
+    RV_ROW_PUSH("Empty list, split", "empty-split"),
     RV_ROW_PUSH("Canvas", "canvas"),
     RV_ROW_PUSH("Page canvas", "page"),
     RV_ROW_PUSH("Card canvas", "card"),
@@ -484,11 +515,17 @@ static const struct rv_screen screens[] = {
     RV_SCREEN_LIST("rows", "Rows", row_rows),
     RV_SCREEN_LIST("screens", "Screens", screen_rows),
     RV_SCREEN_TEXT("text", "Text page", text_page),
+    RV_SCREEN_DYNAMIC_LIST("empty", "Empty list", empty_count, moon_row, 0,
+                           .layout = RV_LAYOUT_FULL, .dynamic.empty = "No Items"),
+    RV_SCREEN_DYNAMIC_LIST("empty-split", "Empty list", empty_count, moon_row, 0,
+                           .layout = RV_LAYOUT_SPLIT, .dynamic.empty = "No Items"),
     RV_SCREEN_DYNAMIC_LIST("dynamic", "Dynamic list", moon_count, moon_row, moon_select,
                            .layout = RV_LAYOUT_FULL, .dynamic.initial = moon_initial),
     RV_SCREEN_DYNAMIC_LIST("stacked", "Stacked", moon_count, moon_row, moon_select,
-                           .layout = RV_LAYOUT_SPLIT, .dynamic.detail = RV_DETAIL_BELOW),
-    RV_SCREEN_DYNAMIC_LIST("counter", "Counter", counter_count, counter_row, counter_select),
+                           .layout = RV_LAYOUT_SPLIT, .dynamic.detail = RV_DETAIL_BELOW,
+                           .dynamic.status = moon_status),
+    RV_SCREEN_DYNAMIC_LIST("counter", "Counter", counter_count, counter_row, counter_select,
+                           RV_SCREEN_CONTEXT(counter_menu)),
     RV_SCREEN_CANVAS("canvas", "Canvas", canvas_draw, canvas_input, .closed = release_disc),
     RV_SCREEN_CANVAS("page", "Page", page_draw, page_input),
     RV_SCREEN_CANVAS("card", "Card", card_draw, card_input, .transition = RV_TRANSITION_FROM_PANE,

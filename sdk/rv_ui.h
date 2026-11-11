@@ -56,6 +56,12 @@
      .dynamic.count = (count_), .dynamic.row = (row_), .dynamic.select = (select_)            \
      __VA_OPT__(, ) __VA_ARGS__}
 
+/* A row of a screen's long-press menu: `row_` is one of the row macros,
+ * .available decides when it is offered. RV_SCREEN_CONTEXT(rows) goes after
+ * a list or dynamic list screen's other arguments. */
+#define RV_CONTEXT_ROW(row_, ...) {.row = row_ __VA_OPT__(, ) __VA_ARGS__}
+#define RV_SCREEN_CONTEXT(rows_) .context = (rows_), .context_count = RV_COUNT(rows_)
+
 /* A row in `menu_` (an rv_menu) after the stock row `after_` (0 for the end).
  * `row_` is one of the row macros; .caption and .bitmap fill the Settings
  * preview pane, .shown_by names the bool setting that shows the row. */

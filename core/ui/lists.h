@@ -26,6 +26,18 @@ static inline int core_lists_kind(uint8_t kind)
 #define CORE_LIST_SPLIT_IDS 10
 #define CORE_LIST_PANE_CAPTION(screen) ((screen) + 7)
 
+/* A long-press menu takes one id for the long press and one per row (its label
+ * string; "Rv" and the id name its handler), plus four for its titled screen
+ * and layout, before the split layout's ids. */
+#define CORE_MAX_CONTEXT_ROWS 16
+static inline uint32_t core_lists_context_ids(const struct rv_screen *d)
+{
+    return d->context_count ? 5 + d->context_count : 0;
+}
+/* The long press's id of a list screen with a menu; its rows follow. */
+#define CORE_LIST_CONTEXT(s)                                                                \
+    ((s)->id + (s)->ids - CORE_LIST_SPLIT_IDS - core_lists_context_ids((s)->declaration))
+
 /* The screen id a list screen is pushed as: its first id for the full layout,
  * the split layout's otherwise. */
 uint32_t core_lists_screen_id(const struct core_screen *screen, int split);
@@ -36,6 +48,9 @@ int core_clone_list(struct core_screen *screen, int split);
 /* The row a list screen's rows are copied from: Sound Check's for a row with a
  * value beside its label, else Legal's; NULL when the table is missing. */
 const uint8_t *core_lists_prototype(int value);
+/* Appends the shared native empty-message view to a cloned list layout. */
+int core_list_empty(struct core_screen *screen, uint32_t layout, uint32_t *next,
+                    uint8_t *scratch, uint32_t bytes);
 void core_lists_init(void *bank);
 
 #endif

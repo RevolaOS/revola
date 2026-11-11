@@ -79,6 +79,8 @@ void core_screens_tick(void);
 /* 1 the first time it is asked for a pushed controller, 0 after: an activation
  * that is the screen opening, not a return to it. */
 int core_screens_first_activation(void *controller);
+void core_screens_select(struct core_screen *screen, uint32_t row);
+int core_screens_take_selection(void *controller, uint32_t *row);
 /* The navigator's top controller. */
 void *core_screens_top_controller(void);
 /* The canvas the navigator shows on top, or NULL when the top is another

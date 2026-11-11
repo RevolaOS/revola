@@ -1,12 +1,12 @@
 {
-  "api": "1.30",
+  "api": "1.33",
   "sha256": {
-    "README.md": "d2d54a1b3f936cbae87635d413713cb583abead4adfae5f4f2a7697266854003",
+    "README.md": "696234e5904b0848783974562b1e4206da5114a456ada4c758149ba6fd4dc7af",
     "rv.mk": "641e935294e27cedf1d4f38431b88e779afebce126eafa70f3571ecbbce63131",
-    "rv_api.h": "0f35202d2a6dc5b69e427d20264fe459b6b72476fc38d46f55b0914b839b5f0a",
+    "rv_api.h": "e935d2739caec036bc5d4b6ff7cfeb233edc6d4eafcfa04d92bb8076805e1dea",
     "rv_libc.c": "d5da926821e94f9d5379b5315a77ebe5c1fa254a3479468550456819cb1e7a04",
     "rv_libc.h": "941884c24d0d2a96e38c9661bacb7937cbad1b8a6466a4f65b8ead5a19be1ca8",
-    "rv_ui.h": "74ffcbe36fc037f4d0c408ee5a33ac0f24eb3e2bcef568dfc107924964081c2c",
+    "rv_ui.h": "f45026bb4dfb6cf29d43fdc22796b3e35b11f657ef4fad92275bc14aaf82724d",
     "rvx.lds": "57d4dd4a7dc3fd62fcaa71856aedbee531fa0f17f61806de9b2390b4df4fb37b"
   }
 }

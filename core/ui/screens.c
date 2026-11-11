@@ -38,6 +38,8 @@ static struct {
     void *controller;
     struct core_screen *screen;
     void *arg;        /* what ui_push passed */
+    uint32_t selection; /* requested row while another screen covers this one */
+    uint8_t selection_pending;
     uint8_t selected; /* the first activation set its selection */
     uint8_t origin;   /* 1 + its slot in origins, 0 for none */
 } open[MAX_OPEN];
@@ -168,6 +170,33 @@ int core_screens_first_activation(void *controller)
     for (uint32_t i = 0; i < open_count; i++)
         if (open[i].controller == controller && !open[i].selected) {
             open[i].selected = 1;
+            return 1;
+        }
+    return 0;
+}
+
+void core_screens_select(struct core_screen *s, uint32_t row)
+{
+    if (s->declaration->kind != RV_SCREEN_KIND_DYNAMIC_LIST)
+        return;
+    for (uint32_t i = open_count; i-- > 0;)
+        if (open[i].screen == s) {
+            if (open[i].controller == core_screens_top_controller())
+                core_indexed_select(s, row);
+            else {
+                open[i].selection = row;
+                open[i].selection_pending = 1;
+            }
+            return;
+        }
+}
+
+int core_screens_take_selection(void *controller, uint32_t *row)
+{
+    for (uint32_t i = 0; i < open_count; i++)
+        if (open[i].controller == controller && open[i].selection_pending) {
+            *row = open[i].selection;
+            open[i].selection_pending = 0;
             return 1;
         }
     return 0;
@@ -415,6 +444,7 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
     open[open_count].screen = s;
     open[open_count].arg = arg;
     open[open_count].selected = 0;
+    open[open_count].selection_pending = 0;
     open[open_count].origin = origin_keep(controller);
     open_count++;
     s->open++;

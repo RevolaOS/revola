@@ -5,6 +5,8 @@
 #include "rv_api.h"
 #include <stdint.h>
 
+#define CORE_GFX_PARAGRAPH_SPACING 3
+
 /* The drawing table handed to a canvas's draw callback. */
 extern const struct rv_gfx core_gfx;
 

@@ -50,7 +50,7 @@ const void *core_context_item(uint8_t menu, void *controller, void *item, int32_
         MediaPlayer_GetCurrentItem(MediaPlayer_GetInstance(), item);
     } else if (menu >= RV_MENU_SONG_CONTEXT && controller && controller == menu_list) {
         *row = menu_row;
-        if (menu != RV_MENU_SONG_CONTEXT || menu_row < 0)
+        if ((menu != RV_MENU_SONG_CONTEXT && menu != RV_MENU_PODCAST_EPISODE_CONTEXT) || menu_row < 0)
             return NULL;
         MediaItem_InitFromRecord(item, NULL, 0);
         void *build = FIELD(FIELD(controller, 0, void **),
@@ -79,6 +79,8 @@ static const struct {
     uint8_t menu;
     uint16_t layout, cache;
 } sources[] = {
+    {CORE_SITE_PodcastEpisodes_CancelAppend_call, RV_MENU_PODCAST_EPISODE_CONTEXT,
+     PodcastEpisodesController_layout, PodcastEpisodesController_layout_cache},
     {CORE_SITE_SongList_CancelAppend_call, RV_MENU_SONG_CONTEXT, SongListController_layout,
      SongListController_layout_cache},
     {CORE_SITE_NestedPlaylists_CancelAppend_call, RV_MENU_SONG_CONTEXT,
@@ -155,6 +157,8 @@ void core_context_pushed(void *controller, int pushed)
 }
 
 static const struct core_hook hooks[] = {
+    {CORE_SITE_PodcastEpisodes_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_PodcastEpisodes_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
     {CORE_SITE_MediaListController_HandleShowContextualMenu_entry, CORE_HOOK_FILTER, 0,
      menu_opening},
     {CORE_SITE_NowPlaying_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},

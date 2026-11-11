@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 30
+#define RV_API_MINOR 33
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -148,6 +148,14 @@ struct rv_row {
     const char *(*text)(const struct rv_context *ctx);
 };
 
+/* A row of a screen's long-press menu. `available` is asked each time the menu
+ * opens; 0 leaves the row out, NULL always shows it. Its callbacks and the
+ * row's get ctx->row, the row highlighted when the menu opened. */
+struct rv_context_row {
+    struct rv_row row;
+    int (*available)(const struct rv_context *ctx);
+};
+
 enum rv_screen_kind {
     RV_SCREEN_KIND_LIST,         /* rows from `list` */
     RV_SCREEN_KIND_CHOICE,       /* one checkmark among `choice.labels`; stores the index in
@@ -265,6 +273,12 @@ enum rv_detail {
     RV_DETAIL_BELOW_SUBMENU, /* a second line, and the row shows it opens a screen */
 };
 
+/* A stock status symbol at the trailing edge of a dynamic-list row. */
+enum rv_row_status {
+    RV_ROW_STATUS_NONE,
+    RV_ROW_STATUS_PLAYING,
+};
+
 /* A screen the core registers for the extension. `id` is what RV_ROW_PUSH,
  * ui_push and a module's manifest trigger call it, local to the extension.
  * Labels and text are read from the module while the screen is open; nothing
@@ -308,6 +322,9 @@ struct rv_screen {
              * own, which may be a row of the last list shown. */
             uint32_t (*initial)(const struct rv_context *ctx);
             uint8_t detail;                /* rv_detail: where the detail goes */
+            /* NULL shows no status; normal and selected artwork follows the row. */
+            enum rv_row_status (*status)(const struct rv_context *ctx, uint32_t index);
+            const char *empty; /* centered text while count is zero, NULL for none */
         } dynamic;
     };
     /* A list in the split layout shows these in the preview pane beside the
@@ -321,10 +338,14 @@ struct rv_screen {
      * an open screen; unload covers that. */
     void (*opened)(const struct rv_context *ctx);
     void (*closed)(const struct rv_context *ctx);
+    /* List and dynamic-list screens: the rows a long press of Select offers,
+     * at most 16, before the system's Cancel row. */
+    const struct rv_context_row *context;
+    uint32_t context_count;
 };
 
 /* The menus an entry can add a row to. The context menus are the ones a long
- * press of Select opens on Now Playing or on a song, album or artist row. */
+ * press of Select opens on Now Playing or on a song, album, artist or podcast episode row. */
 enum rv_menu {
     RV_MENU_MAIN,
     RV_MENU_MUSIC,
@@ -334,6 +355,7 @@ enum rv_menu {
     RV_MENU_SONG_CONTEXT,
     RV_MENU_ALBUM_CONTEXT,
     RV_MENU_ARTIST_CONTEXT,
+    RV_MENU_PODCAST_EPISODE_CONTEXT,
 };
 
 /* A row the extension adds to `menu`. `after` is a stock row of that menu from
@@ -530,6 +552,10 @@ struct rv_api {
      * stretch to a few instructions. Any task. */
     uint32_t (*irq_save)(void);
     void (*irq_restore)(uint32_t state);
+
+    /* Highlight a dynamic-list row, clamped to its current count. If covered
+     * by another screen, apply on return. An empty list has no selection. UI task. */
+    void (*ui_select)(rv_extension_handle self, const char *screen, uint32_t row);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its

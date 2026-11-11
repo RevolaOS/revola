@@ -62,6 +62,11 @@ static int submenu_rows(const struct core_screen *s)
 
 int core_indexed_property(struct core_screen *s, uint32_t type, uint32_t id, uint32_t out)
 {
+    if (s->declaration->kind == RV_SCREEN_KIND_DYNAMIC_LIST && id == s->id + 3 &&
+        type == Property_String && s->declaration->dynamic.empty) {
+        *(const char **)out = row_count(s) ? "" : s->declaration->dynamic.empty;
+        return 1;
+    }
     if (id != CORE_SCREEN_ROWS(s))
         return 0;
     if (type == Property_Count)
@@ -75,7 +80,7 @@ int core_indexed_property(struct core_screen *s, uint32_t type, uint32_t id, uin
     return 1;
 }
 
-static uint32_t selected_index(void)
+uint32_t core_indexed_selected(void)
 {
     void *model = UI_GetSelectionModel();
     uint32_t (*current)(void *) =
@@ -87,7 +92,7 @@ static uint32_t selected_index(void)
 static void *checkmark(uint32_t index)
 {
     static void *bitmaps[2];
-    int selected = index == selected_index();
+    int selected = index == core_indexed_selected();
     if (!bitmaps[selected])
         bitmaps[selected] = ResourceService_GetBitmap(
             UI_GetResourceService(),
@@ -109,14 +114,22 @@ static int row_answer(const struct core_screen *s, uint32_t type, uint32_t prope
         const char *detail = NULL;
         struct rv_context ctx;
         core_screens_context(s, &ctx);
-        const char *label = d->dynamic.row ? d->dynamic.row(&ctx, index, &detail) : NULL;
-        const char *text = title ? label : detail;
+        if (type == Property_Bitmap && title && d->dynamic.status) {
+            *out = 0;
+            if (d->dynamic.status(&ctx, index) == RV_ROW_STATUS_PLAYING)
+                *out = (uintptr_t)ResourceService_GetBitmap(
+                    UI_GetResourceService(), index == core_indexed_selected()
+                        ? RES_Menu_PlayingSelected_Bitmap : RES_Menu_Playing_Bitmap);
+            return 1;
+        }
         if (type == Property_Layout && title && submenu_rows(s)) {
             *out = MenuRowStyle_TwoLineSubmenu;
             return 1;
         }
         if (type != Property_String)
             return 0;
+        const char *label = d->dynamic.row ? d->dynamic.row(&ctx, index, &detail) : NULL;
+        const char *text = title ? label : detail;
         *out = (uintptr_t)(text ? text : "");
         return 1;
     }
@@ -171,30 +184,42 @@ static uint32_t list_view(const struct core_screen *s)
     return notes_view;
 }
 
-/* Highlights the current choice, or a dynamic list's initial row. The Settings
- * list controller builds its list while it activates, so the row is selected
- * right after that. */
-static void select_current(const struct core_screen *s)
+void core_indexed_select(const struct core_screen *s, uint32_t index)
 {
-    const struct rv_screen *d = s->declaration;
+    uint32_t count = row_count(s);
+    if (!count)
+        return;
+    if (index >= count)
+        index = count - 1;
     void *model = UI_GetSelectionModel();
     void *(*find)(void *, uint32_t) =
         FIELD(FIELD(model, 0, void **), SelectionModel_find_view_method, void *);
     void *view = find(model, list_view(s));
     void *list = view ? Object_GetInterface(view, Interface_List) : NULL;
+    if (!list)
+        return;
+    void (*select)(void *, uint32_t) =
+        FIELD(FIELD(list, 0, void **), ListInterface_select_method, void *);
+    select(list, index);
+}
+
+/* The list must finish activation before selecting: stock activation restores
+ * its saved row and would overwrite an earlier selection. */
+static void select_current(const struct core_screen *s)
+{
+    const struct rv_screen *d = s->declaration;
     int32_t index;
     if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST) {
+        if (!d->dynamic.initial)
+            return;
         struct rv_context ctx;
         core_screens_context(s, &ctx);
         index = (int32_t)d->dynamic.initial(&ctx);
     } else {
         index = setting(s);
     }
-    if (!list || index < 0 || (uint32_t)index >= row_count(s))
-        return;
-    void (*select)(void *, uint32_t) =
-        FIELD(FIELD(list, 0, void **), ListInterface_select_method, void *);
-    select(list, (uint32_t)index);
+    if (index >= 0 && (uint32_t)index < row_count(s))
+        core_indexed_select(s, (uint32_t)index);
 }
 
 static void **choice_vtable;
@@ -204,16 +229,22 @@ static uint32_t choice_activate(void *controller, uint32_t entering)
 {
     uint32_t result = activate_original(controller, entering);
     struct core_screen *s = core_screens_of_controller(controller);
-    if (entering && s && s->declaration && core_screens_first_activation(controller))
-        select_current(s);
+    if (s && s->declaration) {
+        int first = entering && core_screens_first_activation(controller);
+        uint32_t row;
+        if (core_screens_take_selection(controller, &row))
+            core_indexed_select(s, row);
+        else if (first)
+            select_current(s);
+    }
     return result;
 }
 
-/* Screens whose opening row the core sets. */
+/* Screens whose selection the core controls. */
 static int selects(const struct rv_screen *d)
 {
     return d->kind == RV_SCREEN_KIND_CHOICE ||
-           (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST && d->dynamic.initial);
+           d->kind == RV_SCREEN_KIND_DYNAMIC_LIST;
 }
 
 int core_indexed_prepare(struct core_screen *s)
@@ -235,7 +266,7 @@ void core_indexed_attach(struct core_screen *s, void *controller)
 void core_indexed_chosen(struct core_screen *s)
 {
     const struct rv_screen *d = s->declaration;
-    uint32_t index = selected_index();
+    uint32_t index = core_indexed_selected();
     if (index >= row_count(s))
         return;
     switch (d->kind) {

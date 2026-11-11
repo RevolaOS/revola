@@ -15,6 +15,7 @@
 #include "ui/menus.h"
 #include "ui/panes.h"
 #include "ui/resources.h"
+#include "ui/screenmenus.h"
 #include "ui/screens.h"
 #include "ui/toggles.h"
 #include "settings.h"
@@ -154,6 +155,8 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     if (core_menus_pane(item, argument))
         return 1;
     struct core_screen *s = core_screens_of_id(item);
+    if (s && core_screen_menu_action(s, controller, item, argument))
+        return 1;
     struct rv_extension_record *owner = s ? s->owner : NULL;
     const struct rv_row *row = s ? screen_row(s, item, &found) : core_menus_row(item, &owner, &found);
     uint8_t kind = s ? s->declaration->kind : RV_SCREEN_KIND_LIST;

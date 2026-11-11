@@ -43,6 +43,7 @@ static const struct root roots[CORE_MENU_COUNT] = {
                                   RES_MediaLists_Genius_Screen, RES_MediaLists_GeniusPlaylist_Screen}},
     [RV_MENU_ALBUM_CONTEXT] = {0, 0, {RES_MediaLists_Albums_Screen}},
     [RV_MENU_ARTIST_CONTEXT] = {0, 0, {RES_MediaLists_Artists_Screen}},
+    [RV_MENU_PODCAST_EPISODE_CONTEXT] = {0, 0, {RES_MediaLists_PodcastEpisodes_Screen}},
 };
 
 struct row_set *core_menu_sets;

@@ -12,6 +12,7 @@
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "ui/format.h"
+#include "ui/gfx.h"
 #include "ui/resources.h"
 #include "ui/menus.h"
 #include "ui/screens.h"
@@ -255,12 +256,16 @@ static void page_draw(const struct rv_context *ctx, const struct rv_gfx *g, int 
 
     char reason[48];
     const char *why = problem(e, record, reason, reason + sizeof reason);
+    int rows = height - ROWS_FROM_BOTTOM;
+    int room = rows - TOP - y;
+    if (why)
+        room -= g->line_height(RV_FONT_TITLE);
+    int step = g->line_height(RV_FONT_TEXT) + CORE_GFX_PARAGRAPH_SPACING;
     y = g->paragraph(LEFT, y, width - 2 * LEFT, RV_FONT_TEXT, g->color(RV_COLOR_PARAGRAPH),
-                     manifest_text(CORE_MANIFEST_DESCRIPTION), 3 - !!*note - !!why);
+                     manifest_text(CORE_MANIFEST_DESCRIPTION), room > 0 ? room / step : 0);
     if (why)
         g->text(LEFT, y, RV_FONT_TITLE, PROBLEM, why);
 
-    int rows = height - ROWS_FROM_BOTTOM;
     if (enabled(record) && record->failure == CORE_EXTENSION_OK) {
         out = core_format_size(text, text + sizeof text, record->live);
         core_format_size(core_put_text(out, text + sizeof text, ", peak "), text + sizeof text,

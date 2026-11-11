@@ -298,9 +298,28 @@ SITE(VolumeExposure_TrackFinishTest_word, SITE_VolumeExposure_TrackFinishTest_wo
 SITE(MediaPlayer_PostVolumeExposureLimitEvent_word,
      SITE_MediaPlayer_PostVolumeExposureLimitEvent_word, WORD, 0, 0xe3a00005, 0, 0, 0, 0)
 
+/* Add to On-The-Go from an album or artist list hands the browser's filtered
+ * selection to the On-The-Go playlist: (otg, row, browser, save); row is -1 for the
+ * whole selection. */
+SITE(MediaList_OnTheGoAdd_call, SITE_MediaList_OnTheGoAdd_call, CALL,
+     ADDR_OnTheGo_AddBrowserSelection,
+     BL(SITE_MediaList_OnTheGoAdd_call, ADDR_OnTheGo_AddBrowserSelection), 0, 0, 4, 0)
+
 #ifdef CORE_SELFTEST
 /* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
  * inside it while core_boot runs during UI start-up. */
 SITE(SettingsModel_ResetMainMenu_entry, SITE_SettingsModel_ResetMainMenu_entry, ENTRY,
      REPLAY(SettingsModel_ResetMainMenu_entry), 0xe92d47f0, 0xe1a09000, 0, 1, 0)
 #endif
+
+/* Podcast episode context menu and action dispatch. */
+SITE(PodcastEpisodes_CancelAppend_call, SITE_PodcastEpisodes_CancelAppend_call, CALL,
+     ADDR_ContextMenuItems_Append,
+     BL(SITE_PodcastEpisodes_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+SITE(PodcastEpisodes_Action_slot, SITE_PodcastEpisodes_Action_slot, VTABLE,
+     ADDR_PodcastEpisodes_DispatchAction, ADDR_PodcastEpisodes_DispatchAction, 0, 1, 3, 0)
+
+/* The stopped check after Play/Pause's radio guards. Apple calls the known
+ * IsStopped vtable method with blx r1 here. */
+SITE(MediaPlayer_ToggleStopped_call, SITE_MediaPlayer_ToggleStopped_call, CALL,
+     ADDR_MediaPlayer_IsStopped, 0xe12fff31, 0, 1, 1, 0)

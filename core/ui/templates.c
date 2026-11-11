@@ -16,12 +16,13 @@
 uint32_t core_template_text;
 uint32_t core_template_slider;
 uint32_t core_template_canvas;
+uint32_t core_template_empty;
 
 static void *bank;
 static uint32_t empty_source;
 
 /* In the order the enumeration yields them. */
-#define MAX_TEMPLATES 3
+#define MAX_TEMPLATES 4
 static uint32_t templates[MAX_TEMPLATES];
 static uint32_t template_count;
 
@@ -144,6 +145,21 @@ static int write_text(struct core_writer *w, uint32_t t, const void *views)
     return 1;
 }
 
+/* The Calendar empty-day message without its background image. */
+static int write_empty(struct core_writer *w, uint32_t t, const void *views)
+{
+    uint32_t bytes;
+    const void *text = core_block_with_word(views, ViewDescriptor_id, RES_Calendar_Empty_Text, &bytes);
+    if (!text || !empty_source)
+        return 0;
+    core_write_word(w, 1);
+    uint32_t words[] = {ViewDescriptor_id, t + 1, TextViewDescriptor_source, empty_source};
+    uint32_t begin = core_write_block_begin(w, 0);
+    core_write_copy(w, text, bytes, words, 2);
+    core_write_block_end(w, begin);
+    return 1;
+}
+
 /* Slider: the Brightness bar and value text with new ids. They keep the stock
  * sources, the brightness properties Apple's own template binds at boot. */
 static int write_slider(struct core_writer *w, uint32_t t, const void *views)
@@ -216,6 +232,7 @@ void core_templates_init(void *resource_bank)
     core_template_text = build(RES_Settings_Legal_Template, 2 + CORE_MAX_PARAGRAPHS, write_text);
     core_template_slider = build(RES_Settings_Brightness_Template, 3, write_slider);
     core_template_canvas = build(RES_FullScreenImage_Template, 2, write_canvas);
+    core_template_empty = build(RES_Calendar_Empty_Template, 2, write_empty);
     slide_like_brightness(core_template_slider);
     slide_like_brightness(core_template_canvas);
     core_hook_bind(&next_template_hook);

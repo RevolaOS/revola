@@ -173,7 +173,7 @@ static int paragraph(int x, int y, int width, uint8_t font, rv_color c, const ch
 {
     char line[96];
     uint32_t used = 0;
-    int step = line_height(font) + 3;
+    int step = line_height(font) + CORE_GFX_PARAGRAPH_SPACING;
     if (!utf8)
         return y;
     while (*utf8 && lines) {

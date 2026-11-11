@@ -16,6 +16,9 @@ int core_indexed_prepare(struct core_screen *screen);
 void core_indexed_attach(struct core_screen *screen, void *controller);
 /* The row of a choice, multi-choice or dynamic list was chosen. */
 void core_indexed_chosen(struct core_screen *screen);
+/* The row the open list highlights. */
+uint32_t core_indexed_selected(void);
+void core_indexed_select(const struct core_screen *screen, uint32_t index);
 void core_indexed_init(void *bank);
 
 #endif

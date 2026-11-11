@@ -34,9 +34,9 @@ uint32_t core_clone_ids(const struct rv_screen *d)
 {
     switch (d->kind) {
     case RV_SCREEN_KIND_LIST:
-        /* screen, layout, title, items, 4 for layout clones, 2 per row, then the
-         * split layout's screen, layout and 5 clones */
-        return 8 + 2 * d->list.count + CORE_LIST_SPLIT_IDS;
+        /* screen, layout, title, items, 4 for layout clones, 2 per row, the
+         * long-press menu, then the split layout's screen, layout and 5 clones */
+        return 8 + 2 * d->list.count + core_lists_context_ids(d) + CORE_LIST_SPLIT_IDS;
     case RV_SCREEN_KIND_TEXT:
         /* screen, layout, title, 5 for layout clones, one source per paragraph */
         return 8 + (d->text.count < CORE_MAX_PARAGRAPHS ? d->text.count : CORE_MAX_PARAGRAPHS);
@@ -47,8 +47,8 @@ uint32_t core_clone_ids(const struct rv_screen *d)
     case RV_SCREEN_KIND_MULTI_CHOICE:
     case RV_SCREEN_KIND_DYNAMIC_LIST:
         /* screen, layout, title, items, 4 for layout clones, the row and its source,
-         * then the split layout's ids */
-        return 10 + CORE_LIST_SPLIT_IDS;
+         * the long-press menu, then the split layout's ids */
+        return 10 + core_lists_context_ids(d) + CORE_LIST_SPLIT_IDS;
     default:
         return 8;
     }

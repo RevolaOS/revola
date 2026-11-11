@@ -21,6 +21,7 @@
 #include "loader/file.h"
 #include "loader/loader.h"
 #include "loader/lz.h"
+#include "ui/lists.h"
 #include "ui/menus.h"
 #include "ui/resources.h"
 #include "osos-2.0.5.h"
@@ -647,6 +648,15 @@ static int valid_screen(const struct rv_screen *s)
 {
     if (!s->id || !s->title || s->layout > RV_LAYOUT_SPLIT || s->transition > RV_TRANSITION_FROM_PANE)
         return 0;
+    if (s->context_count) {
+        if (!s->context || s->context_count > CORE_MAX_CONTEXT_ROWS ||
+            (s->kind != RV_SCREEN_KIND_LIST && s->kind != RV_SCREEN_KIND_DYNAMIC_LIST))
+            return 0;
+        for (uint32_t i = 0; i < s->context_count; i++)
+            if (!valid_row(&s->context[i].row) || (s->context[i].row.kind != RV_ROW_KIND_ACTION &&
+                                                   s->context[i].row.kind != RV_ROW_KIND_PUSH))
+                return 0;
+    }
     switch (s->kind) {
     case RV_SCREEN_KIND_LIST:
         if (!s->list.rows && s->list.count)
@@ -706,7 +716,7 @@ static int valid_descriptor(const struct rv_descriptor *d, uint32_t module)
         for (uint32_t j = 0; e->shown_by && j < d->setting_count; j++)
             if (d->settings[j].key == e->shown_by)
                 shown_by = &d->settings[j];
-        if (e->menu > RV_MENU_ARTIST_CONTEXT || !valid_row(&e->row) ||
+        if (e->menu > RV_MENU_PODCAST_EPISODE_CONTEXT || !valid_row(&e->row) ||
             (e->shown_by && (!shown_by || shown_by->type != RV_SETTING_TYPE_BOOL)))
             return 0;
     }
@@ -935,6 +945,14 @@ static void api_ui_refresh(rv_extension_handle self, const char *screen)
         core_screens_refresh(s);
 }
 
+static void api_ui_select(rv_extension_handle self, const char *screen, uint32_t row)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    struct core_screen *s = record ? core_screens_find(record, screen) : NULL;
+    if (s)
+        core_screens_select(s, row);
+}
+
 static void api_ui_invalidate(rv_extension_handle self)
 {
     struct rv_extension_record *record = valid_handle(self);
@@ -1139,6 +1157,7 @@ static const struct rv_api api = {
     .folder_list = api_folder_list,
     .irq_save = core_irq_save,
     .irq_restore = core_irq_restore,
+    .ui_select = api_ui_select,
 };
 
 /* Modules */

@@ -13,6 +13,7 @@
 #include "ui/clones.h"
 #include "ui/panes.h"
 #include "ui/resources.h"
+#include "ui/screenmenus.h"
 #include "ui/screens.h"
 #include <stddef.h>
 
@@ -39,10 +40,11 @@ static int indexed(const struct core_screen *s)
 }
 
 /* list.pid.<item>.chosen for `count` items two ids apart, each naming its Rv
- * handler. */
-static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_t count)
+ * handler; `more` events follow. */
+static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_t count,
+                             uint32_t more)
 {
-    core_write_word(w, count);
+    core_write_word(w, count + more);
     for (uint32_t i = 0; i < count; i++) {
         char name[40], handler[11], *n = core_put_text(name, name + sizeof name, "list.pid.");
         n = core_put_number(n, name + sizeof name, first_item + 2 * i);
@@ -129,15 +131,25 @@ static int write_rows(struct core_screen *s, uint8_t *scratch)
          * label; with a chevron the model gives the style (indexed.c), as the
          * chevron shows only for a style the model answers. */
         uint8_t detail = d->kind == RV_SCREEN_KIND_DYNAMIC_LIST ? d->dynamic.detail : RV_DETAIL_BESIDE;
+        int action = d->kind == RV_SCREEN_KIND_LIST && d->list.rows[i].kind == RV_ROW_KIND_ACTION;
         uint32_t words[6] = {MenuRow_id, item, MenuRow_title, source, MenuRow_style,
-                             detail == RV_DETAIL_BELOW_SUBMENU ? MenuRowStyle_ModelLayout
-                                                               : MenuRowStyle_TwoLine};
+                             action ? MenuRowStyle_Text
+                             : detail == RV_DETAIL_BELOW_SUBMENU ? MenuRowStyle_ModelLayout
+                                                                : MenuRowStyle_TwoLine};
         uint32_t begin = core_write_block_begin(&w, 0);
         uint32_t at = w.at;
-        core_write_copy(&w, row, ROW_BYTES, words, detail != RV_DETAIL_BESIDE ? 3 : 2);
+        core_write_copy(&w, row, ROW_BYTES, words, action || detail != RV_DETAIL_BESIDE ? 3 : 2);
         scratch[at + MenuRow_title_from_model] = 1;
         core_write_block_end(&w, begin);
-        if (value)
+        if (d->kind == RV_SCREEN_KIND_DYNAMIC_LIST && d->dynamic.status) {
+            uint32_t bindings[] = {
+                4, 12, Resource_SORC, Service_Settings, item, SourceDestination_Title,
+                12, Resource_SORC, Service_Settings, source, SourceDestination_InlineValue,
+                12, Resource_SORC, Service_Settings, item, SourceDestination_RowStatusBitmap,
+                12, Resource_SORC, Service_Settings, item, SourceDestination_RowStatusSelectedBitmap,
+            };
+            core_resource_set(Resource_SORC, source, bindings, sizeof bindings);
+        } else if (value)
             core_set_source2(source, item, source, SourceDestination_InlineValue);
         else if (d->kind == RV_SCREEN_KIND_MULTI_CHOICE)
             core_set_source2(source, item, item, SourceDestination_RowBitmap);
@@ -168,6 +180,9 @@ static int clone_layouts(struct core_screen *s, int split, const void *events,
                 : core_clone_layout(&c, &next, scratch, scratch_bytes)) ||
         next > last)
         return 0;
+    if (s->declaration->kind == RV_SCREEN_KIND_DYNAMIC_LIST && s->declaration->dynamic.empty &&
+        (!core_list_empty(s, screen + 1, &next, scratch, scratch_bytes) || next > last))
+        return 0;
     struct core_writer w = {scratch, 0};
     core_clone_layout_events(&w);
     core_resource_set(Resource_SEVT, screen + 1, scratch, w.at);
@@ -176,7 +191,8 @@ static int clone_layouts(struct core_screen *s, int split, const void *events,
                              events, event_bytes, scratch, scratch_bytes);
 }
 
-/* Room for the row events: list.pid.<item>.chosen naming its Rv handler. */
+/* Room for one row event: list.pid.<item>.chosen or contextualMenu.<handler>
+ * naming its Rv handler. */
 #define ROW_EVENT_BYTES 52
 
 int core_clone_list(struct core_screen *s, int split)
@@ -186,15 +202,19 @@ int core_clone_list(struct core_screen *s, int split)
         return 0;
     /* The ITEM table, the layout clones and the SLst copy each fit the scratch
      * or the table's own size, whichever is larger; the row events go first. */
-    uint32_t bytes = 4 + count * (8 + ROW_BYTES), events = 4 + count * ROW_EVENT_BYTES;
+    uint32_t menu = core_screen_menu_events(&(struct core_writer){NULL, 0}, s);
+    uint32_t bytes = 4 + count * (8 + ROW_BYTES), events = 4 + (count + menu) * ROW_EVENT_BYTES;
     if (bytes < CORE_CLONE_SCRATCH_BYTES)
         bytes = CORE_CLONE_SCRATCH_BYTES;
     uint8_t *scratch = Heap_AllocateZeroed(events + bytes);
     if (!scratch)
         return 0;
     int built = s->built || write_rows(s, scratch);
+    if (!s->built && menu)
+        built = built && core_screen_menu_build(s, scratch, bytes);
     struct core_writer w = {scratch, 0};
-    write_row_events(&w, CORE_SCREEN_ROWS(s), count);
+    write_row_events(&w, CORE_SCREEN_ROWS(s), count, menu);
+    core_screen_menu_events(&w, s);
     built = built && clone_layouts(s, split, scratch, w.at, scratch + events, bytes);
     Heap_Free(scratch);
     return built;

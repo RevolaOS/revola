@@ -59,11 +59,20 @@ void Input_HandleButton(uint32_t button, uint32_t pressed);
 void Event_Signal(uint32_t event);
 void IRQ_RestoreState(uint32_t cpsr);
 uint32_t IRQ_DisableSave(void);
+void MediaPlayer_InitializePlaybackList(void *player, uint32_t shuffle, uint32_t repeat);
+int MediaPlayer_IsStopped(void *player);
+void MediaPlayer_TogglePlayback(void *player);
 void *MediaPlayer_GetInstance(void);
 int MediaPlayer_ClearPreparedTrack(void *player);
 int MediaPlayer_RebuildArtwork(void *player);
 int MediaPlayer_GetCurrentItem(void *player, struct MediaItem *item);
 int MediaPlayer_GetItemAtIndex(void *player, uint32_t index, struct MediaItem *item);
+void MediaPlayer_SetCurrentIndex(void *player, int index, int restart);
+int MediaPlayer_PlayIndex(void *player, int index, uint8_t flag, uint32_t start_ms, uint32_t param_5);
+void MediaPlayer_RemoveEntryAtIndex(void *player, uint32_t index);
+int MediaPlayer_IsRepeatAll(void *player);
+int MediaPlayer_IsRepeatOne(void *player);
+int MediaPlayer_CreatePlaybackList(void *player, void *browse_context, void **out_list);
 int MediaItem_IsValid(struct MediaItem *item);
 struct MediaItem *MediaItem_InitFromRecord(struct MediaItem *item, void *record, uint8_t flags);
 void MediaItem_Destroy(struct MediaItem *item);
@@ -73,6 +82,10 @@ uint32_t MediaItem_HasKind8(struct MediaItem *item);
 uint32_t MediaItem_HasKind8062(struct MediaItem *item);
 uint32_t MediaItem_HasKind200000(struct MediaItem *item);
 int MediaListView_IsValid(void *list_view);
+uint16_t MediaListView_GetCount(void *list_view);
+int MediaListView_RemoveEntryAtIndex(void *list_view, uint32_t index, int order_mode, uint32_t reverse);
+int MediaEntry_Remove(struct MediaEntry *entry);
+void MediaList_NotifyChanged(struct MediaList *list);
 struct MediaEntry *PlaybackList_GetEntryByIndex(void *list, uint32_t index);
 void MediaList_InvalidateOrderCache(struct MediaList *list, uint32_t order_mode);
 void *MediaList_CopyEntryAtPosition(void *source, void *destination, void *cursor, uint32_t flags);
@@ -103,6 +116,7 @@ struct MediaList *MediaBrowser_GetCurrentList(void *browser);
 int MediaBrowser_CreateRoot(void *system, void **out_browser);
 int MediaBrowser_CreateChild(void *owner, void **out);
 int MediaBrowser_EvaluateEntryFilters(void *browser, struct MediaEntry *entry, struct MediaList *list_override);
+void MediaBrowser_CopyMatchingEntries(void *browser, struct MediaList *source, uint32_t order_mode, uint32_t reverse, struct MediaList *destination, int apply_skip_flags, uint32_t selected_index, struct MediaEntry **selected_out);
 int MediaBrowser_InvalidateEntryMatches(void *browser);
 void MediaBrowser_ClearArtists(void *browser);
 void MediaBrowser_ClearAlbums(void *browser);
@@ -267,11 +281,16 @@ int SongText_CompareUtf16(void *collation, const uint16_t *left, uint32_t left_u
 int StringCache_ReadToken(void *cache, uint32_t token, void *destination, uint32_t *bytes, uint32_t maximum_bytes);
 int StringCache_ReleaseToken(void *cache, uint32_t token);
 int StringCache_GetTokenView(void *cache, uint32_t token, void **data, uint32_t *bytes);
+int PodcastEpisodes_DispatchAction(void *controller, const char *action, uint32_t argument);
+int PodcastEpisodes_BuildAndShowContextualMenu(void *controller);
 void MenuList_RebuildVisibleItems(void *menu_list, void *view, int refresh_subscriptions);
 int MenuList_SetItemTable(void *menu_list, uint32_t table_id, void *view);
 void MenuItems_RegisterResourceType(uint32_t type);
 void UI_ShowContextMenuItems(void *controller, void *items);
 void *ContextMenuModel_Get(void);
+void ContextMenuModel_SetItems(void *model, const void *items);
+uint32_t ContextMenuModel_GetRememberedIndex(void *model);
+void UI_SetScreenState(void *manager, uint32_t screen_id, uint32_t state0, uint32_t state1, uint32_t state2, uint32_t state3);
 int ContextMenuModel_GetProperty(void *model, uint32_t type, uint32_t property, uintptr_t *out);
 int ContextMenuModel_GetIndexedProperty(void *model, uint32_t type, uint32_t property, int index, uintptr_t *out);
 void UI_LoadLayoutInstances(void *layout);
@@ -279,6 +298,7 @@ int ContextMenuController_DispatchAction(void *controller, const char *action, u
 void ScreenController_SwitchLayoutDefault(void *controller);
 void *UI_GetLayoutManager(void);
 int MenuList_QueryProperty(void *menu_list, uint32_t type, uint32_t property, uint32_t *out);
+void *ControllerRegistry_InvokeControllerFactory(void *registry, const char *class_name, const char *controller_name);
 void *ControllerRegistry_InvokeScreenFactory(void *registry, const char *class_name, const char *controller_name, uint32_t screen_id, uint32_t layout_id, uint32_t transition);
 void *UI_FindServiceById(uint32_t service_id);
 void *UI_GetRootView(void);
@@ -295,6 +315,8 @@ uint32_t ResourceScreen_Activate(void *controller, uint32_t entering);
 uint32_t ResourceScreen_Deactivate(void *controller, uint32_t leaving);
 int MenuItem_SetVisible(uint32_t item_id, uint32_t visible);
 void ContextMenuItems_Append(void *items, uint32_t item_id, const char *action, uint32_t flags);
+void *ContextMenuItems_Init(void *items, uint8_t flag);
+void *ContextMenuItems_Destroy(void *items);
 void WheelEvent_DecodeMotion(void *event);
 uint32_t ButtonEvent_GetUIKeyCode(void *event);
 void *WheelAccumulator_Init(void *state, int threshold, uint8_t accelerate, uint32_t interval);
@@ -478,11 +500,20 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_IRQ_RestoreState 0x083924d8
 #define ADDR_IRQ_DisableSave 0x083924e0
 #define ADDR_InputWheel_AccumulateMotion 0x08093718
+#define ADDR_MediaPlayer_InitializePlaybackList 0x08170b6c
+#define ADDR_MediaPlayer_IsStopped 0x08172568
+#define ADDR_MediaPlayer_TogglePlayback 0x08170304
 #define ADDR_MediaPlayer_GetInstance 0x08172824
 #define ADDR_MediaPlayer_ClearPreparedTrack 0x0817190c
 #define ADDR_MediaPlayer_RebuildArtwork 0x08170238
 #define ADDR_MediaPlayer_GetCurrentItem 0x0816f790
 #define ADDR_MediaPlayer_GetItemAtIndex 0x0816ec38
+#define ADDR_MediaPlayer_SetCurrentIndex 0x0816f058
+#define ADDR_MediaPlayer_PlayIndex 0x08171e7c
+#define ADDR_MediaPlayer_RemoveEntryAtIndex 0x081700bc
+#define ADDR_MediaPlayer_IsRepeatAll 0x08172ec8
+#define ADDR_MediaPlayer_IsRepeatOne 0x08172efc
+#define ADDR_MediaPlayer_CreatePlaybackList 0x081719d4
 #define ADDR_MediaItem_IsValid 0x0829a7dc
 #define ADDR_MediaItem_InitFromRecord 0x08266d20
 #define ADDR_MediaItem_Destroy 0x08266da0
@@ -492,6 +523,10 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_MediaItem_HasKind8062 0x0829aad8
 #define ADDR_MediaItem_HasKind200000 0x0829afb4
 #define ADDR_MediaListView_IsValid 0x0829d030
+#define ADDR_MediaListView_GetCount 0x0829c858
+#define ADDR_MediaListView_RemoveEntryAtIndex 0x0827a8c8
+#define ADDR_MediaEntry_Remove 0x0803db30
+#define ADDR_MediaList_NotifyChanged 0x080564b8
 #define ADDR_PlaybackList_GetEntryByIndex 0x0829cab8
 #define ADDR_MediaList_InvalidateOrderCache 0x080d1928
 #define ADDR_MediaList_CopyEntryAtPosition 0x0803bbf0
@@ -526,6 +561,7 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_MediaBrowser_CreateRoot 0x0804d6e4
 #define ADDR_MediaBrowser_CreateChild 0x0804d80c
 #define ADDR_MediaBrowser_EvaluateEntryFilters 0x080d7a98
+#define ADDR_MediaBrowser_CopyMatchingEntries 0x0803bf78
 #define ADDR_MediaBrowser_InvalidateEntryMatches 0x0804ec24
 #define ADDR_MediaBrowser_ClearArtists 0x0804e850
 #define ADDR_MediaBrowser_ClearAlbums 0x0804e794
@@ -717,18 +753,25 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_StringCache_ReadToken 0x080a94ec
 #define ADDR_StringCache_ReleaseToken 0x080bb0c8
 #define ADDR_StringCache_GetTokenView 0x08093598
+#define ADDR_PodcastEpisodes_DispatchAction 0x0823077c
+#define ADDR_PodcastEpisodes_BuildAndShowContextualMenu 0x082309d0
 #define ADDR_MenuList_RebuildVisibleItems 0x081946fc
 #define ADDR_MenuList_SetItemTable 0x08194d1c
 #define ADDR_MenuItems_RegisterResourceType 0x08194df0
 #define ADDR_UI_ShowContextMenuItems 0x08129d78
 #define ADDR_ContextMenuModel_Get 0x081debd0
+#define ADDR_ContextMenuModel_SetItems 0x081decd0
+#define ADDR_ContextMenuModel_GetRememberedIndex 0x081dec00
+#define ADDR_UI_SetScreenState 0x08176af8
 #define ADDR_ContextMenuModel_GetProperty 0x081dec28
 #define ADDR_ContextMenuModel_GetIndexedProperty 0x081ded30
 #define ADDR_UI_LoadLayoutInstances 0x081d64cc
 #define ADDR_ContextMenuController_DispatchAction 0x081de6f8
+#define ADDR_ContextMenuController_ForwardAction 0x081dea30
 #define ADDR_ScreenController_SwitchLayoutDefault 0x08129994
 #define ADDR_UI_GetLayoutManager 0x081747ec
 #define ADDR_MenuList_QueryProperty 0x08194c2c
+#define ADDR_ControllerRegistry_InvokeControllerFactory 0x081d58dc
 #define ADDR_ControllerRegistry_InvokeScreenFactory 0x081d5a40
 #define ADDR_UI_FindServiceById 0x081c7d44
 #define ADDR_UI_GetRootView 0x08113600
@@ -746,6 +789,8 @@ extern void *const MenuListModel_vtable[];
 #define ADDR_ResourceScreen_Deactivate 0x08398b6c
 #define ADDR_MenuItem_SetVisible 0x08194ff0
 #define ADDR_ContextMenuItems_Append 0x08162390
+#define ADDR_ContextMenuItems_Init 0x081624e8
+#define ADDR_ContextMenuItems_Destroy 0x0816250c
 #define ADDR_WheelEvent_DecodeMotion 0x08289490
 #define ADDR_ButtonEvent_GetUIKeyCode 0x0829b978
 #define ADDR_WheelAccumulator_Init 0x081b0efc
@@ -923,6 +968,7 @@ extern void *const MenuListModel_vtable[];
 #define SITE_IAP_VerifyDeviceSignatureRSA_call 0x081893a8
 #define SITE_IAP_VerifyDeviceSignatureAlternate_call 0x081893fc
 #define SITE_HoldSwitch_NotifyRawChange_call 0x08055b44
+#define SITE_MediaPlayer_ToggleStopped_call 0x08170360
 #define SITE_AlbumSubtitle_slot 0x0898cbf4
 #define SITE_Albums_CancelAppend_call 0x0821c004
 #define SITE_MediaListController_DispatchAction_entry 0x0820f5a4
@@ -1052,6 +1098,8 @@ extern void *const MenuListModel_vtable[];
 #define SITE_TrackCount_0810897c_word 0x0810897c
 #define SITE_TrackCount_0816ebc4_word 0x0816ebc4
 #define SITE_TrackCount_0829c884_word 0x0829c884
+#define SITE_PodcastEpisodes_CancelAppend_call 0x08230a10
+#define SITE_PodcastEpisodes_Action_slot 0x089a67a0
 #define SITE_UI_LoadLayoutEvents_call 0x081d63f8
 #define SITE_UI_TemplateEventsGet_call 0x081d6218
 #define SITE_UI_LayoutEventsGet_call 0x081d62b4
@@ -1164,13 +1212,14 @@ extern void *const MenuListModel_vtable[];
 #define Bitmap_bounds 0x98
 #define Bitmap_owns_pixels 0xb4
 #define Bitmap_bytes 0xb8
+#define WheelState_notify_pending 0x0
 #define WheelState_reported_buttons 0x18
 #define WheelState_buttons 0x20
 #define WheelState_skip_packet 0x1
 #define WheelState_threshold 0x4
 #define WheelState_motion 0x8
 #define WheelState_position 0xc
-#define WheelState_touch_down_position 0x10
+#define WheelState_reported_position 0x10
 #define WheelState_touch_count 0x14
 #define WheelState_previous_touch 0x1c
 #define WheelState_touch 0x24
@@ -1197,11 +1246,16 @@ extern void *const MenuListModel_vtable[];
 #define MediaEntry_flags 0x1c
 #define MediaEntry_song_record 0x20
 #define MediaEntry_song_shuffle_rank 0x24
+#define MediaEntry_song_next_record_entry 0x28
 #define MediaEntry_group_first 0x20
 #define MediaEntry_group_last 0x24
 #define MediaEntry_groups 0x2c
 #define MediaEntry_tracks 0x2e
 #define MediaEntry_size 0x30
+#define MediaList_track_data 0xc
+#define MediaList_root 0x40
+#define MediaList_order_mode 0xc8
+#define MediaList_repeat_mode 0x184
 #define MediaList_flags 0x18c
 #define MediaList_order_flags 0x18d
 #define MediaList_shuffle_index 0x3b4
@@ -1218,6 +1272,28 @@ extern void *const MenuListModel_vtable[];
 #define MediaItem_generation 0x10
 #define MediaItem_flags 0x14
 #define MediaItem_bytes 0x18
+#define MediaItem_title_method 0x50
+#define MediaItem_album_method 0x54
+#define MediaItem_artist_method 0x58
+#define MediaItem_display_artist_method 0x5c
+#define MediaItem_genre_method 0x60
+#define MediaItem_composer_method 0x64
+#define MediaItem_grouping_method 0x68
+#define MediaItem_duration_method 0xa0
+#define MediaListView_list 0x4
+#define MediaListView_browser 0x8
+#define MediaListView_generation 0xc
+#define MediaRecord_entries 0x24
+#define MediaRecord_media_kind 0xbc
+#define MediaPlayer_current_track 0x54
+#define MediaPlayer_prepared_track 0x58
+#define MediaPlayer_playback_view 0x60
+#define MediaPlayer_source_view 0x74
+#define MediaPlayer_artwork_session 0x88
+#define MediaPlayer_playback_source 0x948
+#define MediaPlayer_play_index_method 0xe0
+#define MediaPlayer_remove_entry_method 0x130
+#define MediaPlayer_current_index_method 0x158
 #define MediaPlayer_current_item_method 0x15c
 #define MediaPlayer_item_at_index_method 0x170
 #define MediaPlayer_current_index 0x5c
@@ -1312,6 +1388,8 @@ extern void *const MenuListModel_vtable[];
 #define MenuSettingsRow_visible 0x10
 #define MenuSettingsRow_bytes 0x14
 #define CppString_bytes 0x4
+#define NativeString_data 0x4
+#define NativeString_bytes 0x8
 #define StringInputStream_bytes 0x7c
 #define Model_notify_method 0x58
 #define ScreenController_push_method 0xd0
@@ -1429,6 +1507,7 @@ extern void *const MenuListModel_vtable[];
 #define TemplateStyle_bytes 0xc
 #define ContextMenuModel_items 0x18
 #define ContextMenuModel_remembered_item 0x30
+#define ContextMenuItems_bytes 0x18
 #define ContextMenuItem_item 0x0
 #define ContextMenuItem_action 0x4
 #define ContextMenuItem_flags 0x8
@@ -1457,6 +1536,8 @@ extern void *const MenuListModel_vtable[];
 #define ScreenLayoutEntry_layout 0x0
 #define ScreenLayoutEntry_kind 0x4
 #define ScreenLayoutEntry_refresh 0x8
+#define PodcastEpisodesController_layout_cache 0xdc
+#define PodcastEpisodesController_layout 0x100
 #define USBDevice_controller 0x34
 #define USBDevice_interfaces 0x38
 #define USBDevice_configuration_set 0x5c
@@ -1519,6 +1600,15 @@ extern void *const MenuListModel_vtable[];
 #define WheelTouch_Down 0x40000000
 #define WheelEvent_Signal 0x5
 #define AlbumArtist_order_mode 0x2d
+#define MediaOrderMode_Database 0x1
+#define MediaOrderMode_Shuffle 0x2
+#define MediaOrderMode_Playback 0x33
+#define MediaListFlags_Shuffled 0x1
+#define MediaListFlags_PlaybackList 0x80
+#define MediaListOrderFlags_Reversed 0x4
+#define MediaEntryFlags_Group 0x100
+#define MediaRepeat_All 0x1
+#define MediaRepeat_One 0x2
 #define HardwareSource_DiskModeRequest 0x8
 #define HardwareSource_DiskGranted 0x9
 #define HardwareSource_HoldChanged 0x6
@@ -1627,6 +1717,8 @@ extern void *const MenuListModel_vtable[];
 #define Event_ModelChange 0x13
 #define SourceDestination_InlineValue 0xa
 #define SourceDestination_RowBitmap 0xc
+#define SourceDestination_RowStatusBitmap 0x13
+#define SourceDestination_RowStatusSelectedBitmap 0x14
 #define ViewType_Progress 0x70676f67
 #define ViewType_Text 0x74657874
 #define ViewType_Capacity 0x63706374
@@ -1711,6 +1803,8 @@ extern void *const MenuListModel_vtable[];
 #define RES_Font_BoldSmall 0x0dad0001
 #define RES_Font_RegularSmall 0x0dad0020
 #define RES_Menu_CheckedSelected_Bitmap 0x0dad0c09
+#define RES_Menu_Playing_Bitmap 0x0dad072c
+#define RES_Menu_PlayingSelected_Bitmap 0x0dad072d
 #define RES_Menu_Chevron_Bitmap 0x0dad0125
 #define RES_About_Capacity_Template 0x0dad0b4e
 #define RES_Capacity_View 0x0dad0b4f
@@ -1755,8 +1849,20 @@ extern void *const MenuListModel_vtable[];
 #define RES_MainMenus_Music_Screen 0x0dad07c8
 #define RES_ContextMenu_Screen 0x0dad01c9
 #define RES_ContextMenu_Layout 0x0dad01ca
+#define RES_Calendar_Empty_Layout 0x0dad0397
+#define RES_Calendar_Empty_Instances 0x00000026
+#define RES_Calendar_Empty_Template 0x0dad0372
+#define RES_Calendar_Empty_Text 0x0dad0374
 #define RES_ContextMenu_Items 0x00000001
 #define RES_ContextMenu_Item 0x0dad01cb
+#define RES_ContextMenu_StartGenius_String 0x0dad0117
+#define RES_ContextMenu_BrowseArtist_String 0x0dad0118
+#define RES_ContextMenu_BrowseAlbum_String 0x0dad0119
+#define RES_ContextMenu_BrowseCompilation_String 0x0dad011a
+#define RES_ContextMenu_AddToOnTheGo_String 0x0dad011b
+#define RES_ContextMenu_RemoveFromOnTheGo_String 0x0dad011c
+#define RES_ContextMenu_Cancel_String 0x0dad011d
+#define RES_ContextMenu_Title_String 0x0dad011e
 #define RES_ExtrasMenu_Screen 0x0dad01cc
 #define RES_ExtrasMenu_Layout 0x0dad01d6
 #define RES_ExtrasMenu_Stopwatch_Layout 0x0dad01ed
@@ -1813,6 +1919,7 @@ extern void *const MenuListModel_vtable[];
 #define RES_ExtrasMenu_Notes_Item 0x0dad01d2
 #define RES_ExtrasMenu_ScreenLock_Item 0x0dad01d3
 #define RES_ExtrasMenu_Stopwatch_Item 0x0dad01d4
+#define RES_MediaLists_PodcastEpisodes_Screen 0x0dad07f8
 #define RES_MediaLists_Songs_Screen 0x0dad07e9
 #define RES_MediaLists_NestedPlaylists_Screen 0x0dad0808
 #define RES_MediaLists_Genius_Screen 0x0dad0844
