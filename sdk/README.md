@@ -23,7 +23,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 
 | Declaration | What the user sees |
 |---|---|
-| `RV_HOOK_FILTER(site, fn)`, `RV_HOOK_FILTER_AT(site, fn, priority)`, `RV_HOOK_REPLACE(site, fn)` | nothing directly: a handler on a hook site |
+| `RV_HOOK_FILTER(site, fn)`, `RV_HOOK_FILTER_AT(site, fn, priority)`, `RV_HOOK_REPLACE(site, fn)` | nothing directly: a handler on a hook site; an audio effect on the output PCM site passes its `RV_AUDIO_STAGE_*` value as the priority |
 | `RV_HOOK_WORD(site, word)`, `RV_HOOK_POINTER(site, object)` | nothing directly: an exclusive instruction replacement at a word site, or the address of the module's own `object` at a word site that holds one |
 | `RV_SETTING_BOOL`, `RV_SETTING_INT`, `RV_SETTING_CHOICE`, `RV_SETTING_SLIDER`, `RV_SETTING_MULTI` | a setting with its labels; an `RV_ROW_SETTING(label, key)` row shows its value and flips it or opens its screen |
 | `RV_SCREEN_LIST(id, title, rows)` of `RV_ROW_PUSH`, `RV_ROW_ACTION`, `RV_ROW_SETTING`, `RV_ROW_INFO` rows | a menu, full width or beside the Settings preview pane as the screen it opens from decides (`.layout` overrides) |

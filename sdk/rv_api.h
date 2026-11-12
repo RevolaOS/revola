@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 39
+#define RV_API_MINOR 40
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -76,6 +76,21 @@ struct rv_hook {
     int16_t priority; /* lower runs first */
     uint8_t mode;     /* rv_hook_mode */
     uint8_t reserved;
+};
+
+/* The priority an effect binds RV_SITE_AudioOutputQueue_Get_call with, so the
+ * output stage runs in Rockbox's order whatever order the extensions loaded
+ * in. Filters run lower first; an effect that belongs between two stages picks
+ * a value between them. */
+enum rv_audio_stage {
+    RV_AUDIO_STAGE_CROSSFEED = 100,
+    RV_AUDIO_STAGE_TONE = 200,
+    RV_AUDIO_STAGE_BASS_ENHANCEMENT = 300,
+    RV_AUDIO_STAGE_FATIGUE_REDUCTION = 400,
+    RV_AUDIO_STAGE_SURROUND = 500,
+    RV_AUDIO_STAGE_CHANNELS = 600,
+    RV_AUDIO_STAGE_COMPRESSOR = 700,
+    RV_AUDIO_STAGE_DITHER = 900,
 };
 
 enum rv_setting_type {
