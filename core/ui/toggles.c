@@ -17,7 +17,6 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 #define NONE 0xffffffffu
 
 struct toggle_screen {
@@ -115,7 +114,7 @@ static uint32_t current_index(void)
 {
     void *model = UI_GetSelectionModel();
     uint32_t (*current)(void *) =
-        FIELD(FIELD(model, 0, void **), SelectionModel_current_index_method, void *);
+        RV_FIELD(RV_FIELD(model, 0, void **), SelectionModel_current_index_method, void *);
     return current(model);
 }
 

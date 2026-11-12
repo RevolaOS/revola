@@ -16,7 +16,6 @@
 #include "settings.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 #define PREFIX_WORDS (CxxVtable_prefix_bytes / 4)
 /* Steps per wheel motion as Apple's menu lists count them. */
 #define WHEEL_THRESHOLD 5
@@ -66,7 +65,7 @@ static void *create(void *owner, void *parent, void *event_target, const void *d
     if (!view)
         return NULL;
     View_Construct(view, NULL, parent, event_target, options);
-    FIELD(view, 0, void **) = view_vtable + PREFIX_WORDS;
+    RV_FIELD(view, 0, void **) = view_vtable + PREFIX_WORDS;
     return view;
 }
 
@@ -156,8 +155,8 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
     struct rv_input in = {0, 0, 0};
     if (kind == InputEvent_Wheel) {
         WheelEvent_DecodeMotion(event);
-        int steps = WheelAccumulator_ConsumeMotion(wheel, FIELD(event, InputEvent_wheel_delta, int32_t),
-                                                   WheelEvent_GetSpeed(event));
+        int steps = WheelAccumulator_ConsumeMotion(
+            wheel, RV_FIELD(event, InputEvent_wheel_delta, int32_t), WheelEvent_GetSpeed(event));
         if (!steps)
             return 1;
         if (d->kind == RV_SCREEN_KIND_SLIDER) {
@@ -191,7 +190,8 @@ static int event(void *controller, void *event)
 {
     struct core_screen *s = core_screens_of_controller(controller);
     core_screens_caller = controller;
-    int consumed = s && s->declaration && input(s, FIELD(event, InputEvent_kind, uint32_t), event);
+    int consumed =
+        s && s->declaration && input(s, RV_FIELD(event, InputEvent_kind, uint32_t), event);
     core_screens_caller = NULL;
     return consumed ? 1 : handle_event(controller, event);
 }

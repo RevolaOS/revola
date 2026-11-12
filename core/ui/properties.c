@@ -22,8 +22,6 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
-
 static void *settings_model; /* last seen on the property slot; refresh notifies it */
 
 static uint32_t settings_owner(struct rv_extension_record *owner)
@@ -41,7 +39,7 @@ void core_screens_notify(uint32_t property)
     if (!settings_model)
         return;
     void (*notify)(void *, uint32_t, uint32_t) =
-        FIELD(FIELD(settings_model, 0, void **), Model_notify_method, void *);
+        RV_FIELD(RV_FIELD(settings_model, 0, void **), Model_notify_method, void *);
     notify(settings_model, Notify_All, property);
 }
 

@@ -15,8 +15,6 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
-
 /* The list controller whose context menu opened last and the model row it
  * opened on (-1 for a leading row such as All Albums). */
 static void *menu_list;
@@ -26,12 +24,12 @@ static uint32_t menu_opening(uint32_t controller, const struct core_next *next)
 {
     void *selection = UI_GetSelectionModel();
     int32_t (*current)(void *) =
-        FIELD(FIELD(selection, 0, void **), SelectionModel_current_index_method, void *);
+        RV_FIELD(RV_FIELD(selection, 0, void **), SelectionModel_current_index_method, void *);
     int32_t visible = current(selection);
     menu_list = NULL;
     if (visible >= 0) {
-        int32_t (*map)(void *, int32_t) = FIELD(FIELD(controller, 0, void **),
-                                                MediaListController_map_visible_row_method, void *);
+        int32_t (*map)(void *, int32_t) = RV_FIELD(
+            RV_FIELD(controller, 0, void **), MediaListController_map_visible_row_method, void *);
         menu_row = map((void *)controller, visible);
         menu_list = (void *)controller;
     }
@@ -57,8 +55,8 @@ const void *core_context_item(uint8_t menu, void *controller, void *item, int32_
         if (menu == RV_MENU_ALBUM_CONTEXT || menu == RV_MENU_ARTIST_CONTEXT || menu_row < 0)
             return NULL;
         MediaItem_InitFromRecord(item, NULL, 0);
-        void *build = FIELD(FIELD(controller, 0, void **),
-                            MediaListController_show_context_menu_method, void *);
+        void *build = RV_FIELD(RV_FIELD(controller, 0, void **),
+                               MediaListController_show_context_menu_method, void *);
         if (build == (void *)ADDR_Genius_BuildAndShowContextualMenu) {
             void *genius = Genius_GetInstance();
             Genius_GetItem(genius, (uint32_t)Genius_MapVisibleRow(genius, menu_row), item);
@@ -66,14 +64,14 @@ const void *core_context_item(uint8_t menu, void *controller, void *item, int32_
             void *model = LibraryModelRef_Get((uint8_t *)controller + MediaListController_model);
             if (model) {
                 void (*get)(void *, void *, int32_t) =
-                    FIELD(FIELD(model, 0, void **), SongModel_get_item_method, void *);
+                    RV_FIELD(RV_FIELD(model, 0, void **), SongModel_get_item_method, void *);
                 get(item, model, menu_row);
             }
         }
     } else {
         return NULL;
     }
-    return FIELD(item, MediaItem_record, void *) && MediaItem_IsValid(item) ? item : NULL;
+    return RV_FIELD(item, MediaItem_record, void *) && MediaItem_IsValid(item) ? item : NULL;
 }
 
 /* The menu a Cancel append site builds, and the layout id and cache fields of
@@ -122,7 +120,7 @@ static uint8_t pop_hidden;
 static uint32_t source_of(uint32_t site)
 {
     if (site == CORE_SITE_NestedPlaylists_CancelAppend_call && menu_list &&
-        FIELD(menu_list, 0, void *) == NestedVideoPlaylistsController_vtable)
+        RV_FIELD(menu_list, 0, void *) == NestedVideoPlaylistsController_vtable)
         return VIDEO_PLAYLISTS_SOURCE;
     for (uint32_t i = 0; i < sizeof sources / sizeof sources[0]; i++)
         if (sources[i].site == site)
@@ -193,12 +191,12 @@ void core_context_pushed(void *controller, int pushed)
      * prepared as it was, without switching to it. A controller without
      * layouts keeps the stock slot and has nothing to show. */
     void *switch_layout =
-        FIELD(FIELD(controller, 0, void **), ScreenController_switch_layout_method, void *);
+        RV_FIELD(RV_FIELD(controller, 0, void **), ScreenController_switch_layout_method, void *);
     if (switch_layout == (void *)ADDR_ScreenController_SwitchLayoutDefault)
         return;
     void *layout = ControllerLayoutCache_GetOrInsert(
         (uint8_t *)controller + sources[menu_source].cache,
-        FIELD(controller, sources[menu_source].layout, uint32_t));
+        RV_FIELD(controller, sources[menu_source].layout, uint32_t));
     if (layout)
         UI_DisplayPreparedLayout(UI_GetLayoutManager(), layout);
 }

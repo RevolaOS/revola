@@ -19,11 +19,11 @@
 
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
+#include "rv_api.h"
 #include "settings.h"
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 #define INITIAL_CAPACITY 1024u
 #define INITIAL_DUPLICATES 256u
 
@@ -53,7 +53,7 @@ static int remapping, dbid_needed;
 
 static uint64_t dbid_at(const void *base, uint32_t offset)
 {
-    return (uint64_t)FIELD(base, offset + 4, uint32_t) << 32 | FIELD(base, offset, uint32_t);
+    return (uint64_t)RV_FIELD(base, offset + 4, uint32_t) << 32 | RV_FIELD(base, offset, uint32_t);
 }
 
 static uint64_t key(uint32_t index, int dbid)
@@ -143,27 +143,28 @@ static int grow_duplicates(void)
 static int drop(void *image, void *canonical)
 {
     void *db = active_db;
-    if (!last_kept || FIELD(last_kept, 0, void *) != image || FIELD(image, 0, void *) ||
-        FIELD(db, ArtworkDatabase_last_image, void *) != image)
+    if (!last_kept || RV_FIELD(last_kept, 0, void *) != image || RV_FIELD(image, 0, void *) ||
+        RV_FIELD(db, ArtworkDatabase_last_image, void *) != image)
         return 0;
-    uint8_t *chunk = FIELD(FIELD(db, ArtworkDatabase_image_pool, uint8_t *), FixedPool_chunks, uint8_t *);
-    while (chunk && ((uint8_t *)image < FIELD(chunk, FixedPoolChunk_first, uint8_t *) ||
-                     (uint8_t *)image > FIELD(chunk, FixedPoolChunk_last, uint8_t *)))
-        chunk = FIELD(chunk, FixedPoolChunk_next, uint8_t *);
+    uint8_t *chunk =
+        RV_FIELD(RV_FIELD(db, ArtworkDatabase_image_pool, uint8_t *), FixedPool_chunks, uint8_t *);
+    while (chunk && ((uint8_t *)image < RV_FIELD(chunk, FixedPoolChunk_first, uint8_t *) ||
+                     (uint8_t *)image > RV_FIELD(chunk, FixedPoolChunk_last, uint8_t *)))
+        chunk = RV_FIELD(chunk, FixedPoolChunk_next, uint8_t *);
     if (!chunk || !grow_duplicates())
         return 0;
     struct duplicate *d = &duplicates[duplicate_count];
-    d->id = FIELD(image, ArtworkImage_id, uint32_t);
+    d->id = RV_FIELD(image, ArtworkImage_id, uint32_t);
     d->image = canonical;
-    d->dbid[0] = FIELD(image, ArtworkImage_dbid, uint32_t);
-    d->dbid[1] = FIELD(image, ArtworkImage_dbid + 4, uint32_t);
+    d->dbid[0] = RV_FIELD(image, ArtworkImage_dbid, uint32_t);
+    d->dbid[1] = RV_FIELD(image, ArtworkImage_dbid + 4, uint32_t);
     duplicate_count++;
-    FIELD(last_kept, 0, void *) = NULL;
-    FIELD(db, ArtworkDatabase_last_image, void *) = last_kept;
-    FIELD(db, ArtworkDatabase_image_count, uint32_t)--;
-    FIELD(image, 0, void *) = FIELD(chunk, FixedPoolChunk_free_list, void *);
-    FIELD(chunk, FixedPoolChunk_free_list, void *) = image;
-    FIELD(chunk, FixedPoolChunk_free, uint32_t)++;
+    RV_FIELD(last_kept, 0, void *) = NULL;
+    RV_FIELD(db, ArtworkDatabase_last_image, void *) = last_kept;
+    RV_FIELD(db, ArtworkDatabase_image_count, uint32_t)--;
+    RV_FIELD(image, 0, void *) = RV_FIELD(chunk, FixedPoolChunk_free_list, void *);
+    RV_FIELD(chunk, FixedPoolChunk_free_list, void *) = image;
+    RV_FIELD(chunk, FixedPoolChunk_free, uint32_t)++;
     return 1;
 }
 
@@ -176,7 +177,7 @@ static uint32_t mix(uint32_t hash, uint32_t value)
 
 static uint32_t thumb_word(const void *thumb, uint32_t offset)
 {
-    return FIELD(thumb, offset, uint32_t);
+    return RV_FIELD(thumb, offset, uint32_t);
 }
 
 static int same_thumb(const void *a, const void *b)
@@ -191,7 +192,7 @@ static int same_thumb(const void *a, const void *b)
 static uint32_t chain_hash(const void *thumb)
 {
     uint32_t hash = 0x811c9dc5;
-    for (; thumb; thumb = FIELD(thumb, ArtworkThumb_next, void *)) {
+    for (; thumb; thumb = RV_FIELD(thumb, ArtworkThumb_next, void *)) {
         for (uint32_t offset = ArtworkThumb_format; offset <= ArtworkThumb_file; offset += 4)
             hash = mix(hash, thumb_word(thumb, offset));
         hash = mix(hash, (uint32_t)ArtworkThumb_GetNameCache((void *)thumb));
@@ -201,7 +202,8 @@ static uint32_t chain_hash(const void *thumb)
 
 static int same_chain(const void *a, const void *b)
 {
-    for (; a && b; a = FIELD(a, ArtworkThumb_next, void *), b = FIELD(b, ArtworkThumb_next, void *))
+    for (; a && b;
+         a = RV_FIELD(a, ArtworkThumb_next, void *), b = RV_FIELD(b, ArtworkThumb_next, void *))
         if (!same_thumb(a, b))
             return 0;
     return !a && !b;
@@ -209,7 +211,7 @@ static int same_chain(const void *a, const void *b)
 
 static void *image_thumbs(const void *image)
 {
-    return FIELD(image, ArtworkImage_thumbs, void *);
+    return RV_FIELD(image, ArtworkImage_thumbs, void *);
 }
 
 static struct canonical *slot(struct canonical *table, uint32_t size, uint32_t hash,
@@ -272,13 +274,13 @@ static int share(void *image)
     }
     /* The destructor unlinks each thumbnail from this image and returns it to the pool. */
     while (thumbs) {
-        void *next = FIELD(thumbs, ArtworkThumb_next, void *);
+        void *next = RV_FIELD(thumbs, ArtworkThumb_next, void *);
         ArtworkThumb_Destroy(thumbs);
         thumbs = next;
     }
-    FIELD(image, ArtworkImage_thumbs, void *) = image_thumbs(entry->image);
-    FIELD(image, ArtworkImage_thumb_count, uint16_t) =
-        FIELD(entry->image, ArtworkImage_thumb_count, uint16_t);
+    RV_FIELD(image, ArtworkImage_thumbs, void *) = image_thumbs(entry->image);
+    RV_FIELD(image, ArtworkImage_thumb_count, uint16_t) =
+        RV_FIELD(entry->image, ArtworkImage_thumb_count, uint16_t);
     return drop(image, entry->image);
 }
 
@@ -307,7 +309,7 @@ static uint32_t image_thumbs_read(uint32_t reader, uint32_t image, uint32_t coun
                                   uint32_t flags, const struct core_next *next)
 {
     uint32_t status = core_next_call(next, reader, image, count, flags);
-    void *db = FIELD((void *)reader, ArtworkReader_database, void *);
+    void *db = RV_FIELD((void *)reader, ArtworkReader_database, void *);
     if (!status && active_db && db == active_db && (disabled || !share((void *)image)))
         last_kept = (void *)image;
     return status;
@@ -331,12 +333,12 @@ static uint32_t track_image(uint32_t id, uint32_t track, const struct core_next 
         struct duplicate *d;
         if (id) {
             if ((d = find(by_id, 0, id)))
-                id = FIELD(d->image, ArtworkImage_id, uint32_t);
+                id = RV_FIELD(d->image, ArtworkImage_id, uint32_t);
         } else if (find(by_dbid, 1, dbid_at((void *)track, TrackData_dbid))) {
             dbid_needed = 1;
         }
     }
-    FIELD((void *)track, TrackData_artwork_id, uint32_t) = id;
+    RV_FIELD((void *)track, TrackData_artwork_id, uint32_t) = id;
     return 0;
 }
 

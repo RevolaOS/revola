@@ -13,6 +13,7 @@
 
 #include "memory/memory.h"
 #include "osos-2.0.5.h"
+#include "rv_api.h"
 #include "settings.h"
 #include "storage.h"
 #include "hooks/sites.h"
@@ -33,7 +34,6 @@
 #define GROW_HEAP_MARGIN (1u * MIB)
 #define NOP 0xe1a00000u
 #define ORDER_LIMIT 0x30 /* order slots in a MediaList */
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
 
 uint32_t core_block_cache_size(uint32_t heap_total, uint32_t import_cost, int flash)
 {
@@ -57,7 +57,8 @@ static uint32_t import_cache_bytes;
 static void release_import_orders(uint8_t *owner)
 {
     static const uint8_t built_orders[] = {2, 22, 26, 29};
-    struct MediaList **slot = owner ? FIELD(owner, MediaBrowser_library, struct MediaList **) : 0;
+    struct MediaList **slot =
+        owner ? RV_FIELD(owner, MediaBrowser_library, struct MediaList **) : 0;
     struct MediaList *library = slot ? *slot : 0;
     if (!library)
         return;
@@ -132,16 +133,17 @@ uint32_t core_block_cache_shortfall(uint32_t total, uint32_t kept, uint32_t requ
  * their blocks with the rebalancer; the others keep max(held, desired). */
 static uint32_t kept_blocks(uint8_t *cache, uint8_t *skip)
 {
-    uint32_t block_bytes = FIELD(cache, BlockCache_block_bytes, uint32_t);
+    uint32_t block_bytes = RV_FIELD(cache, BlockCache_block_bytes, uint32_t);
     uint32_t kept = 0;
-    void **ring = FIELD(cache, BlockCache_clients, void **);
+    void **ring = RV_FIELD(cache, BlockCache_clients, void **);
     for (void **node = ring[0]; node != ring; node = node[0]) {
         uint8_t *client = *(uint8_t **)node[2];
-        if (!client || client == skip || FIELD(client, BlockCacheClient_weight, uint32_t))
+        if (!client || client == skip || RV_FIELD(client, BlockCacheClient_weight, uint32_t))
             continue;
         uint32_t desired =
-            (FIELD(client, BlockCacheClient_desired_bytes, uint32_t) + block_bytes - 1) / block_bytes;
-        uint32_t held = FIELD(client, BlockCacheClient_block_count, uint32_t);
+            (RV_FIELD(client, BlockCacheClient_desired_bytes, uint32_t) + block_bytes - 1) /
+            block_bytes;
+        uint32_t held = RV_FIELD(client, BlockCacheClient_block_count, uint32_t);
         kept += held > desired ? held : desired;
     }
     return kept;
@@ -154,16 +156,16 @@ static int grown_for_game;
 static uint32_t game_blocks_acquire(uint32_t manager, const struct core_next *next)
 {
     uint8_t *cache = BlockCache_Get();
-    uint32_t block_bytes = cache ? FIELD(cache, BlockCache_block_bytes, uint32_t) : 0;
+    uint32_t block_bytes = cache ? RV_FIELD(cache, BlockCache_block_bytes, uint32_t) : 0;
     if (block_bytes) {
-        uint8_t **client_slot = FIELD((uint8_t *)manager, EAppBlockManager_client, uint8_t **);
+        uint8_t **client_slot = RV_FIELD((uint8_t *)manager, EAppBlockManager_client, uint8_t **);
         Mutex_Lock(cache + BlockCache_lock);
-        uint32_t total = FIELD(cache, BlockCache_total_blocks, uint32_t);
+        uint32_t total = RV_FIELD(cache, BlockCache_total_blocks, uint32_t);
         uint32_t kept = kept_blocks(cache, client_slot ? *client_slot : 0);
         Mutex_Unlock(cache + BlockCache_lock);
-        uint32_t request = FIELD((uint8_t *)manager, EAppBlockManager_request_blocks, uint32_t);
+        uint32_t request = RV_FIELD((uint8_t *)manager, EAppBlockManager_request_blocks, uint32_t);
         uint32_t add = core_block_cache_shortfall(
-            total, kept, request, FIELD(MainHeap, MainHeap_free_bytes, uint32_t), block_bytes);
+            total, kept, request, RV_FIELD(MainHeap, MainHeap_free_bytes, uint32_t), block_bytes);
         if (add) {
             BlockCache_Grow((total + add) * block_bytes);
             grown_for_game = 1;
@@ -179,23 +181,23 @@ static uint32_t game_blocks_release(uint32_t manager, const struct core_next *ne
 {
     uint32_t result = core_next_call(next, manager, 0, 0, 0);
     uint8_t *cache = BlockCache_Get();
-    uint32_t block_bytes = cache ? FIELD(cache, BlockCache_block_bytes, uint32_t) : 0;
+    uint32_t block_bytes = cache ? RV_FIELD(cache, BlockCache_block_bytes, uint32_t) : 0;
     if (!grown_for_game || !block_bytes)
         return result;
     grown_for_game = 0;
     Mutex_Lock(cache + BlockCache_lock);
     uint32_t keep = import_cache_bytes / block_bytes;
-    uint32_t total = FIELD(cache, BlockCache_total_blocks, uint32_t);
+    uint32_t total = RV_FIELD(cache, BlockCache_total_blocks, uint32_t);
     uint32_t extra = total > keep ? total - keep : 0;
-    uint32_t free_before = FIELD(cache, BlockCache_free_count, uint32_t);
+    uint32_t free_before = RV_FIELD(cache, BlockCache_free_count, uint32_t);
     if (extra > free_before)
         extra = free_before;
     void *list = cache + BlockCache_free_blocks;
-    void **node = FIELD(cache, BlockCache_free_blocks + 4, void **); /* list.first */
+    void **node = RV_FIELD(cache, BlockCache_free_blocks + 4, void **); /* list.first */
     for (uint32_t i = 0; i < extra && (void *)node != list; i++)
         BlockList_Erase((void **)&node, list, node);
-    FIELD(cache, BlockCache_total_blocks, uint32_t) -=
-        free_before - FIELD(cache, BlockCache_free_count, uint32_t);
+    RV_FIELD(cache, BlockCache_total_blocks, uint32_t) -=
+        free_before - RV_FIELD(cache, BlockCache_free_count, uint32_t);
     BlockCache_PostRebalance(cache, 0);
     Mutex_Unlock(cache + BlockCache_lock);
     return result;
@@ -216,15 +218,15 @@ static uint64_t entry_position(uint32_t entry, uint32_t order, uint32_t reverse_
 {
     (void)next;
     uint64_t result = (uint64_t)entry << 32;
-    uint8_t *list = entry ? FIELD((uint8_t *)entry, MediaEntry_list, uint8_t *) : 0;
-    if (!list || !FIELD((uint8_t *)entry, MediaEntry_parent, void *) || !order)
+    uint8_t *list = entry ? RV_FIELD((uint8_t *)entry, MediaEntry_list, uint8_t *) : 0;
+    if (!list || !RV_FIELD((uint8_t *)entry, MediaEntry_parent, void *) || !order)
         return result | UINT32_MAX;
     uint8_t reverse = (uint8_t)reverse_arg;
     MediaList_ResolveOrderMode((struct MediaList *)list, &order, &reverse);
     if (!order || order > ORDER_LIMIT || MediaList_BuildOrderIndex((struct MediaList *)list, order))
         return result | UINT32_MAX;
-    uint8_t *entries = FIELD(list, MediaList_order_index + order * 4, uint8_t *);
-    uint32_t count = FIELD(entries, MediaOrder_count, uint32_t);
+    uint8_t *entries = RV_FIELD(list, MediaList_order_index + order * 4, uint8_t *);
+    uint32_t count = RV_FIELD(entries, MediaOrder_count, uint32_t);
     uint32_t *items = (uint32_t *)(entries + MediaOrder_entries);
     for (uint32_t i = 0; i < count; i++)
         if (items[i] == entry)

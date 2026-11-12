@@ -23,8 +23,6 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
-
 void *core_screens_caller;
 const struct core_menu_origin *core_screens_menu;
 
@@ -346,7 +344,7 @@ static int split_from(const struct core_screen *s, void *controller)
     const struct core_screen *parent = core_screens_of_controller(controller);
     if (parent)
         return parent->declaration && core_lists_kind(parent->declaration->kind) && parent->split;
-    return FIELD(controller, 0, void *) == (void *)SettingsMenuListController_vtable;
+    return RV_FIELD(controller, 0, void *) == (void *)SettingsMenuListController_vtable;
 }
 
 static void *bank;
@@ -411,7 +409,7 @@ static uint32_t template_of(uint8_t kind)
  *   page kind with a foreground push whatever is asked). */
 static uint32_t opening(const struct core_screen *s, uint8_t kind)
 {
-    uint8_t from = FIELD(UI_GetLayoutManager(), LayoutManager_kind, uint8_t);
+    uint8_t from = RV_FIELD(UI_GetLayoutManager(), LayoutManager_kind, uint8_t);
     uint32_t template = template_of(kind);
     if (s->split)
         return Transition_Standard;
@@ -456,7 +454,7 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
     if (s->owner)
         core_loader_screen_pushed(s->owner, s->module);
     void (*push)(void *, void *) =
-        FIELD(FIELD(controller, 0, void **), ScreenController_push_method, void *);
+        RV_FIELD(RV_FIELD(controller, 0, void **), ScreenController_push_method, void *);
     push(controller, created);
     if (s->declaration->opened) {
         struct rv_context ctx = {s->owner, created, arg, NULL, -1, NULL};

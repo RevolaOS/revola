@@ -19,8 +19,6 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-#define FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
-
 static void *bank;
 
 static const void *stock(uint32_t type, uint32_t id)
@@ -84,7 +82,7 @@ uint32_t core_indexed_selected(void)
 {
     void *model = UI_GetSelectionModel();
     uint32_t (*current)(void *) =
-        FIELD(FIELD(model, 0, void **), SelectionModel_current_index_method, void *);
+        RV_FIELD(RV_FIELD(model, 0, void **), SelectionModel_current_index_method, void *);
     return current(model);
 }
 
@@ -193,13 +191,13 @@ void core_indexed_select(const struct core_screen *s, uint32_t index)
         index = count - 1;
     void *model = UI_GetSelectionModel();
     void *(*find)(void *, uint32_t) =
-        FIELD(FIELD(model, 0, void **), SelectionModel_find_view_method, void *);
+        RV_FIELD(RV_FIELD(model, 0, void **), SelectionModel_find_view_method, void *);
     void *view = find(model, list_view(s));
     void *list = view ? Object_GetInterface(view, Interface_List) : NULL;
     if (!list)
         return;
     void (*select)(void *, uint32_t) =
-        FIELD(FIELD(list, 0, void **), ListInterface_select_method, void *);
+        RV_FIELD(RV_FIELD(list, 0, void **), ListInterface_select_method, void *);
     select(list, index);
 }
 
