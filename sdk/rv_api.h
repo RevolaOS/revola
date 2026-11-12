@@ -16,11 +16,15 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 36
+#define RV_API_MINOR 37
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
  * `field`: RV_HAS(api, format_size). */
+/* A field of an Apple struct at an offset of the symbols header:
+ * RV_FIELD(eq, ThreeBandEQ_preset, uint32_t). */
+#define RV_FIELD(base, offset, type) (*(type *)((uint8_t *)(base) + (offset)))
+
 #define RV_HAS(table, field)                                                                   \
     ((table)->size >= __builtin_offsetof(__typeof__(*(table)), field) + sizeof((table)->field))
 
@@ -59,7 +63,9 @@ enum rv_hook_mode {
  * stack. Site ids are RV_SITE_* from rv_sites.h, or RV_RAW_SITE(n) for the n-th
  * [[site]] of the extension's manifest. The struct must live as long as the
  * binding. Word sites use REPLACE mode and the uint32_t word member instead of
- * a handler. The core writes the instruction directly; it is never called. */
+ * a handler. The core writes the instruction directly; it is never called. A
+ * word site that holds an address takes one of the module's own objects
+ * through RV_HOOK_POINTER; the loader relocates it. */
 #define RV_RAW_SITE(index) (0xffffff00u | (index))
 struct rv_hook {
     uint32_t site;
@@ -215,12 +221,16 @@ enum rv_color_role {
     RV_COLOR_HIGHLIGHT_TEXT, /* text on the selected row */
     RV_COLOR_DIM,            /* secondary text, such as a row's detail */
     RV_COLOR_PARAGRAPH,      /* the text of a text page */
+    RV_COLOR_ACCENT_TEXT,    /* the highlight's colour as text, such as the Search box's caret */
     RV_COLOR_ROLE_COUNT,
 };
 
 /* The stock fonts: the title bar's, the text pages' and the preview pane's
  * large caption. */
 enum rv_font { RV_FONT_TITLE, RV_FONT_TEXT, RV_FONT_LARGE, RV_FONT_COUNT };
+
+/* Where rv_gfx.text_in puts the text across its rectangle. */
+enum rv_align { RV_ALIGN_LEFT = -1, RV_ALIGN_CENTER, RV_ALIGN_RIGHT };
 
 /* The height of a row drawn by rv_gfx.row, as the stock list rows. */
 #define RV_GFX_ROW_HEIGHT 25
@@ -256,6 +266,13 @@ struct rv_gfx {
      * and `left` and `right` on either side of it. */
     void (*card)(int width, int height, const char *left, const char *right,
                  const struct rv_bitmap *icon);
+    /* `utf8` on one line in `rect`: vertically centred, across it by `align`
+     * (rv_align). Nothing is clipped to the rectangle. */
+    void (*text_in)(const struct rv_rect *rect, uint8_t font, rv_color color, const char *utf8,
+                    int8_t align);
+    /* Each channel of `from` moved toward `to` by weight/255, rounded to
+     * nearest; opaque. For the greys and tints between two roles. */
+    rv_color (*mix)(rv_color from, rv_color to, uint8_t weight);
 };
 
 /* RV_INPUT_HOLD: the hold switch moved; `delta` is 1 when it locked, 0 when it
@@ -569,6 +586,12 @@ struct rv_api {
     /* Highlight a dynamic-list row, clamped to its current count. If covered
      * by another screen, apply on return. An empty list has no selection. UI task. */
     void (*ui_select)(rv_extension_handle self, const char *screen, uint32_t row);
+
+    /* A string resource id that resolves to a copy of `text`, for a place in
+     * Apple's UI that names its text by resource id, such as a row of a table a
+     * hook extends. One of the extension's 4,096 ids; the copy is freed with
+     * the extension. 0 when the ids or the heap run out. UI task. */
+    uint32_t (*string_resource)(rv_extension_handle self, const char *text);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its

@@ -298,6 +298,53 @@ SITE(VolumeExposure_TrackFinishTest_word, SITE_VolumeExposure_TrackFinishTest_wo
 SITE(MediaPlayer_PostVolumeExposureLimitEvent_word,
      SITE_MediaPlayer_PostVolumeExposureLimitEvent_word, WORD, 0, 0xe3a00005, 0, 0, 0, 0)
 
+/* The EQ of the audio effects chain: one ThreeBandEQ for all playback. Process:
+ * (eq, samples, frames, output, output_frames), the last on the stack; interleaved
+ * stereo in place, on the PCM output pump task while the effect is enabled. Reset:
+ * (eq), the histories at rest. The two load calls: (eq), the stages for the stored
+ * preset and sample rate, when either changes; a reset follows each. Load and reset
+ * run on the task that changed the setting or prepared the track, not serialised
+ * with process. */
+SITE(EQ_Process_slot, SITE_EQ_Process_slot, VTABLE, ADDR_EQ_ProcessThreeBiquadsInPlace,
+     ADDR_EQ_ProcessThreeBiquadsInPlace, 0, 0, 4 | STACK(1), 0)
+SITE(EQ_Reset_slot, SITE_EQ_Reset_slot, VTABLE, ADDR_EQ_ResetAllBiquadStates,
+     ADDR_EQ_ResetAllBiquadStates, 0, 0, 1, 0)
+SITE(EQ_SetPreset_Load_call, SITE_EQ_SetPreset_Load_call, CALL, ADDR_EQ_LoadPresetCoefficients,
+     BL(SITE_EQ_SetPreset_Load_call, ADDR_EQ_LoadPresetCoefficients), 0, 0, 1, 0)
+SITE(EQ_SetRate_Load_call, SITE_EQ_SetRate_Load_call, CALL, ADDR_EQ_LoadPresetCoefficients,
+     BL(SITE_EQ_SetRate_Load_call, ADDR_EQ_LoadPresetCoefficients), 0, 0, 1, 0)
+
+/* EQ settings id to DSP preset: (settings_id); ids 100 to 121 are presets 1 to 22,
+ * any other 0. Its two callers are in MediaTrack_ApplyEQ, under the player's mutex;
+ * nothing is inside it while core_boot runs during UI start-up. */
+SITE(EQ_SettingsIdToDspPreset_entry, SITE_EQ_SettingsIdToDspPreset_entry, ENTRY,
+     REPLAY(EQ_SettingsIdToDspPreset_entry), 0xe2400064, 0xe3500015, 0, 1, 0)
+
+/* MediaTrack_ApplyEQ reads the track's own EQ settings id, which replaces the
+ * player's unless that is Flat: (item, track), track copied from r4; 0 keeps the
+ * player's. */
+SITE(EQ_TrackPreset_call, SITE_EQ_TrackPreset_call, CALL, ADDR_MediaItem_GetEQSettingsId,
+     BL(SITE_EQ_TrackPreset_call, ADDR_MediaItem_GetEQSettingsId), 0, 0, 2, 4)
+
+/* The number of EQ presets with Off, 23: cmp r1 in EQ_SetDspPreset and the Settings
+ * model's preview and name lookups, cmp r2 in EQ_SettingsIdToMenuIndex, mov r0 for
+ * the EQ list's row count, cmp r5 in Settings_CollectPropertyResources. */
+SITE(EQ_DspCount_word, SITE_EQ_DspCount_word, WORD, 0, 0xe3510017, 0, 0, 0, 0)
+SITE(EQ_PreviewCount_word, SITE_EQ_PreviewCount_word, WORD, 0, 0xe3510017, 0, 0, 0, 0)
+SITE(EQ_NameCount_word, SITE_EQ_NameCount_word, WORD, 0, 0xe3510017, 0, 0, 0, 0)
+SITE(EQ_SettingsCount_word, SITE_EQ_SettingsCount_word, WORD, 0, 0xe3520017, 0, 0, 0, 0)
+SITE(EQ_ProviderCount_word, SITE_EQ_ProviderCount_word, WORD, 0, 0xe3a00017, 0, 0, 0, 0)
+SITE(EQ_ResourceCount_word, SITE_EQ_ResourceCount_word, WORD, 0, 0xe3550017, 0, 0, 0, 0)
+
+/* Literals holding the two tables with a row per preset: the settings ids
+ * (EQ_PresetIds) and the name and preview resource ids (EQ_Presets). */
+SITE(EQ_MenuIds_literal, SITE_EQ_MenuIds_literal, WORD, 0, ADDR_EQ_PresetIds, 0, 0, 0, 0)
+SITE(EQ_SettingsIds_literal, SITE_EQ_SettingsIds_literal, WORD, 0, ADDR_EQ_PresetIds, 0, 0, 0, 0)
+SITE(EQ_PreviewTable_literal, SITE_EQ_PreviewTable_literal, WORD, 0, ADDR_EQ_Presets, 0, 0, 0, 0)
+SITE(EQ_NameTable_literal, SITE_EQ_NameTable_literal, WORD, 0, ADDR_EQ_Presets, 0, 0, 0, 0)
+SITE(EQ_ResourceTable_literal, SITE_EQ_ResourceTable_literal, WORD, 0, ADDR_EQ_Presets, 0, 0, 0,
+     0)
+
 /* Add to On-The-Go from an album or artist list hands the browser's filtered
  * selection to the On-The-Go playlist: (otg, row, browser, save); row is -1 for the
  * whole selection. */

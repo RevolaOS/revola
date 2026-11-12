@@ -24,13 +24,13 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | Declaration | What the user sees |
 |---|---|
 | `RV_HOOK_FILTER(site, fn)`, `RV_HOOK_FILTER_AT(site, fn, priority)`, `RV_HOOK_REPLACE(site, fn)` | nothing directly: a handler on a hook site |
-| `RV_HOOK_WORD(site, word)` | nothing directly: an exclusive instruction replacement at a word site |
+| `RV_HOOK_WORD(site, word)`, `RV_HOOK_POINTER(site, object)` | nothing directly: an exclusive instruction replacement at a word site, or the address of the module's own `object` at a word site that holds one |
 | `RV_SETTING_BOOL`, `RV_SETTING_INT`, `RV_SETTING_CHOICE`, `RV_SETTING_SLIDER`, `RV_SETTING_MULTI` | a setting with its labels; an `RV_ROW_SETTING(label, key)` row shows its value and flips it or opens its screen |
 | `RV_SCREEN_LIST(id, title, rows)` of `RV_ROW_PUSH`, `RV_ROW_ACTION`, `RV_ROW_SETTING`, `RV_ROW_INFO` rows | a menu, full width or beside the Settings preview pane as the screen it opens from decides (`.layout` overrides) |
 | `RV_SCREEN_CHOICE`, `RV_SCREEN_MULTI_CHOICE`, `RV_SCREEN_SLIDER` | a screen over a setting with a title of its own; a labelled setting's `RV_ROW_SETTING` row opens one the core makes |
 | `RV_SCREEN_TEXT(id, title, paragraphs)` | a text page |
 | `RV_SCREEN_DYNAMIC_LIST(id, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
-| `RV_SCREEN_CANVAS(id, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, colour roles themes can change, wrapped paragraphs, list rows, BMaps whole, in part or tiled, and the Settings > About card the core's Usage page uses) and reads wheel and key input |
+| `RV_SCREEN_CANVAS(id, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, placed or aligned in a rectangle, colour roles themes can change and mixes between them, wrapped paragraphs, list rows, BMaps whole, in part or tiled, and the Settings > About card the core's Usage page uses) and reads wheel and key input |
 | `RV_SCREEN_CONTEXT(rows)` of `RV_CONTEXT_ROW(row, .available = predicate)` | a long-press menu on a list or dynamic list; action and push rows receive the highlighted index in `ctx->row`; unavailable rows are hidden and Cancel closes the menu |
 | `RV_MENU_ENTRY(menu, after, row)` | a row in `RV_MENU_MAIN`, `RV_MENU_MUSIC`, `RV_MENU_EXTRAS`, `RV_MENU_SETTINGS` or a context menu (`RV_MENU_NOW_PLAYING_CONTEXT`, `RV_MENU_SONG_CONTEXT`, `RV_MENU_ALBUM_CONTEXT`, `RV_MENU_ARTIST_CONTEXT`, `RV_MENU_PODCAST_EPISODE_CONTEXT`, `RV_MENU_ITUNES_U_EPISODE_CONTEXT`, `RV_MENU_AUDIOBOOK_CONTEXT`, `RV_MENU_MOVIE_CONTEXT`, `RV_MENU_TV_EPISODE_CONTEXT`, `RV_MENU_VIDEO_PLAYLIST_CONTEXT`), after a stock row from `rv_menus.h`; under Settings `.caption` and `.bitmap` fill the preview pane, `.shown_by` names a bool setting that shows the row (Settings > Main Menu and Music Menu flip it) |
 
@@ -81,6 +81,8 @@ Each extension has a data folder, `/Revola/Data/<id>/`. `api->file_open` opens a
 The core decodes only the menu bitmap shown and keeps a canvas's bitmaps decoded while the canvas is open, so `gfx->bitmap` costs a decode on the first draw only. Everything decoded is counted against the extension.
 
 For code no core site covers, the manifest may declare raw sites (`[[site]]`, described at the top of `manifest.py`) and bind them as `RV_RAW_SITE(n)`. They are exclusive and checked against the running firmware at load. Ask for a core site when one would serve others too.
+
+`api->string_resource(self, text)` gives a string resource id that resolves to `text`, for a hook that puts the extension's own name into a table Apple reads by resource id, such as a row added with `RV_HOOK_POINTER`.
 
 Build rules: Thumb, `-mlong-calls`, `-fno-pic -fno-jump-tables`, no C library beyond `rv_libc.h` (`api->format_number` and `api->format_size` write "12,345" and "6.0 KB"); only `R_ARM_ABS32` relocations may remain, which rvx-pack checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.
 

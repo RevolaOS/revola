@@ -27,6 +27,7 @@ static const rv_color roles[RV_COLOR_ROLE_COUNT] = {
     [RV_COLOR_HIGHLIGHT_TEXT] = 0xffffffff,
     [RV_COLOR_DIM] = 0xff6b6d6b,
     [RV_COLOR_PARAGRAPH] = 0xff424542,
+    [RV_COLOR_ACCENT_TEXT] = 0xff3185d0,
 };
 
 /* Helvetica in the firmware's size units: the status bar's RES_Font_BoldSmall,
@@ -268,9 +269,30 @@ static void card(int width, int height, const char *left_text, const char *right
              right_text);
 }
 
+static void text_in(const struct rv_rect *r, uint8_t font, rv_color c, const char *utf8,
+                    int8_t align)
+{
+    int advance = measure(font, utf8);
+    int x = align == RV_ALIGN_LEFT    ? r->x
+            : align == RV_ALIGN_RIGHT ? r->x + r->width - advance
+                                      : r->x + (r->width - advance) / 2;
+    text(x, r->y + (r->height - line_height(font)) / 2, font, c, utf8);
+}
+
+static rv_color mix(rv_color from, rv_color to, uint8_t weight)
+{
+    rv_color out = 0xff000000u;
+    for (unsigned int shift = 0; shift < 24; shift += 8) {
+        unsigned int a = from >> shift & 0xff, b = to >> shift & 0xff;
+        unsigned int value = a * (255u - weight) + b * weight + 127;
+        out |= (rv_color)((value + 1 + (value >> 8)) >> 8) << shift; /* value / 255 */
+    }
+    return out;
+}
+
 const struct rv_gfx core_gfx = {sizeof core_gfx, color,     fill,      text,     measure,
                                  line_height,    bitmap,    bmap,      paragraph, row,
-                                 bmap_part,      bmap_tile, card};
+                                 bmap_part,      bmap_tile, card,      text_in,   mix};
 
 void core_gfx_begin(void *graphics, const int32_t *bounds, struct core_screen *canvas)
 {

@@ -979,6 +979,21 @@ static void api_ui_select(rv_extension_handle self, const char *screen, uint32_t
         core_screens_select(s, row);
 }
 
+static uint32_t api_string_resource(rv_extension_handle self, const char *text)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (!record || !text)
+        return 0;
+    uint32_t id = core_resource_take(core_resource_owner(record), 1);
+    if (!id)
+        return 0;
+    uint32_t n = 0;
+    while (text[n])
+        n++;
+    core_resource_set(Resource_String, id, text, n + 1);
+    return id;
+}
+
 static void api_ui_invalidate(rv_extension_handle self)
 {
     struct rv_extension_record *record = valid_handle(self);
@@ -1184,6 +1199,7 @@ static const struct rv_api api = {
     .irq_save = core_irq_save,
     .irq_restore = core_irq_restore,
     .ui_select = api_ui_select,
+    .string_resource = api_string_resource,
 };
 
 /* Modules */

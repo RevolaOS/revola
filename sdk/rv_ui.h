@@ -24,6 +24,9 @@
     {.site = (site_), .handler = (fn_), .priority = (priority_), .mode = RV_HOOK_MODE_FILTER}
 #define RV_HOOK_REPLACE(site_, fn_) {.site = (site_), .handler = (fn_), .mode = RV_HOOK_MODE_REPLACE}
 #define RV_HOOK_WORD(site_, word_) {.site = (site_), .word = (word_), .mode = RV_HOOK_MODE_REPLACE}
+/* A word site that holds an address: the module's own `object_`, relocated by the loader. */
+#define RV_HOOK_POINTER(site_, object_)                                                         \
+    {.site = (site_), .handler = (object_), .mode = RV_HOOK_MODE_REPLACE}
 
 /* Rows of a list screen or of an entry. */
 #define RV_ROW_PUSH(label_, screen_) {.label = (label_), .kind = RV_ROW_KIND_PUSH, .screen = (screen_)}
