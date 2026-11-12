@@ -4,7 +4,7 @@
 
 ## Palette
 
-`rv_canvas_begin(&canvas, gfx, width, height)` fills a `struct rv_canvas` with the palette and clears the canvas to the background. The palette is rebuilt on every draw, since a theme may change the roles.
+`rv_canvas_begin(&canvas, gfx, width, height)` fills a `struct rv_canvas` with the palette and clears the canvas to the background. `canvas.width` and `canvas.height` are the drawable area under the title bar; size a bottom row from `canvas.height` so it reaches the edge of the screen. The palette is rebuilt on every draw, since a theme may change the roles.
 
 | Colour | What it is |
 |---|---|
