@@ -427,3 +427,20 @@ SITE(MediaListModel_Destroy_slot, SITE_MediaListModel_Destroy_slot, VTABLE,
 SITE(MediaListModel_Destroy_call, SITE_MediaListModel_Destroy_call, CALL,
      ADDR_MediaListModel_Destroy,
      BL(SITE_MediaListModel_Destroy_call, ADDR_MediaListModel_Destroy), 0, 1, 1, 0)
+
+/* MP4 parser seek: the audio track walk, (parser, position_ms). Only the audio
+ * worker task calls it (MediaStream_Seek and the stream start), never while
+ * core_boot runs. A filter pre-positions the track state and continues. */
+SITE(MP4Parser_SeekAudioTrack_entry, SITE_MP4Parser_SeekAudioTrack_entry, ENTRY,
+     REPLAY(MP4Parser_SeekAudioTrack_entry), 0xe92d4ffe, 0xe1a04000, 0, 2, 0)
+
+/* The MP4 parser compares the 64-bit decode time with the edit list after
+ * `asr r1, r0, #31` on its low word: in MP4Parser_ReadAudioTrackSamples against the
+ * edit start (r2 = track + edit_media_start) and end (r2 = track + edit_media_end),
+ * and in MP4Parser_SeekAudioTrack against the end. */
+SITE(MP4Parser_ReadEditStartTest_word, SITE_MP4Parser_ReadEditStartTest_word, WORD, 0,
+     0xe1a01fc0, 0, 0, 0, 0)
+SITE(MP4Parser_ReadEditEndTest_word, SITE_MP4Parser_ReadEditEndTest_word, WORD, 0, 0xe1a01fc0,
+     0, 0, 0, 0)
+SITE(MP4Parser_SeekEditEndTest_word, SITE_MP4Parser_SeekEditEndTest_word, WORD, 0, 0xe1a01fc0,
+     0, 0, 0, 0)
