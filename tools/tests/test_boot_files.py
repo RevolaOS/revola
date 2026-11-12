@@ -28,7 +28,7 @@ static unsigned char io_buffer[16384];
 static jmp_buf stopped;
 static const char *error;
 static void stop(const char *message) { error=message; longjmp(stopped,1); }
-static off_t filesize(int fd) {struct stat s; assert(!fstat(fd,&s)); return s.st_size;}
+static off_t ffilesize(int fd) {struct stat s; assert(!fstat(fd,&s)); return s.st_size;}
 static int host_open(const char *p, int flags) {return open(p+1,flags);}
 #define open host_open
 """
