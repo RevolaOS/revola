@@ -21,6 +21,7 @@
 #define BL(address, callee) 0
 #define REPLAY(name) 0
 #define STACK(words) ((words) << 4)
+#define COPY(argument, reg) ((reg) << (4 * (argument)))
 
 .set index, 0
 
@@ -36,12 +37,17 @@
 .endif
 .endm
 
-/* next in r<argc> for up to three arguments; a frame pushes it as the first stack
- * argument for four, below copies of Apple's own stack arguments (one or two), with
- * the pushed registers chosen to keep sp 8-byte aligned at the call. */
+/* Each nibble of `copy` names a register moved into r0, r1, r2 or r3 first, as an
+ * assembled mov since the register is an expression. next in r<argc> for up to three
+ * arguments; a frame pushes it as the first stack argument for four, below copies of
+ * Apple's own stack arguments (one or two), with the pushed registers chosen to keep
+ * sp 8-byte aligned at the call. */
 .macro site_stub name, kind, address, word0, word1, args, copy
 .set argc, \args & 15
 .set stack, \args >> 4
+.if \kind == WORD && \copy
+.error "\name: WORD site cannot copy"
+.endif
 .if \kind != WORD
 .text
 .balign 4
@@ -49,17 +55,20 @@ core_stub_\name:
 .if \kind == INSERT
     push {r0-r3, r12, lr}
 .endif
-.if \copy
-.if argc == 1
-    mov r0, r\copy
-.elseif argc == 2
-    mov r1, r\copy
-.elseif argc == 3
-    mov r2, r\copy
-.else
-    mov r3, r\copy
+.set k, 0
+.rept 4
+.set reg, ((\copy) >> (4 * k)) & 15
+.if reg
+.if reg < 4 || reg > 11
+.error "\name: COPY register must be r4-r11"
 .endif
+.if k >= argc
+.error "\name: COPY argument beyond argc"
 .endif
+    .word 0xe1a00000 | (k << 12) | reg /* mov r<k>, r<reg> */
+.endif
+.set k, k + 1
+.endr
 .if \kind == INSERT
     next_in_register argc, core_root_\name
     ldr r12, =core_site_slots + 4 * index

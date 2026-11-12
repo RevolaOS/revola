@@ -13,6 +13,7 @@
 #include "osos-2.0.5.h"
 #include "ui/bitmaps.h"
 #include "ui/clones.h"
+#include "ui/indexed.h"
 #include "ui/lists.h"
 #include "ui/menus.h"
 #include "ui/resources.h"
@@ -229,8 +230,11 @@ int core_panes_list_property(struct core_screen *s, uint32_t type, uint32_t id, 
     const struct rv_screen *d = s->declaration;
     if (!core_lists_kind(d->kind))
         return 0;
-    uint32_t caption = CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1));
-    if (id == caption && type == Property_String)
+    uint32_t caption = CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1)), index;
+    if (id == caption && type == Property_String && d->kind == RV_SCREEN_KIND_CHOICE &&
+        (index = core_indexed_selected()) < d->choice.count)
+        *(const char **)out = d->choice.labels[index];
+    else if (id == caption && type == Property_String)
         *(const char **)out = d->caption ? d->caption : "";
     else if (id == caption + 1 && type == Property_Bitmap)
         *(const void **)out = core_bitmap(s->owner, d->bitmap);
@@ -239,6 +243,16 @@ int core_panes_list_property(struct core_screen *s, uint32_t type, uint32_t id, 
                                                         RES_SettingsPreview_Background_Image);
     else
         return 0;
+    return 1;
+}
+
+int core_panes_list_action(struct core_screen *s, uint32_t id, uint32_t argument)
+{
+    if (!core_lists_kind(s->declaration->kind) ||
+        id != CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1)))
+        return 0;
+    if (argument != ActionSupportQuery)
+        core_screens_notify(id);
     return 1;
 }
 

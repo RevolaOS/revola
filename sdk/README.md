@@ -27,7 +27,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | `RV_HOOK_WORD(site, word)`, `RV_HOOK_POINTER(site, object)` | nothing directly: an exclusive instruction replacement at a word site, or the address of the module's own `object` at a word site that holds one |
 | `RV_SETTING_BOOL`, `RV_SETTING_INT`, `RV_SETTING_CHOICE`, `RV_SETTING_SLIDER`, `RV_SETTING_MULTI` | a setting with its labels; an `RV_ROW_SETTING(label, key)` row shows its value and flips it or opens its screen |
 | `RV_SCREEN_LIST(id, title, rows)` of `RV_ROW_PUSH`, `RV_ROW_ACTION`, `RV_ROW_SETTING`, `RV_ROW_INFO` rows | a menu, full width or beside the Settings preview pane as the screen it opens from decides (`.layout` overrides) |
-| `RV_SCREEN_CHOICE`, `RV_SCREEN_MULTI_CHOICE`, `RV_SCREEN_SLIDER` | a screen over a setting with a title of its own; a labelled setting's `RV_ROW_SETTING` row opens one the core makes |
+| `RV_SCREEN_CHOICE`, `RV_SCREEN_MULTI_CHOICE`, `RV_SCREEN_SLIDER` | a screen over a setting with a title of its own; a labelled setting's `RV_ROW_SETTING` row opens one the core makes; beside Settings a choice screen's pane names the highlighted choice under its `.bitmap`, as Settings > EQ does |
 | `RV_SCREEN_TEXT(id, title, paragraphs)` | a text page |
 | `RV_SCREEN_DYNAMIC_LIST(id, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
 | `RV_SCREEN_CANVAS(id, title, draw, input)` | the extension draws with the `rv_gfx` table it is given (fills, text in the stock fonts, placed or aligned in a rectangle, colour roles themes can change and mixes between them, wrapped paragraphs, list rows, BMaps whole, in part or tiled, and the Settings > About card the core's Usage page uses) and reads wheel and key input |

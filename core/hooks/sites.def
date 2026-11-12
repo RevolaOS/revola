@@ -16,11 +16,13 @@
  *   argc      register arguments the handler receives (at most 4), plus STACK(n) for
  *             n (1 or 2) further arguments Apple passes on the stack; the handler sees
  *             them after `next`
- *   copy      0, or a register (4 to 11) the stub copies into r[argc-1] first, so a
- *             value Apple keeps in a callee-saved register at the site is an argument
+ *   copy      0, or COPY(n, r) terms or'ed together: the stub moves register r (4 to
+ *             11) into r<n> first, so a value Apple keeps in a callee-saved register
+ *             at the site is argument n (0 to 3)
  */
 
 #define STACK(words) ((words) << 4)
+#define COPY(argument, reg) ((reg) << (4 * (argument)))
 
 /* Apple loads its preferences here; the disk is readable from this point on. */
 SITE(Preferences_LoadFile_call, SITE_Preferences_LoadFile_call, CALL,
@@ -176,7 +178,7 @@ SITE(SettingsModel_ResetAllSettings_call, SITE_SettingsModel_ResetAllSettings_ca
  * the library browser's owner for the whole function, then sub, reserve, floor test,
  * floor set, and BlockCache_Grow(r0). The first word becomes a call that returns the
  * size; the other three become nops while bound. */
-SITE(BlockCache_ImportCost_word, SITE_BlockCache_ImportCost_word, CALL, 0, 0xe0400001, 0, 0, 3, 4)
+SITE(BlockCache_ImportCost_word, SITE_BlockCache_ImportCost_word, CALL, 0, 0xe0400001, 0, 0, 3, COPY(2, 4))
 SITE(BlockCache_ReserveNative_word, SITE_BlockCache_ReserveNative_word, WORD, 0, 0xe240060e, 0,
      0, 0, 0)
 SITE(BlockCache_FloorTest_word, SITE_BlockCache_FloorTest_word, WORD, 0, 0xe350060e, 0, 0, 0, 0)
@@ -224,7 +226,7 @@ SITE(ArtworkDatabase_FindByDbid_08046494_call, SITE_ArtworkDatabase_FindByDbid_0
      BL(SITE_ArtworkDatabase_FindByDbid_08046494_call, ADDR_ArtworkDatabase_FindByDbid), 0, 1, 4 | STACK(1), 0)
 /* The mhit parser's store of a track's image id: str r0, [r4, #0xf0]. */
 SITE(TrackData_ArtworkId_word, SITE_TrackData_ArtworkId_word, INSERT, 0, 0xe58400f0, 0,
-     0, 2, 4)
+     0, 2, COPY(1, 4))
 /* The iTunesDB track parse: (reader). */
 SITE(ITunesDB_ImportTrackDataset_call, SITE_ITunesDB_ImportTrackDataset_call, CALL,
      ADDR_ITunesDB_ImportTrackDataset,
@@ -266,7 +268,7 @@ SITE(TextView_DrawString_entry, SITE_TextView_DrawString_entry, ENTRY,
  * through the draw; view + TextView_text points to it. */
 SITE(MarqueeTextView_DrawColor_call, SITE_MarqueeTextView_DrawColor_call, CALL,
      ADDR_GraphicsContext_SetColor,
-     BL(SITE_MarqueeTextView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, 4)
+     BL(SITE_MarqueeTextView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, COPY(2, 4))
 
 /* Accessory signature verification, called only by the General Lingo 0x18 handler.
  * RSA: (manager, channel, key_id, signature, signature_bytes), last on the stack.
@@ -329,7 +331,7 @@ SITE(EQ_ApplySettingsId_slot, SITE_EQ_ApplySettingsId_slot, VTABLE,
  * player's unless that is Flat: (item, track), track copied from r4; 0 keeps the
  * player's. */
 SITE(EQ_TrackPreset_call, SITE_EQ_TrackPreset_call, CALL, ADDR_MediaItem_GetEQSettingsId,
-     BL(SITE_EQ_TrackPreset_call, ADDR_MediaItem_GetEQSettingsId), 0, 0, 2, 4)
+     BL(SITE_EQ_TrackPreset_call, ADDR_MediaItem_GetEQSettingsId), 0, 0, 2, COPY(1, 4))
 
 /* The number of EQ presets with Off, 23: cmp r1 in EQ_SetDspPreset and the Settings
  * model's preview and name lookups, cmp r2 in EQ_SettingsIdToMenuIndex, mov r0 for
@@ -370,6 +372,17 @@ SITE(PodcastEpisodes_CancelAppend_call, SITE_PodcastEpisodes_CancelAppend_call, 
      BL(SITE_PodcastEpisodes_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
 SITE(PodcastEpisodes_Action_slot, SITE_PodcastEpisodes_Action_slot, VTABLE,
      ADDR_PodcastEpisodes_DispatchAction, ADDR_PodcastEpisodes_DispatchAction, 0, 1, 3, 0)
+
+/* The processed PCM on the output pump task, after every effect stage and the
+ * post-effects gain, as Audio_ProcessEffectsAndOutput fetches the queue to submit it:
+ * (samples, frames, context), from r6, r4 and r9. Interleaved S16 stereo in place when
+ * AudioEffectsContext_output_bits is 16 and _output_channels 2, at _output_rate.
+ * Apple's callee, a DRAM thunk into IRAM, takes no arguments and its result is the
+ * queue the submission needs, so a handler returns what next returns. */
+SITE(AudioOutputQueue_Get_call, SITE_AudioOutputQueue_Get_call, CALL,
+     ADDR_AudioOutputQueue_Get_thunk,
+     BL(SITE_AudioOutputQueue_Get_call, ADDR_AudioOutputQueue_Get_thunk), 0, 1, 3,
+     COPY(0, 6) | COPY(1, 4) | COPY(2, 9))
 
 /* The iTunes U episode, audiobook, movie, TV episode and video playlist lists:
  * the Cancel row of the menus that have one, and each class's action slot

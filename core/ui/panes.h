@@ -29,6 +29,8 @@ int core_panes_property(uint32_t type, uint32_t id, uint32_t out);
 /* Answers the pane caption, icon and box of a split list screen. */
 struct core_screen;
 int core_panes_list_property(struct core_screen *screen, uint32_t type, uint32_t id, uint32_t out);
+/* The handler a split choice list's highlight names: the pane line is read again. */
+int core_panes_list_action(struct core_screen *screen, uint32_t id, uint32_t argument);
 void core_panes_init(void *bank);
 
 #endif

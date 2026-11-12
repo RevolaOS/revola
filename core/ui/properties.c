@@ -153,6 +153,8 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     if (core_menus_pane(item, argument))
         return 1;
     struct core_screen *s = core_screens_of_id(item);
+    if (s && core_panes_list_action(s, item, argument))
+        return 1;
     if (s && core_screen_menu_action(s, controller, item, argument))
         return 1;
     struct rv_extension_record *owner = s ? s->owner : NULL;

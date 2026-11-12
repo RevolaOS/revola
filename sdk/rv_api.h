@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 38
+#define RV_API_MINOR 39
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -349,7 +349,8 @@ struct rv_screen {
     };
     /* A list in the split layout shows these in the preview pane beside the
      * title: a line of text and an icon on the system's box; NULL shows
-     * nothing. */
+     * nothing. A choice screen's line names the highlighted choice instead,
+     * as Settings > EQ does. */
     const char *caption;
     const struct rv_bitmap *bitmap;
     /* After the screen was pushed, and after it closed for good: for a canvas
