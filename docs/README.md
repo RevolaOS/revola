@@ -8,6 +8,7 @@
 | [Uninstalling](guide/uninstall.md) | Removing RevolaOS and restoring Apple's bootloader |
 | [Extensions](guide/extensions.md) | Turning extensions on and off, installing one from a file, what Settings > Extensions shows |
 | [Recovery](guide/recovery.md) | The error screen, crash reports, starting without extensions |
+| [Troubleshooting](guide/troubleshooting.md) | The installer does not find the iPod, a stopped installation, startup errors, leftovers after an uninstall |
 
 ## Core
 
