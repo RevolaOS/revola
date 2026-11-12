@@ -742,7 +742,7 @@ static int valid_descriptor(const struct rv_descriptor *d, uint32_t module)
         for (uint32_t j = 0; e->shown_by && j < d->setting_count; j++)
             if (d->settings[j].key == e->shown_by)
                 shown_by = &d->settings[j];
-        if (e->menu > RV_MENU_PODCAST_EPISODE_CONTEXT || !valid_row(&e->row) ||
+        if (e->menu > RV_MENU_VIDEO_PLAYLIST_CONTEXT || !valid_row(&e->row) ||
             (e->shown_by && (!shown_by || shown_by->type != RV_SETTING_TYPE_BOOL)))
             return 0;
     }

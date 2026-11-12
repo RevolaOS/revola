@@ -16,11 +16,30 @@
 #include "hooks/sites.h"
 #include <stddef.h>
 
-/* One binding per row of the roots a screen serves. */
-static void write_bindings(struct core_writer *w, uint32_t screen_id)
+/* The media list layouts that bind no long press of Select, while the other
+ * layouts of their screens do: movies, TV episodes, video playlist tracks and
+ * the songs of a one-album artist. They get the binding every other media list
+ * has, which opens the context menu the core builds for the first two and the
+ * stock one for the others. */
+static const uint32_t unbound_layouts[] = {
+    RES_MediaLists_Movies_WithTime_Layout,
+    RES_MediaLists_TVEpisodes_Plain_Layout,
+    RES_MediaLists_MixedVideoTracks_WithSubInfo_Layout,
+    RES_MediaLists_Songs_WithArtistAndArtwork_Layout,
+};
+
+/* One binding per row of the roots a screen serves, and the long press of
+ * Select on a layout without one. */
+static void write_bindings(struct core_writer *w, uint32_t screen_id, uint32_t layout_id)
 {
     uint32_t count = 0, begin = w->at;
     core_write_word(w, 0);
+    for (uint32_t i = 0; i < sizeof unbound_layouts / sizeof unbound_layouts[0]; i++)
+        if (unbound_layouts[i] == layout_id) {
+            core_write_event(w, "button.select.pressandhold", "HandleShowContextualMenu", NULL,
+                             NULL, 0);
+            count++;
+        }
     EACH_ROW(r) {
         if (!core_menus_serves(r->root, screen_id))
             continue;
@@ -58,15 +77,16 @@ static uint32_t layout_events(uint32_t layout, const struct core_next *next)
     uint32_t result = core_next_call(next, layout, 0, 0, 0);
     uint8_t *screen = *(uint8_t **)((uint8_t *)layout + Layout_screen);
     uint32_t screen_id = screen ? core_word_at(screen, LayoutScreen_id) : 0;
+    uint32_t layout_id = core_word_at((void *)layout, Layout_id);
     struct core_writer measure = {NULL, 0};
-    write_bindings(&measure, screen_id);
+    write_bindings(&measure, screen_id, layout_id);
     if (measure.at <= 4)
         return result;
     uint8_t *stream = Heap_AllocateZeroed(measure.at);
     if (!stream)
         return result;
     struct core_writer w = {stream, 0};
-    write_bindings(&w, screen_id);
+    write_bindings(&w, screen_id, layout_id);
     core_clone_read_events((void *)layout, stream, w.at);
     Heap_Free(stream);
     return result;

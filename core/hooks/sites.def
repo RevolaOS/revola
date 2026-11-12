@@ -319,6 +319,34 @@ SITE(PodcastEpisodes_CancelAppend_call, SITE_PodcastEpisodes_CancelAppend_call, 
 SITE(PodcastEpisodes_Action_slot, SITE_PodcastEpisodes_Action_slot, VTABLE,
      ADDR_PodcastEpisodes_DispatchAction, ADDR_PodcastEpisodes_DispatchAction, 0, 1, 3, 0)
 
+/* The iTunes U episode, audiobook, movie, TV episode and video playlist lists:
+ * the Cancel row of the menus that have one, and each class's action slot
+ * (controller, action, argument). Movies and TV episodes build no menu; their
+ * show-context-menu slot (controller, model row) holds the base default, which
+ * only returns 1, so a handler there opens one of its own. */
+SITE(ITunesUEpisodes_CancelAppend_call, SITE_ITunesUEpisodes_CancelAppend_call, CALL,
+     ADDR_ContextMenuItems_Append,
+     BL(SITE_ITunesUEpisodes_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+SITE(ITunesUEpisodes_Action_slot, SITE_ITunesUEpisodes_Action_slot, VTABLE,
+     ADDR_ITunesUEpisodes_DispatchAction, ADDR_ITunesUEpisodes_DispatchAction, 0, 1, 3, 0)
+SITE(Audiobooks_CancelAppend_call, SITE_Audiobooks_CancelAppend_call, CALL,
+     ADDR_ContextMenuItems_Append,
+     BL(SITE_Audiobooks_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+SITE(Audiobooks_Action_slot, SITE_Audiobooks_Action_slot, VTABLE,
+     ADDR_MediaListController_DispatchAction, ADDR_MediaListController_DispatchAction, 0, 1, 3, 0)
+SITE(Movies_ShowContextMenu_slot, SITE_Movies_ShowContextMenu_slot, VTABLE,
+     ADDR_MediaListController_ShowContextMenuDefault, ADDR_MediaListController_ShowContextMenuDefault,
+     0, 1, 2, 0)
+SITE(Movies_Action_slot, SITE_Movies_Action_slot, VTABLE,
+     ADDR_Movies_DispatchAction, ADDR_Movies_DispatchAction, 0, 1, 3, 0)
+SITE(TVEpisodes_ShowContextMenu_slot, SITE_TVEpisodes_ShowContextMenu_slot, VTABLE,
+     ADDR_MediaListController_ShowContextMenuDefault, ADDR_MediaListController_ShowContextMenuDefault,
+     0, 1, 2, 0)
+SITE(TVEpisodes_Action_slot, SITE_TVEpisodes_Action_slot, VTABLE,
+     ADDR_TVEpisodes_DispatchAction, ADDR_TVEpisodes_DispatchAction, 0, 1, 3, 0)
+SITE(NestedVideoPlaylists_Action_slot, SITE_NestedVideoPlaylists_Action_slot, VTABLE,
+     ADDR_NestedVideoPlaylists_DispatchAction, ADDR_NestedVideoPlaylists_DispatchAction, 0, 1, 3, 0)
+
 /* The stopped check after Play/Pause's radio guards. Apple calls the known
  * IsStopped vtable method with blx r1 here. */
 SITE(MediaPlayer_ToggleStopped_call, SITE_MediaPlayer_ToggleStopped_call, CALL,

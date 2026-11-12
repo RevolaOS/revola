@@ -3,10 +3,11 @@
 /* Rows that extensions add to the menus a long press of Select opens. These
  * menus are built on each open, so a row is appended before the Cancel row at
  * the menu's append site; the label is a string resource and the action the
- * row's handler name, both referenced by Apple while the menu is open. The
- * screens' action slots run the handler. A row that opens a screen hides the
- * menu's pop, as Apple's View Album does, so no frame of the screen underneath
- * shows between the two. */
+ * row's handler name, both referenced by Apple while the menu is open. Movie
+ * and TV episode lists build no menu of their own, so the core builds one of
+ * the rows at their show-context-menu slot. The screens' action slots run the
+ * handler. A row that opens a screen hides the menu's pop, as Apple's View
+ * Album does, so no frame of the screen underneath shows between the two. */
 
 #include "ui/menus.h"
 #include "osos-2.0.5.h"
@@ -50,7 +51,7 @@ const void *core_context_item(uint8_t menu, void *controller, void *item, int32_
         MediaPlayer_GetCurrentItem(MediaPlayer_GetInstance(), item);
     } else if (menu >= RV_MENU_SONG_CONTEXT && controller && controller == menu_list) {
         *row = menu_row;
-        if ((menu != RV_MENU_SONG_CONTEXT && menu != RV_MENU_PODCAST_EPISODE_CONTEXT) || menu_row < 0)
+        if (menu == RV_MENU_ALBUM_CONTEXT || menu == RV_MENU_ARTIST_CONTEXT || menu_row < 0)
             return NULL;
         MediaItem_InitFromRecord(item, NULL, 0);
         void *build = FIELD(FIELD(controller, 0, void **),
@@ -93,7 +94,22 @@ static const struct {
      ArtistsController_layout_cache},
     {CORE_SITE_Albums_CancelAppend_call, RV_MENU_ALBUM_CONTEXT, AlbumsController_layout,
      AlbumsController_layout_cache},
+    {CORE_SITE_ITunesUEpisodes_CancelAppend_call, RV_MENU_ITUNES_U_EPISODE_CONTEXT,
+     ITunesUEpisodesController_layout, ITunesUEpisodesController_layout_cache},
+    {CORE_SITE_Audiobooks_CancelAppend_call, RV_MENU_AUDIOBOOK_CONTEXT, AudiobooksController_layout,
+     AudiobooksController_layout_cache},
+    /* Movies and TV episodes have no stock menu; the core builds one at the
+     * show-context-menu slot, so that slot stands for the source. */
+    {CORE_SITE_Movies_ShowContextMenu_slot, RV_MENU_MOVIE_CONTEXT, MoviesController_layout,
+     MoviesController_layout_cache},
+    {CORE_SITE_TVEpisodes_ShowContextMenu_slot, RV_MENU_TV_EPISODE_CONTEXT,
+     TVEpisodesController_layout, TVEpisodesController_layout_cache},
+    /* Video playlists share the nested playlists' builder and Cancel row, so
+     * this source is chosen by the controller's vtable, not by a site. */
+    {0, RV_MENU_VIDEO_PLAYLIST_CONTEXT, NestedVideoPlaylistsController_layout,
+     NestedVideoPlaylistsController_layout_cache},
 };
+#define VIDEO_PLAYLISTS_SOURCE (sizeof sources / sizeof sources[0] - 1)
 
 /* The source of the menu built last, and 1 between hiding its pop and the
  * action that should push a screen. */
@@ -102,10 +118,28 @@ static uint8_t pop_hidden;
 
 static uint32_t source_of(uint32_t site)
 {
+    if (site == CORE_SITE_NestedPlaylists_CancelAppend_call && menu_list &&
+        FIELD(menu_list, 0, void *) == NestedVideoPlaylistsController_vtable)
+        return VIDEO_PLAYLISTS_SOURCE;
     for (uint32_t i = 0; i < sizeof sources / sizeof sources[0]; i++)
         if (sources[i].site == site)
             return i;
     return 0;
+}
+
+/* Appends the context rows of `root` to `items`; how many. Flags 1: an
+ * ordinary row whose action is dispatched to the controller; the Cancel row's
+ * own flags only close the menu. */
+static uint32_t append_rows(void *items, uint8_t root)
+{
+    uint32_t string, count = 0;
+    void *handler;
+    for (uint32_t n = 0; core_menus_context_row(root, n, &string, &handler); n++)
+        if (string) {
+            ContextMenuItems_Append(items, string, handler, 1);
+            count++;
+        }
+    return count;
 }
 
 /* Appends the context rows of the menu being built, then the Cancel row. */
@@ -113,15 +147,25 @@ static uint32_t context_rows(uint32_t items, uint32_t label, uint32_t action, ui
                              const struct core_next *next)
 {
     menu_source = source_of(next->site);
-    uint8_t root = sources[menu_source].menu;
-    uint32_t string;
-    void *handler;
-    /* Flags 1: an ordinary row whose action is dispatched to the controller;
-     * the Cancel row's own flags only close the menu. */
-    for (uint32_t n = 0; core_menus_context_row(root, n, &string, &handler); n++)
-        if (string)
-            ContextMenuItems_Append((void *)items, string, handler, 1);
+    append_rows((void *)items, sources[menu_source].menu);
     return core_next_call(next, items, label, action, flags);
+}
+
+/* Opens a menu of the extensions' rows on a list without a stock one:
+ * (controller, model row). With no row to show, the stock slot runs instead. */
+static uint32_t own_menu(uint32_t controller, uint32_t row, const struct core_next *next)
+{
+    uint32_t items[ContextMenuItems_bytes / 4];
+    menu_source = source_of(next->site);
+    ContextMenuItems_Init(items, 0);
+    if (!append_rows(items, sources[menu_source].menu)) {
+        ContextMenuItems_Destroy(items);
+        return core_next_call(next, controller, row, 0, 0);
+    }
+    ContextMenuItems_Append(items, RES_ContextMenu_Cancel_String, "HandleCancel", 0);
+    UI_ShowContextMenuItems((void *)controller, items);
+    ContextMenuItems_Destroy(items);
+    return 1;
 }
 
 /* Hides the menu's pop for a row that opens a screen; Apple's own actions
@@ -175,6 +219,15 @@ static const struct core_hook hooks[] = {
     {CORE_SITE_Artists_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
     {CORE_SITE_Albums_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
     {CORE_SITE_ContextMenu_ScreenActionCompare_call, CORE_HOOK_FILTER, 5, screen_action},
+    {CORE_SITE_ITunesUEpisodes_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
+    {CORE_SITE_ITunesUEpisodes_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_Audiobooks_CancelAppend_call, CORE_HOOK_FILTER, 5, context_rows},
+    {CORE_SITE_Audiobooks_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_Movies_ShowContextMenu_slot, CORE_HOOK_FILTER, 5, own_menu},
+    {CORE_SITE_Movies_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_TVEpisodes_ShowContextMenu_slot, CORE_HOOK_FILTER, 5, own_menu},
+    {CORE_SITE_TVEpisodes_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_NestedVideoPlaylists_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
 };
 
 void core_context_init(void)

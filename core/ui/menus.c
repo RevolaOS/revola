@@ -44,6 +44,11 @@ static const struct root roots[CORE_MENU_COUNT] = {
     [RV_MENU_ALBUM_CONTEXT] = {0, 0, {RES_MediaLists_Albums_Screen}},
     [RV_MENU_ARTIST_CONTEXT] = {0, 0, {RES_MediaLists_Artists_Screen}},
     [RV_MENU_PODCAST_EPISODE_CONTEXT] = {0, 0, {RES_MediaLists_PodcastEpisodes_Screen}},
+    [RV_MENU_ITUNES_U_EPISODE_CONTEXT] = {0, 0, {RES_MediaLists_iTunesUEpisodes_Screen}},
+    [RV_MENU_AUDIOBOOK_CONTEXT] = {0, 0, {RES_MediaLists_Audiobooks_Screen}},
+    [RV_MENU_MOVIE_CONTEXT] = {0, 0, {RES_MediaLists_Movies_Screen}},
+    [RV_MENU_TV_EPISODE_CONTEXT] = {0, 0, {RES_MediaLists_TVEpisodes_Screen}},
+    [RV_MENU_VIDEO_PLAYLIST_CONTEXT] = {0, 0, {RES_MediaLists_MixedVideoTracks_Screen}},
 };
 
 struct row_set *core_menu_sets;

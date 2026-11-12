@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 34
+#define RV_API_MINOR 35
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -121,12 +121,13 @@ enum rv_row_kind {
  * controller of the screen or menu, for Apple calls. `arg` is what ui_push
  * passed for this screen, NULL for a screen a row opened. In a context menu's
  * action, `item` is the MediaItem (struct MediaItem of the symbols header) of
- * the song the menu opened on, NULL for an album or artist, and `row` the
- * model row the menu opened on (-1 for an album or artist list's "All" row).
- * A screen the menu's row or action opens keeps both for every callback until
- * it closed, and so does a screen opened above it; elsewhere `item` is NULL
- * and `row` -1. A row that opens a screen from a context menu follows the menu
- * with no frame of the screen underneath. Valid during the callback only. */
+ * the song, episode, audiobook or video the menu opened on, NULL for an album
+ * or artist, and `row` the model row the menu opened on (-1 for an album or
+ * artist list's "All" row). A screen the menu's row or action opens keeps both
+ * for every callback until it closed, and so does a screen opened above it;
+ * elsewhere `item` is NULL and `row` -1. A row that opens a screen from a
+ * context menu follows the menu with no frame of the screen underneath. Valid
+ * during the callback only. */
 struct rv_context {
     rv_extension_handle self;
     void *controller;
@@ -345,7 +346,12 @@ struct rv_screen {
 };
 
 /* The menus an entry can add a row to. The context menus are the ones a long
- * press of Select opens on Now Playing or on a song, album, artist or podcast episode row. */
+ * press of Select opens on Now Playing or on a row of a media list: songs
+ * (song, playlist and Genius lists), albums, artists, podcast and iTunes U
+ * episodes, audiobooks, movies, TV episodes and video playlist entries. Movies
+ * and TV episodes have no stock context menu; the core opens one for the
+ * extensions' rows. Every menu but album and artist hands its action the
+ * item (ctx->item). */
 enum rv_menu {
     RV_MENU_MAIN,
     RV_MENU_MUSIC,
@@ -356,6 +362,11 @@ enum rv_menu {
     RV_MENU_ALBUM_CONTEXT,
     RV_MENU_ARTIST_CONTEXT,
     RV_MENU_PODCAST_EPISODE_CONTEXT,
+    RV_MENU_ITUNES_U_EPISODE_CONTEXT,
+    RV_MENU_AUDIOBOOK_CONTEXT,
+    RV_MENU_MOVIE_CONTEXT,
+    RV_MENU_TV_EPISODE_CONTEXT,
+    RV_MENU_VIDEO_PLAYLIST_CONTEXT,
 };
 
 /* A row the extension adds to `menu`. `after` is a stock row of that menu from

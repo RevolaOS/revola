@@ -6,7 +6,7 @@
 #include "rv_api.h"
 
 /* The menus of rv_menu, as an array bound. */
-#define CORE_MENU_COUNT (RV_MENU_PODCAST_EPISODE_CONTEXT + 1)
+#define CORE_MENU_COUNT (RV_MENU_VIDEO_PLAYLIST_CONTEXT + 1)
 
 /* Registers the descriptor's entries as rows of the native menus. */
 int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_entry *entries,
