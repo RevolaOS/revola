@@ -255,7 +255,7 @@ static int show_pixels(const struct panic_frame *frame)
     uint32_t timing = LCD_CONFIG & 0x80000007;
 
     /* Stop Apple's frame engine and layer scan-out before taking over the
-     * command interface. TODO: confirm the layer disable on hardware. */
+     * command interface. */
     DISP_CONTROL &= ~DISP_LAYERS;
     REG32(LCD_BASE + 0x70) = 0;
     if (!stop_lcd_dma() || !wait_bits(LCD_BASE + 0x8c, 3, 0))
