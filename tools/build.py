@@ -124,13 +124,14 @@ SDK_FILES = (
 
 
 def stage_sdk(config, directory):
-    """The SDK tree: committed headers, the generated site and firmware ids, the
-    symbols of the pinned OSOS and rvx-pack with the two modules it imports."""
+    """The SDK tree: committed headers, the guides, the generated site and firmware
+    ids, the symbols of the pinned OSOS and rvx-pack with the two modules it imports."""
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
     for name in SDK_FILES:
         shutil.copyfile(ROOT / "sdk" / name, directory / name)
+    shutil.copytree(ROOT / "docs/sdk", directory / "docs")
     for name in ("osos-2.0.5.h", "osos-2.0.5.ld"):
         shutil.copyfile(firmware.DIRECTORY / name, directory / name)
     shutil.copyfile(ROOT / "tools/rvx.py", directory / "rvx-pack")
