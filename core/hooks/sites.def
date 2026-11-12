@@ -320,6 +320,11 @@ SITE(EQ_SetRate_Load_call, SITE_EQ_SetRate_Load_call, CALL, ADDR_EQ_LoadPresetCo
 SITE(EQ_SettingsIdToDspPreset_entry, SITE_EQ_SettingsIdToDspPreset_entry, ENTRY,
      REPLAY(EQ_SettingsIdToDspPreset_entry), 0xe2400064, 0xe3500015, 0, 1, 0)
 
+/* The player applies an EQ settings id: (player, settings_id). Settings > EQ and
+ * Reset All Settings reach it through Settings_SetEQPreset; boot does not. */
+SITE(EQ_ApplySettingsId_slot, SITE_EQ_ApplySettingsId_slot, VTABLE,
+     ADDR_MediaPlayer_ApplyEQSettingsId, ADDR_MediaPlayer_ApplyEQSettingsId, 0, 1, 2, 0)
+
 /* MediaTrack_ApplyEQ reads the track's own EQ settings id, which replaces the
  * player's unless that is Flat: (item, track), track copied from r4; 0 keeps the
  * player's. */
