@@ -117,7 +117,8 @@ int core_screen_menu_action(struct core_screen *s, void *controller, uint32_t it
     } else {
         const struct rv_row *row = &d->context[item - first - 1].row;
         ctx.row = menu_row;
-        struct core_menu_origin menu = {ctx.item, menu_row};
+        ctx.list = controller;
+        struct core_menu_origin menu = {ctx.item, menu_row, controller};
         const struct core_menu_origin *outer = core_screens_menu;
         core_screens_menu = &menu;
         if (row->kind == RV_ROW_KIND_ACTION && row->action) {

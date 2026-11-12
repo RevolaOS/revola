@@ -178,7 +178,7 @@ static const struct rv_bitmap *icon_of(const struct rv_menu_entry *e,
 {
     if (!e->bitmap_for)
         return e->bitmap;
-    struct rv_context ctx = {owner, NULL, NULL, NULL, -1};
+    struct rv_context ctx = {owner, NULL, NULL, NULL, -1, NULL};
     return e->bitmap_for(&ctx);
 }
 
@@ -214,7 +214,7 @@ int core_panes_property(uint32_t type, uint32_t id, uint32_t out)
     else if (id == CAPTION && type == Property_String)
         *(const char **)out = core_row_label(&e->row, owner, NULL);
     else if (id == DETAIL && type == Property_String && e->caption_text) {
-        struct rv_context ctx = {owner, NULL, NULL, NULL, -1};
+        struct rv_context ctx = {owner, NULL, NULL, NULL, -1, NULL};
         const char *text = e->caption_text(&ctx);
         *(const char **)out = text ? text : "";
     } else if (id == DETAIL && type == Property_String)

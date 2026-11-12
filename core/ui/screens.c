@@ -56,12 +56,13 @@ static struct {
     uint8_t origin;
 } closing;
 
-/* What a screen opened from a context menu keeps of it for ctx->item and
- * ctx->row. A slot stays put while its screen moves through open and closing,
+/* What a screen opened from a context menu keeps of it for ctx->item,
+ * ctx->row and ctx->list. A slot stays put while its screen moves through open and closing,
  * so ctx->item does not move under a callback. */
 static struct {
     uint32_t item[MediaItem_bytes / 4];
     int32_t row;
+    void *list;
     uint8_t used, has_item;
 } origins[MAX_OPEN + 1];
 
@@ -76,6 +77,7 @@ static uint8_t origin_keep(void *controller)
             under.item = origins[open[i].origin - 1].has_item ? origins[open[i].origin - 1].item
                                                               : NULL;
             under.row = origins[open[i].origin - 1].row;
+            under.list = origins[open[i].origin - 1].list;
             menu = &under;
         }
     if (!menu)
@@ -86,6 +88,7 @@ static uint8_t origin_keep(void *controller)
         origins[n].used = 1;
         origins[n].has_item = menu->item != NULL;
         origins[n].row = menu->row;
+        origins[n].list = menu->list;
         for (uint32_t w = 0; menu->item && w < MediaItem_bytes / 4; w++)
             origins[n].item[w] = ((const uint32_t *)menu->item)[w];
         return (uint8_t)(n + 1);
@@ -99,6 +102,7 @@ static void origin_into(uint8_t origin, struct rv_context *ctx)
         return;
     ctx->item = origins[origin - 1].has_item ? origins[origin - 1].item : NULL;
     ctx->row = origins[origin - 1].row;
+    ctx->list = origins[origin - 1].list;
 }
 
 static void origin_release(uint8_t origin)
@@ -114,6 +118,7 @@ void core_screens_context(const struct core_screen *s, struct rv_context *ctx)
     ctx->arg = NULL;
     ctx->item = NULL;
     ctx->row = -1;
+    ctx->list = NULL;
     for (uint32_t i = open_count; s && i-- > 0;)
         if (open[i].screen == s) {
             ctx->controller = open[i].controller;
@@ -151,7 +156,7 @@ void core_screens_closed(void)
     if (s && s == popped_canvas)
         popped_canvas = NULL; /* its callbacks may have freed what it draws with */
     if (s && s->declaration && s->declaration->closed) {
-        struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1};
+        struct rv_context ctx = {s->owner, closing.controller, closing.arg, NULL, -1, NULL};
         origin_into(origin, &ctx);
         s->declaration->closed(&ctx);
     }
@@ -454,7 +459,7 @@ int core_screens_push(struct core_screen *s, void *controller, void *arg)
         FIELD(FIELD(controller, 0, void **), ScreenController_push_method, void *);
     push(controller, created);
     if (s->declaration->opened) {
-        struct rv_context ctx = {s->owner, created, arg, NULL, -1};
+        struct rv_context ctx = {s->owner, created, arg, NULL, -1, NULL};
         origin_into(open[open_count - 1].origin, &ctx);
         s->declaration->opened(&ctx);
     }

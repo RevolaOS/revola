@@ -169,10 +169,10 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     const struct rv_menu_entry *e = s ? NULL : core_menus_entry(found, &owner);
     int context = e && e->menu >= RV_MENU_NOW_PLAYING_CONTEXT;
     uint32_t media[MediaItem_bytes / 4];
-    struct core_menu_origin menu = {NULL, -1};
+    struct core_menu_origin menu = {NULL, -1, NULL};
     const struct core_menu_origin *outer = core_screens_menu;
     if (context) {
-        menu.item = core_context_item(e->menu, controller, media, &menu.row);
+        menu.item = core_context_item(e->menu, controller, media, &menu.row, &menu.list);
         core_screens_menu = &menu;
     }
     core_screens_caller = controller;
@@ -209,6 +209,7 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
             if (context) {
                 ctx.item = menu.item;
                 ctx.row = menu.row;
+                ctx.list = menu.list;
             }
             row->action(&ctx);
         }

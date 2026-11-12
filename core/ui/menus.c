@@ -424,8 +424,8 @@ int core_menus_context_row(uint8_t root, uint32_t n, uint32_t *label, void **han
     int show = shown(r);
     if (show && r->entry->available) {
         uint32_t item[MediaItem_bytes / 4];
-        struct rv_context ctx = {r->owner, core_context_list(), NULL, NULL, -1};
-        ctx.item = core_context_item(root, ctx.controller, item, &ctx.row);
+        struct rv_context ctx = {r->owner, core_context_list(), NULL, NULL, -1, NULL};
+        ctx.item = core_context_item(root, ctx.controller, item, &ctx.row, &ctx.list);
         show = r->entry->available(&ctx);
     }
     *label = show ? r->item + 1 : 0;

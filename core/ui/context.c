@@ -43,14 +43,17 @@ void *core_context_list(void)
     return menu_list;
 }
 
-const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row)
+const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row,
+                              void **list)
 {
     *row = -1;
+    *list = NULL;
     if (menu == RV_MENU_NOW_PLAYING_CONTEXT) {
         MediaItem_InitFromRecord(item, NULL, 0);
         MediaPlayer_GetCurrentItem(MediaPlayer_GetInstance(), item);
     } else if (menu >= RV_MENU_SONG_CONTEXT && controller && controller == menu_list) {
         *row = menu_row;
+        *list = controller;
         if (menu == RV_MENU_ALBUM_CONTEXT || menu == RV_MENU_ARTIST_CONTEXT || menu_row < 0)
             return NULL;
         MediaItem_InitFromRecord(item, NULL, 0);

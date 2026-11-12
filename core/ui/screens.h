@@ -89,14 +89,15 @@ struct core_screen *core_screens_top_canvas(void);
 /* The controller whose row, choice or input callback is running; NULL outside
  * one. A split list opened from it takes its layout. */
 extern void *core_screens_caller;
-/* The item a context menu opened on (MediaItem_bytes, NULL for none) and the
- * list's model row (-1 for none). */
+/* The item a context menu opened on (MediaItem_bytes, NULL for none), the
+ * list's model row (-1 for none) and the list's controller (NULL for none). */
 struct core_menu_origin {
     const void *item;
     int32_t row;
+    void *list;
 };
 /* The menu whose row or action runs, NULL outside one. A screen pushed then
- * keeps a copy as ctx->item and ctx->row until it closed, and so does one
+ * keeps a copy as ctx->item, ctx->row and ctx->list until it closed, and so does one
  * pushed above such a screen. */
 extern const struct core_menu_origin *core_screens_menu;
 /* Pops the top screen when `owner` declared it. */

@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 35
+#define RV_API_MINOR 36
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -122,10 +122,11 @@ enum rv_row_kind {
  * passed for this screen, NULL for a screen a row opened. In a context menu's
  * action, `item` is the MediaItem (struct MediaItem of the symbols header) of
  * the song, episode, audiobook or video the menu opened on, NULL for an album
- * or artist, and `row` the model row the menu opened on (-1 for an album or
- * artist list's "All" row). A screen the menu's row or action opens keeps both
- * for every callback until it closed, and so does a screen opened above it;
- * elsewhere `item` is NULL and `row` -1. A row that opens a screen from a
+ * or artist, `row` the model row the menu opened on (-1 for an album or
+ * artist list's "All" row) and `list` the controller of the list it opened on
+ * (NULL for Now Playing). A screen the menu's row or action opens keeps all
+ * three for every callback until it closed, and so does a screen opened above
+ * it; elsewhere `item` and `list` are NULL and `row` -1. A row that opens a screen from a
  * context menu follows the menu with no frame of the screen underneath. Valid
  * during the callback only. */
 struct rv_context {
@@ -134,6 +135,7 @@ struct rv_context {
     void *arg;
     const void *item;
     int32_t row;
+    void *list;
 };
 
 /* One row of a list screen or an entry in a menu. `text`, when set, gives the

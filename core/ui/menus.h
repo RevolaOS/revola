@@ -44,9 +44,11 @@ void core_menus_init(void *bank);
 /* Context menu rows; called by core_menus_init. */
 void core_context_init(void);
 /* For an action in context menu `menu` dispatched to `controller`: the item
- * the menu opened on, read into `item` (MediaItem_bytes), or NULL, and in
- * *row the list's model row, -1 when none. */
-const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row);
+ * the menu opened on, read into `item` (MediaItem_bytes), or NULL, in *row the
+ * list's model row, -1 when none, and in *list the list's controller, NULL
+ * when none. */
+const void *core_context_item(uint8_t menu, void *controller, void *item, int32_t *row,
+                              void **list);
 /* The list controller whose context menu opened last, NULL when none did. */
 void *core_context_list(void);
 /* After a context row that opens a screen ran on `controller`: when no screen
