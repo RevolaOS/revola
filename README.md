@@ -48,6 +48,10 @@ Both run Apple's own 2.0.5 firmware with additions, on the iPod Classic 6G, 6.5G
 | Seeing memory use | Not shown | Settings shows free memory and how much each extension uses |
 | After a crash | Panic screen | The next boot turns off the extension that crashed; hold Previous to start without extensions |
 
+## Development
+
+Large language models are used for much of the coding on RevolaOS. Their output is checked in the emulator, its memory use comes from the heap profile, and every release is tested on an iPod before it ships. Contributions written with the same tools are welcome and tested in the same way.
+
 ## License
 
 GPL-3.0-only. See COPYING and NOTICE.
