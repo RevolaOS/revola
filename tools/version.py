@@ -6,9 +6,13 @@ import subprocess
 
 
 def valid_version(value):
-    number = r"(?:0|[1-9][0-9]*)"
+    """Calendar versions in SemVer shape: YYYY.M.N, with the year, the month without
+    a leading zero and the release number within that month, plus an optional
+    SemVer prerelease (-beta.1) and build metadata. Every consumer compares them as
+    SemVer, so the shape is what keeps ordering right."""
     if not isinstance(value, str) or not re.fullmatch(
-        rf"{number}\.{number}\.{number}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+        r"20[0-9]{2}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)"
+        r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
         r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
         value,
     ):
@@ -31,7 +35,7 @@ def identity(root, tag=None):
     tags = git("tag", "--points-at", "HEAD").splitlines()
     if tag is not None:
         if not tag.startswith("v") or not valid_version(tag[1:]):
-            raise ValueError("Release tags must be v followed by SemVer")
+            raise ValueError("Release tags must be v followed by YYYY.M.N")
         if dirty or tag not in tags:
             raise ValueError("A release requires a clean checkout at the requested tag")
     elif not dirty:
