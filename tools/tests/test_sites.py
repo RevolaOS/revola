@@ -44,11 +44,6 @@ class SiteTests(unittest.TestCase):
         for row in (
             sites.ROW.pack(BASE, 0, 0, 0, 7, 0, 1, 0),
             sites.ROW.pack(
-                BASE, 0, 0, 0, CALL, 0, 1, 3
-            ),  # copy from a scratch register
-            sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0, 4),  # copy with no argument slot
-            sites.ROW.pack(BASE, 0, 0, 0, WORD, 0, 1, 4),
-            sites.ROW.pack(
                 BASE, 0, 0, 0, INSERT, 0, 4, 0
             ),  # four arguments need the stack
             sites.ROW.pack(BASE, 0, 0, 0, INSERT, 1, 2, 0),  # exclusive by construction
@@ -59,8 +54,6 @@ class SiteTests(unittest.TestCase):
         ):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 sites.read(struct.pack("<I", 1) + row, symbols, 0x1000)
-        copied = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 3, 4)
-        self.assertEqual(sites.read(copied, symbols, 0x1000)[0].copy, 4)
         stacked = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0x24, 0)
         self.assertEqual(sites.read(stacked, symbols, 0x1000)[0].argc, 0x24)
 

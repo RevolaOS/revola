@@ -25,7 +25,6 @@ class Site:
     kind: int
     chain: int
     argc: int
-    copy: int = 0
 
     @property
     def is_entry(self):
@@ -44,7 +43,7 @@ def read(code, symbols, core_start):
     offset = require(symbols, "core_sites") - core_start
     sites = []
     for _ in range(count):
-        address, original, word0, word1, kind, chain, argc, copy = ROW.unpack_from(
+        address, original, word0, word1, kind, chain, argc, _ = ROW.unpack_from(
             code, offset
         )
         registers, stack = argc & 15, argc >> 4
@@ -58,11 +57,7 @@ def read(code, symbols, core_start):
             raise ValueError(
                 f"Insert site {address:#x}: at most three arguments, no chain"
             )
-        if copy and (copy < 4 or copy > 11 or registers < 1 or kind == WORD):
-            raise ValueError(
-                f"Site {address:#x}: register copy needs r4-r11 and an argument"
-            )
-        sites.append(Site(address, original, word0, word1, kind, chain, argc, copy))
+        sites.append(Site(address, original, word0, word1, kind, chain, argc))
         offset += ROW.size
     return sites
 
