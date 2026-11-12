@@ -69,7 +69,7 @@ An empty list has no selection.
 
 ## Canvases
 
-A canvas draws with the `rv_gfx` table it is given: fills, text in the stock fonts placed or aligned in a rectangle, colour roles themes can change and mixes between them, wrapped paragraphs, list rows, bitmaps whole, in part or tiled, and the Settings > About card the core's Usage page uses. Input is wheel and key events, plus `RV_INPUT_HOLD` when the hold switch moves. A canvas may redraw part of itself with `ui_invalidate_rect`. Its `.closed` runs after the last draw of its slide-out, so that is where what the canvas draws with is freed.
+A canvas draws with the `rv_gfx` table it is given: fills, text in the stock fonts placed or aligned in a rectangle, colour roles themes can change and mixes between them, wrapped paragraphs, list rows, bitmaps whole, in part or tiled, and the Settings > About card the core's Usage page uses. The [canvas kit](canvas.md) builds an editor's palette, plots and value cells over it. Input is wheel and key events, plus `RV_INPUT_HOLD` when the hold switch moves. The input callback returns 1 for an event it consumed; a release goes where its press went, whatever the callback returns for it. A canvas may redraw part of itself with `ui_invalidate_rect`. Its `.closed` runs after the last draw of its slide-out, so that is where what the canvas draws with is freed.
 
 ## Resource ids
 

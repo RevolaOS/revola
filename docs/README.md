@@ -35,3 +35,5 @@
 | [Assets](sdk/assets.md) | Bitmaps and data packed into the `.rvx` |
 | [Raw sites](sdk/raw-sites.md) | Hooking code no core site covers |
 | [Audio effects](sdk/audio.md) | The output PCM site and the effect stages |
+| [Canvas kit](sdk/canvas.md) | Palette, plots, value cells and Select/Menu input for an editor canvas |
+| [Media items](sdk/media.md) | Reading the items the context menus hand out and the player's |

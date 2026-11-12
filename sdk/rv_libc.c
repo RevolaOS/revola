@@ -208,8 +208,93 @@ uint32_t rv_format(char *out, uint32_t capacity, const char *format, ...)
 
 uint32_t rv_format_duration(char *out, uint32_t capacity, uint32_t seconds)
 {
-    uint32_t minutes = seconds / 60;
+    unsigned int minutes = seconds / 60, rest = seconds % 60;
     if (minutes < 60)
-        return rv_format(out, capacity, "%lu:%02lu", minutes, seconds % 60);
-    return rv_format(out, capacity, "%lu:%02lu:%02lu", minutes / 60, minutes % 60, seconds % 60);
+        return rv_format(out, capacity, "%u:%02u", minutes, rest);
+    return rv_format(out, capacity, "%u:%02u:%02u", minutes / 60, minutes % 60, rest);
+}
+
+static void put_decimal(struct writer *w, uint32_t value)
+{
+    char digits[10];
+    unsigned int n = 0;
+    do
+        digits[n++] = (char)('0' + value % 10);
+    while ((value /= 10));
+    while (n)
+        put(w, digits[--n]);
+}
+
+static void put_text(struct writer *w, const char *text)
+{
+    while (*text)
+        put(w, *text++);
+}
+
+uint32_t rv_format_int(char *out, uint32_t capacity, int value, const char *unit)
+{
+    if (!capacity)
+        return 0;
+    struct writer w = {out, out + capacity - 1};
+    if (value < 0)
+        put(&w, '-');
+    put_decimal(&w, value < 0 ? 0u - (uint32_t)value : (uint32_t)value);
+    put_text(&w, unit);
+    *w.at = 0;
+    return (uint32_t)(w.at - out);
+}
+
+uint32_t rv_format_tenths(char *out, uint32_t capacity, int tenths, int plus, const char *unit)
+{
+    if (!capacity)
+        return 0;
+    struct writer w = {out, out + capacity - 1};
+    uint32_t magnitude = tenths < 0 ? 0u - (uint32_t)tenths : (uint32_t)tenths;
+    if (tenths < 0)
+        put(&w, '-');
+    else if (plus && tenths)
+        put(&w, '+');
+    put_decimal(&w, magnitude / 10);
+    put(&w, '.');
+    put(&w, (char)('0' + magnitude % 10));
+    put_text(&w, unit);
+    *w.at = 0;
+    return (uint32_t)(w.at - out);
+}
+
+uint32_t rv_format_hz(char *out, uint32_t capacity, uint32_t hz)
+{
+    if (!capacity)
+        return 0;
+    struct writer w = {out, out + capacity - 1};
+    uint32_t fraction = hz % 1000;
+    put_decimal(&w, hz < 1000 ? hz : hz / 1000);
+    if (hz >= 1000) {
+        /* The three decimals of the kilohertz, trailing zeros dropped. */
+        if (fraction)
+            put(&w, '.');
+        for (uint32_t place = 100; fraction; place /= 10) {
+            put(&w, (char)('0' + fraction / place));
+            fraction %= place;
+        }
+        put(&w, 'k');
+    }
+    put_text(&w, " Hz");
+    *w.at = 0;
+    return (uint32_t)(w.at - out);
+}
+
+uint32_t rv_copy_utf8(char *out, uint32_t capacity, const char *text)
+{
+    uint32_t i = 0;
+    if (!capacity)
+        return 0;
+    for (; text && text[i] && i + 1 < capacity; i++)
+        out[i] = text[i];
+    /* A byte that continues a sequence is cut when its start was. */
+    if (text && text[i])
+        while (i && ((uint8_t)text[i] & 0xc0) == 0x80)
+            i--;
+    out[i] = 0;
+    return i;
 }

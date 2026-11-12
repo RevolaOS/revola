@@ -14,6 +14,8 @@ CROSS_COMPILE ?= arm-elf-eabi-
 OUT ?= build
 ASSETS ?= $(wildcard assets/*)
 include $(SDK)/rv_firmware.mk
+SDK_SOURCES := rv_libc.c rv_math.c rv_canvas.c
+SDK_OBJECTS := $(patsubst %.c,$(OUT)/%.o,$(SDK_SOURCES))
 
 CC := $(CROSS_COMPILE)gcc
 CFLAGS := -mcpu=arm926ej-s -mthumb -mthumb-interwork -mlong-calls -Os -std=c11 \
@@ -29,7 +31,7 @@ LDFLAGS := -nostdlib -Wl,-T,$(SDK)/rvx.lds -Wl,--emit-relocs -Wl,--gc-sections \
 define module_rules
 $(1)_OBJECTS := $$(patsubst %,$(OUT)/$(1)/%.o,$$($(1)_SOURCES)) \
     $$(patsubst %,$(OUT)/$(1)-arm/%.o,$$($(1)_ARM_SOURCES))
-$(OUT)/$(1).elf: $$($(1)_OBJECTS) $(OUT)/rv_libc.o $(SDK)/rvx.lds | $(OUT)
+$(OUT)/$(1).elf: $$($(1)_OBJECTS) $(SDK_OBJECTS) $(SDK)/rvx.lds | $(OUT)
 	$(CC) $(CFLAGS) $$(filter %.o,$$^) $(LDFLAGS) -Wl,-Map,$$(@:.elf=.map) -o $$@
 $(OUT)/$(1)/%.o: %
 	@mkdir -p $$(dir $$@)
@@ -41,9 +43,15 @@ $(OUT)/$(1)-arm/%.o: %
 endef
 $(foreach module,$(MODULES),$(eval $(call module_rules,$(module))))
 
-# Each function in its own section, so --gc-sections keeps only those called.
-$(OUT)/rv_libc.o: $(SDK)/rv_libc.c $(SDK)/rv_libc.h | $(OUT)
-	$(CC) $(CFLAGS) -ffunction-sections -fno-tree-loop-distribute-patterns -c $< -o $@
+# The SDK's own sources go into every module, each function and object in its
+# own section, so --gc-sections keeps only those used.
+define sdk_rules
+$(OUT)/$(1).o: $(SDK)/$(1).c | $(OUT)
+	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns \
+	    -MMD -MP -c $$< -o $$@
+-include $(OUT)/$(1).d
+endef
+$(foreach source,$(SDK_SOURCES),$(eval $(call sdk_rules,$(basename $(source)))))
 
 all: $(OUT)/$(ID).rvx
 

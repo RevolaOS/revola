@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 41
+#define RV_API_MINOR 42
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -342,7 +342,8 @@ struct rv_screen {
         } text;
         struct {
             /* Draws the canvas, `width` by `height` pixels; input returns 1 when
-             * consumed, 0 to leave the key to the system. */
+             * consumed, 0 to leave the key to the system. A release goes
+             * where its press went whatever input returns for it. */
             void (*draw)(const struct rv_context *ctx, const struct rv_gfx *gfx, int width,
                          int height);
             int (*input)(const struct rv_context *ctx, const struct rv_input *input);

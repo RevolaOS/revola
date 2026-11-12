@@ -12,6 +12,8 @@ An extension is a set of modules built against one revola release and packed int
 | [Assets](assets.md) | Bitmaps and data packed into the `.rvx` |
 | [Raw sites](raw-sites.md) | Hooking code no core site covers |
 | [Audio effects](audio.md) | The output PCM site and the effect stages |
+| [Canvas kit](canvas.md) | Palette, plots, value cells and Select/Menu input for an editor canvas |
+| [Media items](media.md) | Reading the items the context menus hand out and the player's |
 
 ## Files of the SDK
 
@@ -20,6 +22,10 @@ An extension is a set of modules built against one revola release and packed int
 | `rv_api.h` | The `rv_api` table the core passes to a module's entry, the descriptor it returns, hook, setting, screen, row and entry structs, `RV_API_MAJOR` and `RV_API_MINOR` |
 | `rv_ui.h` | One-line declarations over those structs: `RV_ROW_PUSH`, `RV_SCREEN_LIST`, `RV_MENU_ENTRY`, `RV_SETTING_CHOICE` and the rest |
 | `rv_libc.h`, `rv_libc.c` | The C library `rv.mk` links into every module; a module carries only what it calls |
+| `rv_canvas.h`, `rv_canvas.c` | The [canvas kit](canvas.md), linked like `rv_libc` |
+| `rv_math.h`, `rv_math.c` | Double precision without a math library, for filter designs and the curves the editors draw: `rv_exp`, `rv_log`, `rv_sin_cos`, `rv_sqrt`, `rv_decibels`; linked like `rv_libc` |
+| `rv_audio.h` | What an [audio effect](audio.md) shares with the others: the output format check, `rv_fracmul`, `rv_saturate16` and the handoff of a set of values to the pump task |
+| `rv_media.h` | [Media items](media.md): the item, the player and a song model's rows |
 | `rv_sites.h` | `RV_SITE_*` ids of every hook site in this core, generated from the site table |
 | `rv_menus.h` | The stock rows of the Main, Music, Extras and Settings menus, generated from the symbols header; what an entry anchors on |
 | `rv_firmware.h`, `rv_firmware.mk` | `RV_FIRMWARE_ID` of the Apple firmware the symbols describe; the loader refuses a module built for another |
@@ -29,7 +35,7 @@ An extension is a set of modules built against one revola release and packed int
 | `rvx-pack`, `manifest.py`, `bitmap.py` | Pack `manifest.toml`, the module ELFs and the assets into the `.rvx`; Python 3.11+ and the `arm-elf-eabi-` binutils |
 | `docs/` | These pages |
 
-`rv_libc.h` provides `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`, `rv_format` (printf into a buffer) and `rv_format_duration` ("3:07"). `api->format_number` and `api->format_size` write "12,345" and "6.0 KB".
+`rv_libc.h` provides `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`, `rv_format` (printf into a buffer), `rv_format_duration` ("3:07"), `rv_format_int` ("100 %"), `rv_format_tenths` ("-0.5 dB"), `rv_format_hz` ("1.5k Hz") and `rv_copy_utf8` (a copy that never cuts inside a UTF-8 sequence). `api->format_number` and `api->format_size` write "12,345" and "6.0 KB".
 
 ## A first extension
 
@@ -42,7 +48,7 @@ description = "Adds a Hello page to Settings."
 version = "0.1.0"
 author = "You"
 license = "GPL-3.0-only"
-api = "1.41"                 # RV_API_MAJOR.RV_API_MINOR of the SDK you build against
+api = "1.42"                 # RV_API_MAJOR.RV_API_MINOR of the SDK you build against
 enabled = true
 
 [[module]]

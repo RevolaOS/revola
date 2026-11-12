@@ -29,6 +29,10 @@ static void *canvas_view;
 static void **controller_vtable;
 static int (*handle_event)(void *controller, void *event);
 static uint32_t wheel[WheelAccumulator_bytes / 4];
+/* The buttons whose press the canvas on top consumed, so their release is its
+ * too, and the screen that saw them. */
+static uint8_t pressed;
+static struct core_screen *pressed_screen;
 
 /* View */
 
@@ -183,7 +187,21 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
     }
     struct rv_context ctx;
     core_screens_context(s, &ctx);
-    return d->canvas.input && d->canvas.input(&ctx, &in);
+    int consumed = d->canvas.input && d->canvas.input(&ctx, &in);
+    if (in.kind == RV_INPUT_WHEEL)
+        return consumed;
+    uint8_t bit = (uint8_t)(1 << in.button);
+    if (s != pressed_screen) {
+        pressed = 0;
+        pressed_screen = s;
+    }
+    if (in.kind == RV_INPUT_PRESS) {
+        pressed = consumed ? pressed | bit : pressed & ~bit;
+        return consumed;
+    }
+    consumed = (pressed & bit) != 0;
+    pressed &= ~bit;
+    return consumed;
 }
 
 static int event(void *controller, void *event)
