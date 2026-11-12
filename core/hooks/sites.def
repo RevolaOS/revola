@@ -444,3 +444,15 @@ SITE(MP4Parser_ReadEditEndTest_word, SITE_MP4Parser_ReadEditEndTest_word, WORD, 
      0, 0, 0, 0)
 SITE(MP4Parser_SeekEditEndTest_word, SITE_MP4Parser_SeekEditEndTest_word, WORD, 0, 0xe1a01fc0,
      0, 0, 0, 0)
+
+/* A progress bar draws its chapter marks after its fill: (view, context, bar rect).
+ * Two classes share the routine, which blits ProgressBar_marker_count marks in
+ * chapter order through the call below. */
+SITE(ProgressBar_DrawMarkers_slot, SITE_ProgressBar_DrawMarkers_slot, VTABLE,
+     ADDR_ProgressBar_DrawMarkers, ADDR_ProgressBar_DrawMarkers, 0, 1, 3, 0)
+SITE(ProgressBarStyle8_DrawMarkers_slot, SITE_ProgressBarStyle8_DrawMarkers_slot, VTABLE,
+     ADDR_ProgressBar_DrawMarkers, ADDR_ProgressBar_DrawMarkers, 0, 1, 3, 0)
+/* One chapter mark: (cache, context, source rect, rect, alpha), alpha on the stack.
+ * Apple ignores the result, so a filter may leave a mark out. */
+SITE(ProgressBar_MarkerBlit_call, SITE_ProgressBar_MarkerBlit_call, CALL, ADDR_BitmapCache_Draw,
+     BL(SITE_ProgressBar_MarkerBlit_call, ADDR_BitmapCache_Draw), 0, 1, 4 | STACK(1), 0)
