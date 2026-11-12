@@ -15,6 +15,7 @@
 #include "osos-2.0.5.h"
 #include "settings.h"
 #include "trace.h"
+#include "ui/menus.h"
 #include "hooks/sites.h"
 #include <stddef.h>
 
@@ -379,6 +380,7 @@ static uint32_t reset_all(uint32_t model, const struct core_next *next)
         mark_dirty();
         core_settings_flush();
     }
+    core_menus_settings_reset();
     core_loader_settings_reset();
     return result;
 }

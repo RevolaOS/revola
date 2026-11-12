@@ -335,6 +335,14 @@ void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
     }
 }
 
+void core_menus_settings_reset(void)
+{
+    EACH_ROW(r) {
+        if (r->entry && r->entry->shown_by)
+            apply_visibility(r);
+    }
+}
+
 const struct rv_menu_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner)
 {
     EACH_ROW(r)
