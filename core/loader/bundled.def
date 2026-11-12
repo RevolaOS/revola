@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
+/* First-party extensions that are on after install, one row each, by manifest
+ * id. The settings store overrides the list once the listener has changed the
+ * extension in Settings > Extensions. Every extension not listed here starts off.
+ *
+ * BUNDLED(id)
+ */
+BUNDLED("chapter-marks")
+BUNDLED("chapters")
+BUNDLED("clicker-modes")
+BUNDLED("equalizer")
+BUNDLED("fast-seek")
+BUNDLED("file-info")
+BUNDLED("long-audio-fix")
+BUNDLED("playback-queue")
+BUNDLED("progress-indicator")

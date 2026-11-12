@@ -28,6 +28,6 @@ Reset All Settings empties the store.
 
 | Key | Owner | Meaning |
 |---|---|---|
-| 0 | every extension | enabled flag |
+| 0 | every extension | enabled; unset means on for the ids in `loader/bundled.def`, off otherwise |
 | 0xffff | every extension | which of its Main and Music rows are shown |
 | `CORE_KEY_*` | core | memory rules, crashed extension, see `core/settings.h` |

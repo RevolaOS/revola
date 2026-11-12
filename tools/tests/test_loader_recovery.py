@@ -68,6 +68,7 @@ void core_settings_flush(void) {
  if (fail_flush) return;
  memcpy(persisted, settings, sizeof settings); persisted_count = settings_count;
 }
+static int default_on(uint32_t owner) { (void)owner; return 1; } /* every test package is on */
 uint32_t core_recovery_owner(void) { return retained_owner; }
 void core_recovery_clear(void) { retained_owner = 0; clears++; }
 int core_file_open(const char *path, int mode, void **out) {
@@ -108,7 +109,7 @@ static void package(unsigned n, const char *name) {
  struct rvx_header *file = (void *)p->data;
  struct manifest_header *h = (void *)(file + 1);
  *h = (struct manifest_header){.magic=MANIFEST_MAGIC,.version=MANIFEST_VERSION,.api=RV_API_MAJOR<<16,
-  .flags=MANIFEST_ENABLED,.module_count=1,.strings_bytes=(uint32_t)strlen(name)+1};
+  .flags=0,.module_count=1,.strings_bytes=(uint32_t)strlen(name)+1};
  /* Zero text offsets point to the ID, a valid bounded string for every field. */
  strcpy((char *)h + tables_bytes(h), name);
  *file = (struct rvx_header){.magic=RVX_MAGIC,.format=RVX_FORMAT,.api=RV_API_MAJOR<<16,

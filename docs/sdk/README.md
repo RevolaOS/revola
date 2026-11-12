@@ -49,12 +49,13 @@ version = "0.1.0"
 author = "You"
 license = "GPL-3.0-only"
 api = "1.42"                 # RV_API_MAJOR.RV_API_MINOR of the SDK you build against
-enabled = true
 
 [[module]]
 name = "main"
 trigger = "always"
 ```
+
+An installed extension is off until the listener turns it on in Settings > Extensions. Only the first-party extensions listed in the core's `core/loader/bundled.def` start on.
 
 `Makefile` sets the id, the modules in the manifest's order and each module's sources, then includes `rv.mk`:
 

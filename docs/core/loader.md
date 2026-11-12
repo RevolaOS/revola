@@ -9,7 +9,7 @@ An extension is one file, `/Revola/Extensions/<id>.rvx`. Installing, sharing and
 | Part | Contents |
 |---|---|
 | Header | format, core API major, firmware build id; the loader refuses any mismatch |
-| Manifest | id, name, description, version, author, license, API, enabled flag, stability, note, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
+| Manifest | id, name, description, version, author, license, API, stability, note, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
 | Catalog | one entry per module and asset: module i is entry i, resident assets follow, then the rest |
 | Payloads | module images with their relocation tables, then the assets |
 
@@ -17,7 +17,7 @@ A module image is read into one block of the Apple heap, text, data and bss in a
 
 ## Boot scan
 
-`core_loader_boot` runs in `core_preferences_init` after the settings store loaded. It lists the `.rvx` files once, in a heap block as long as the folder, freed when the scan ends, reads each manifest and keeps nothing for a disabled extension. For an enabled one it allocates a record holding the manifest and loads the main module. The module's entry returns the descriptor, whose hooks are bound in order. A collision unbinds what was bound, drops the image and leaves the failure and the site id on the record for Settings > Extensions.
+`core_loader_boot` runs in `core_preferences_init` after the settings store loaded. It lists the `.rvx` files once, in a heap block as long as the folder, freed when the scan ends, reads each manifest and keeps nothing for a disabled extension. An extension is enabled when the store says so (key 0 under its id hash) or, with no store value, when its id is in `loader/bundled.def`, the first-party extensions that are on after install. For an enabled one it allocates a record holding the manifest and loads the main module. The module's entry returns the descriptor, whose hooks are bound in order. A collision unbinds what was bound, drops the image and leaves the failure and the site id on the record for Settings > Extensions.
 
 ## Identity
 

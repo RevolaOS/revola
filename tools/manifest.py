@@ -12,7 +12,6 @@ manifest.toml:
     author = "Who"
     license = "GPL-3.0-only"     # GPL-3.0 compatible
     api = "1.0"                  # minimum core API major.minor
-    enabled = true               # state after install
     stability = "beta"           # optional: alpha, beta or stable, the author's word
     note = "Adapted from X"      # optional: one line under the version, shown to listeners
 
@@ -54,8 +53,7 @@ import struct
 
 MAGIC = 0x464D5652  # RVMF
 VERSION = 2
-FLAG_ENABLED = 1
-STABILITY = {"alpha": 1, "beta": 2, "stable": 3}  # flags bits 1-2
+STABILITY = {"alpha": 1, "beta": 2, "stable": 3}  # flags bits 0-1
 HEADER = struct.Struct("<7I8H")  # text offsets, the note's, a reserved half-word
 MODULE = struct.Struct("<HBBH")
 SITE = struct.Struct("<IIBBH")
@@ -86,7 +84,7 @@ LICENSES = {
 }
 MAX_MODULES = 15  # main and at most 14 more
 MAX_BYTES = 1024  # CORE_MANIFEST_MAX
-MANIFEST_KEYS = {*TEXT_FIELDS, "note", "api", "enabled", "stability", "module", "site", "asset"}
+MANIFEST_KEYS = {*TEXT_FIELDS, "note", "api", "stability", "module", "site", "asset"}
 MODULE_KEYS = {"name", "trigger", "screens"}
 SITE_KEYS = {"name", "address", "kind", "expected", "argc"}
 
@@ -154,8 +152,6 @@ def compile_manifest(document):
             raise ValueError(f"missing {field}")
     if not isinstance(document.get("note", ""), str):
         raise ValueError("note is a string")
-    if not isinstance(document.get("enabled", True), bool):
-        raise ValueError("enabled is true or false")
     if not ID_PATTERN.fullmatch(document["id"]):
         raise ValueError(f"bad id {document['id']!r}")
     if document["license"] not in LICENSES:
@@ -213,8 +209,7 @@ def compile_manifest(document):
         MAGIC,
         VERSION,
         api_word(document.get("api", "1.0")),
-        (FLAG_ENABLED if document.get("enabled", True) else 0)
-        | stability_bits(document) << 1,
+        stability_bits(document),
         len(records),
         len(site_records),
         len(strings.data),

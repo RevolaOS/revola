@@ -6,7 +6,7 @@ An extension is one file on the iPod, `/Revola/Extensions/<id>.rvx`. Installing,
 
 Settings > Extensions lists Usage followed by every installed extension. The second line of an extension shows its state and, while it runs, its memory use. Select one to read its description and change Enabled. Usage opens Memory Usage.
 
-An extension turned on loads at once. An extension turned off unloads within a second and its memory returns to the system.
+An extension turned on loads at once. An extension turned off unloads within a second and its memory returns to the system. An extension you copy onto the iPod yourself starts off; most of the extensions the installer ships start on.
 
 ## Installing an extension from a file
 

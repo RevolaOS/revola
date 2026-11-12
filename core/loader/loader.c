@@ -43,7 +43,6 @@
 #define SUFFIX ".rvx"
 #define MANIFEST_MAGIC 0x464d5652u /* RVMF */
 #define MANIFEST_VERSION 2
-#define MANIFEST_ENABLED 1
 #define MANIFEST_MAX CORE_MANIFEST_MAX
 #define MAX_MODULES 15
 #define IDLE_TICKS 10 /* grace ticks a screen module stays loaded with no screen open */
@@ -119,6 +118,21 @@ static struct block *retired;  /* unlinked before the last tick; freed at the ne
 static uint32_t fnv1a(const char *text)
 {
     return core_settings_owner(text);
+}
+
+/* Whether the extension `owner` is on before the listener has set it: the
+ * first-party ones in loader/bundled.def are, every other extension is off. */
+static int default_on(uint32_t owner)
+{
+    static const char *const bundled[] = {
+#define BUNDLED(id) id,
+#include "loader/bundled.def"
+#undef BUNDLED
+    };
+    for (uint32_t i = 0; i < sizeof bundled / sizeof *bundled; i++)
+        if (fnv1a(bundled[i]) == owner)
+            return 1;
+    return 0;
 }
 
 static int read_all(void *handle, void *buffer, uint32_t bytes)
@@ -1410,7 +1424,7 @@ static struct rv_extension_record *load_extension(const char *file)
     const struct manifest_header *header = (const struct manifest_header *)buffer;
     uint32_t owner = fnv1a(strings(buffer) + header->text[CORE_MANIFEST_ID]);
     if (owner == core_loader_crashed ||
-        !core_settings_get_int(owner, RV_SETTING_KEY_ENABLED, header->flags & MANIFEST_ENABLED))
+        !core_settings_get_int(owner, RV_SETTING_KEY_ENABLED, default_on(owner)))
         return NULL;
     uint32_t record_bytes = sizeof(struct rv_extension_record) +
                             header->module_count * sizeof(struct core_module) + bytes;
@@ -1610,7 +1624,7 @@ void core_loader_boot(void)
                 break;
         if (i < count) {
             int persisted = core_loader_crashed == crashed &&
-                !core_settings_get_int(crashed, RV_SETTING_KEY_ENABLED, 1);
+                !core_settings_get_int(crashed, RV_SETTING_KEY_ENABLED, default_on(crashed));
             core_settings_set_int(crashed, RV_SETTING_KEY_ENABLED, 0);
             core_settings_set_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, (int32_t)crashed);
             core_loader_crashed = crashed;

@@ -13,7 +13,7 @@ A list with Usage followed by the installed extensions. The pane says how many a
 | State | Cause | Enabled control |
 |---|---|---|
 | On, with bytes | loaded | yes |
-| Off | enabled flag off | yes |
+| Off | off in the store, or not in the store and not in `loader/bundled.def` | yes |
 | Off after crash | the last crash was attributed to it (`CORE_KEY_CRASHED`) | yes |
 | Needs update | built for a newer core API minor | yes |
 | Failed | any other load failure | yes |

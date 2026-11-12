@@ -14,7 +14,6 @@ DOCUMENT = {
     "author": "Paul",
     "license": "GPL-3.0-only",
     "api": "1.2",
-    "enabled": False,
     "module": [
         {"name": "main", "trigger": "always"},
         {"name": "editor", "trigger": "screen", "screens": ["editor", "x"]},
@@ -77,20 +76,16 @@ class ManifestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             manifest.compile_manifest({**DOCUMENT, "note": 1})
 
-    def test_enabled_flag(self):
-        data = manifest.compile_manifest({**DOCUMENT, "enabled": True})
-        self.assertEqual(struct.unpack_from("<I", data, 12)[0], 1)
-
     def test_stability_flag(self):
         def flags(document):
             return struct.unpack_from("<I", manifest.compile_manifest(document), 12)[0]
 
-        self.assertEqual(flags({**DOCUMENT, "enabled": True}) >> 1, 0)
+        self.assertEqual(flags(DOCUMENT), 0)
         for value, bits in (("alpha", 1), ("beta", 2), ("stable", 3)):
             with self.subTest(value):
                 self.assertEqual(
-                    flags({**DOCUMENT, "enabled": True, "stability": value}),
-                    1 | bits << 1,
+                    flags({**DOCUMENT, "stability": value}),
+                    bits,
                 )
 
     def test_raw_sites(self):
@@ -181,7 +176,6 @@ class ManifestTests(unittest.TestCase):
             },
             "api minor too large": {"api": "1.65536"},
             "api not major.minor": {"api": "1"},
-            "enabled as text": {"enabled": "false"},
             "unknown key": {"homepage": "https://example.org"},
             "unknown module key": {"module": [{**main, "lazy": True}]},
             "screens as text": {
