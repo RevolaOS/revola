@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* What an audio effect shares with the others: the output format behind the
- * PCM site, the fixed-point steps of a sample loop, and the handoff of a set
- * of values from the task that chose them to the pump task that plays them. */
+ * PCM site, the fixed-point steps of a sample loop, the handoff of a set of
+ * values from the task that chose them to the pump task that plays them, and
+ * the fade from the state that played to the one that takes over. */
 
 #ifndef RV_AUDIO_H
 #define RV_AUDIO_H
@@ -63,6 +64,56 @@ static inline void rv_handoff_take(struct rv_handoff *handoff, void *playing, co
         memcpy(playing, next, bytes);
     } while (seen != handoff->generation);
     handoff->taken = seen;
+}
+
+/* A state that takes over at a buffer edge steps the output, which clicks.
+ * An effect keeps the state that played as a second instance and fades its
+ * output into the new one's over RV_FADE_FRAMES frames, in chunks of
+ * RV_FADE_CHUNK_FRAMES. `lead` frames before the fade play the old state alone
+ * while both run, for a new state that must fill (a delay line) before it is
+ * heard. A new fade restarts from what plays; `remaining = 0` cancels one. */
+enum { RV_FADE_SHIFT = 7, RV_FADE_FRAMES = 1 << RV_FADE_SHIFT, RV_FADE_CHUNK_FRAMES = 32 };
+
+struct rv_fade {
+    uint32_t remaining; /* lead frames at weight 0, then RV_FADE_FRAMES of blend */
+};
+
+/* Runs `state` on `frames` interleaved stereo S16 frames in place. */
+typedef void (*rv_fade_run_fn)(void *state, int16_t *samples, uint32_t frames);
+
+static inline void rv_fade_start(struct rv_fade *fade, uint32_t lead)
+{
+    fade->remaining = RV_FADE_FRAMES + lead;
+}
+
+/* Runs `playing` over the buffer; while a fade lasts, `fading` too, and mixes
+ * the two. The weight runs 1 to RV_FADE_FRAMES so the last faded frame is the
+ * new state alone and joins the rest without a step. */
+static inline void rv_fade_run(struct rv_fade *fade, rv_fade_run_fn run, void *playing,
+                               void *fading, int16_t *samples, uint32_t frames)
+{
+    while (fade->remaining && frames) {
+        int16_t previous[RV_FADE_CHUNK_FRAMES * 2];
+        uint32_t chunk = frames < RV_FADE_CHUNK_FRAMES ? frames : RV_FADE_CHUNK_FRAMES;
+        if (chunk > fade->remaining)
+            chunk = fade->remaining;
+        memcpy(previous, samples, chunk * 2 * sizeof *samples);
+        run(fading, previous, chunk);
+        run(playing, samples, chunk);
+        for (uint32_t i = 0; i < chunk * 2; i += 2) {
+            int32_t weight = fade->remaining > RV_FADE_FRAMES
+                                 ? 0
+                                 : (int32_t)(RV_FADE_FRAMES + 1 - fade->remaining);
+            for (uint32_t n = i; n < i + 2; n++)
+                samples[n] = (int16_t)((previous[n] * (RV_FADE_FRAMES - weight) +
+                                        samples[n] * weight) >>
+                                       RV_FADE_SHIFT);
+            fade->remaining--;
+        }
+        frames -= chunk;
+        samples += chunk * 2;
+    }
+    run(playing, samples, frames);
 }
 
 #endif
