@@ -3,11 +3,16 @@
 
 import struct
 import unittest
+from pathlib import Path
 
 import declarations
 import sites
 from declarations import Copy, Kind, Write
 from recipes import fingerprint, firmware
+
+
+def firmware_header_dir():
+    return Path(__file__).resolve().parents[2] / "firmware"
 
 
 def word(kind, address, expected, symbol="", value=0):
@@ -135,6 +140,20 @@ class FirmwareRecipeTests(unittest.TestCase):
         ):
             with self.subTest(patches=patches), self.assertRaises(ValueError):
                 self.build(patches)
+
+    def test_rejects_writes_inside_the_bitmap_bank(self):
+        bank = (firmware.BASE + 64, firmware.BASE + 128)
+        inside = word(Kind.WORD, firmware.BASE + 124, 0, value=1)
+        outside = word(Kind.WORD, firmware.BASE + 128, 0, value=1)
+        with self.assertRaises(ValueError):
+            firmware.build(
+                self.code, [inside], self.symbols, self.fingerprint, (), bank
+            )
+        firmware.build(self.code, [outside], self.symbols, self.fingerprint, (), bank)
+
+    def test_bitmap_bank_comes_from_the_firmware_header(self):
+        start, end = firmware.bitmap_bank(firmware_header_dir())
+        self.assertLess(start, end)
 
     def test_rejects_missing_thumb_and_out_of_range_symbols(self):
         patch = word(Kind.CALL, firmware.BASE, 0, "hook")

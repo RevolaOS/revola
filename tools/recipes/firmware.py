@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Compile the core and resolve its install-time patches into an assembly recipe."""
 
+import re
 import struct
 from dataclasses import dataclass
 
@@ -17,6 +18,17 @@ from recipes.segments import Input, Recipe
 BASE = 0x08000000
 IMAGE_HEADER_SIZE = 0x800
 IMAGE_SIZE_FIELDS = (0xC, 0x10, 0x14)
+PATCH_MAX_BYTES = 8  # a jump patch: the branch word and its target
+DEFINE = re.compile(r"^#define (\w+) (0x[0-9a-fA-F]+)$", re.M)
+
+
+def bitmap_bank(firmware):
+    """The address range of the resident bitmap payloads, which no patch may
+    touch: the installed image is the appearance extension's source of stock
+    artwork."""
+    defines = dict(DEFINE.findall((firmware / "osos-2.0.5.h").read_text()))
+    start = int(defines["BMapPayloads_address"], 16)
+    return start, start + int(defines["BMapPayloads_bytes"], 16)
 
 
 @dataclass(frozen=True)
@@ -102,7 +114,7 @@ def build_recipe(
     )
     used = symbols["__core_end"] - symbols["__core_start"]
     print(f"Core: {used:,} bytes resident, {len(table)} sites", flush=True)
-    return build(code, patches, symbols, fingerprint, table)
+    return build(code, patches, symbols, fingerprint, table, bitmap_bank(firmware))
 
 
 def core_layout(code, symbols, original_size):
@@ -136,11 +148,17 @@ def resolve_copy(patch, symbols, layout):
     return destination, source
 
 
-def resolve_write(patch, symbols, layout):
+def resolve_write(patch, symbols, layout, protected=None):
     address = patch.address
     value = patch.value if patch.kind == Kind.WORD else require(symbols, patch.symbol)
     if address % 4:
         raise ValueError(f"Unaligned patch at {address:#x}")
+    if (
+        protected
+        and protected[0] < address + PATCH_MAX_BYTES
+        and address < protected[1]
+    ):
+        raise ValueError(f"Patch inside the bitmap bank at {address:#x}")
     if patch.kind != Kind.WORD and (
         value % 4 or not layout.start <= value <= layout.limit
     ):
@@ -158,13 +176,13 @@ def resolve_write(patch, symbols, layout):
     return offset, after
 
 
-def resolve_patches(recipe, patches, symbols, layout):
+def resolve_patches(recipe, patches, symbols, layout, protected=None):
     writes, copies = [], []
     for patch in patches:
         if isinstance(patch, Copy):
             copies.append(resolve_copy(patch, symbols, layout))
         else:
-            offset, after = resolve_write(patch, symbols, layout)
+            offset, after = resolve_write(patch, symbols, layout, protected)
             recipe.expect("osos", offset, patch.expected)
             writes.append((offset, after))
     return writes, copies
@@ -180,11 +198,11 @@ def size_header_writes(recipe, original_size, output_size):
     return writes
 
 
-def build(code, patches, symbols, fingerprint, table=()):
+def build(code, patches, symbols, fingerprint, table=(), protected=None):
     original_size = fingerprint["bytes"]
     layout = core_layout(code, symbols, original_size)
     recipe = Recipe({"osos": fingerprint})
-    writes, copies = resolve_patches(recipe, patches, symbols, layout)
+    writes, copies = resolve_patches(recipe, patches, symbols, layout, protected)
     parts = sites.regions(
         original_size, BASE, layout.load_offset, require(symbols, "__osos_iram_base")
     )
