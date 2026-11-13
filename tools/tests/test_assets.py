@@ -36,7 +36,7 @@ trigger = "always"
 [[asset]]
 name = "icon"
 file = "icon.png"
-menu = true
+pane = "icon"
 
 [[asset]]
 name = "art"

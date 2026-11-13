@@ -126,6 +126,21 @@ class ManifestTests(unittest.TestCase):
             set(re.findall(r'"([A-Za-z]+)"', body)), manifest.CONTENT_RESERVED
         )
 
+    def test_pane_flags(self):
+        document = {
+            **DOCUMENT,
+            "asset": [
+                {"name": "icon", "file": "icon.png", "pane": "icon"},
+                {"name": "art", "file": "art.png", "pane": "picture"},
+                {"name": "note", "file": "note.txt"},
+            ],
+        }
+        self.assertEqual(manifest.pane_bits(document), 1 << 2)
+        self.assertEqual(manifest.pane_bits(document, [(142, 87)]), 1 << 2 | 1 << 4)
+        self.assertEqual(manifest.pane_bits(DOCUMENT, [(119, 119)]), 1 << 3)
+        with self.assertRaises(ValueError):
+            manifest.pane_bits(DOCUMENT, [(1, 1)])
+
     def test_stability_flag(self):
         def flags(document):
             return struct.unpack_from("<I", manifest.compile_manifest(document), 12)[0]
@@ -218,7 +233,12 @@ class ManifestTests(unittest.TestCase):
             "preload unknown on a screen module": {
                 "module": [
                     main,
-                    {"name": "b", "trigger": "screen", "screens": ["s"], "preload": "soon"},
+                    {
+                        "name": "b",
+                        "trigger": "screen",
+                        "screens": ["s"],
+                        "preload": "soon",
+                    },
                 ]
             },
             "screen trigger without screens": {
@@ -251,11 +271,7 @@ class ManifestTests(unittest.TestCase):
         document = {
             **DOCUMENT,
             "asset": [
-                {
-                    "name": "eq-icon",
-                    "file": "assets/eq.png",
-                    "menu": True,
-                },
+                {"name": "eq-icon", "file": "assets/eq.png", "pane": "icon"},
                 {"name": "table", "file": "table.bin", "preload": "always"},
                 {"name": "song", "file": "a.mp3", "compress": False},
                 {"name": "notes", "file": "notes.bin"},
@@ -269,28 +285,28 @@ class ManifestTests(unittest.TestCase):
                     "file": "assets/eq.png",
                     "preload": "optional",
                     "compress": True,
-                    "menu": True,
+                    "pane": "icon",
                 },
                 {
                     "name": "table",
                     "file": "table.bin",
                     "preload": "always",
                     "compress": True,
-                    "menu": False,
+                    "pane": None,
                 },
                 {
                     "name": "song",
                     "file": "a.mp3",
                     "preload": "never",
                     "compress": False,
-                    "menu": False,
+                    "pane": None,
                 },
                 {
                     "name": "notes",
                     "file": "notes.bin",
                     "preload": "optional",
                     "compress": True,
-                    "menu": False,
+                    "pane": None,
                 },
             ],
         )
@@ -308,7 +324,9 @@ class ManifestTests(unittest.TestCase):
         ]
         data = manifest.compile_manifest({**DOCUMENT, "module": modules})
         classes = [
-            manifest.MODULE.unpack_from(data, manifest.HEADER.size + i * manifest.MODULE.size)[4]
+            manifest.MODULE.unpack_from(
+                data, manifest.HEADER.size + i * manifest.MODULE.size
+            )[4]
             for i in range(len(modules))
         ]
         self.assertEqual(classes, [0, 1, 2, 0, 1, 2])
@@ -323,11 +341,18 @@ class ManifestTests(unittest.TestCase):
             "preload not a class": [{**good, "preload": True}],
             "preload unknown": [{**good, "preload": "sometimes"}],
             "preloaded uncompressed": [
-                {"name": "song", "file": "a.mp3", "compress": False, "preload": "always"}
+                {
+                    "name": "song",
+                    "file": "a.mp3",
+                    "compress": False,
+                    "preload": "always",
+                }
             ],
             "unknown key": [{**good, "kind": "bitmap"}],
             "uncompressed bitmap": [{**good, "compress": False}],
-            "menu data": [{"name": "song", "file": "a.mp3", "menu": True}],
+            "pane data": [{"name": "song", "file": "a.mp3", "pane": "picture"}],
+            "unknown pane": [{**good, "pane": "games"}],
+            "old menu key": [{**good, "menu": True}],
         }
         for name, assets in cases.items():
             with self.subTest(name), self.assertRaises(ValueError):

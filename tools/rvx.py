@@ -293,12 +293,12 @@ def module_image(values, image, offsets):
     return MODULE.pack(*fields) + body + b"".join(struct.pack("<I", o) for o in offsets)
 
 
-def asset_payload(path, menu=False):
-    """Kind and bytes of an asset file: a .png becomes a bitmap, a menu bitmap
-    when `menu` is set; the rest is data."""
+def asset_payload(path, pane=None):
+    """Kind and bytes of an asset file: a .png becomes a bitmap, checked as the
+    pane icon, picture or badge `pane` names; the rest is data."""
     data = Path(path).read_bytes()
     if Path(path).suffix.lower() == ".png":
-        return KIND_BITMAP, bitmap.png_to_bmap(data, menu)
+        return KIND_BITMAP, bitmap.png_to_bmap(data, pane)
     return KIND_DATA, data
 
 
@@ -497,7 +497,6 @@ def pack(prefix, out, toml, elves, api, firmware):
     document = tomllib.loads(toml.read_text())
     for warning in warnings(toml, document):
         print(f"warning: {warning}", file=sys.stderr)
-    compiled = manifest.compile_manifest(document)
     names = [module["name"] for module in document["module"]]
     if len(elves) != len(names):
         raise ValueError(
@@ -509,8 +508,10 @@ def pack(prefix, out, toml, elves, api, firmware):
     ]
     assets = []
     for asset in manifest.assets(document):
-        kind, data = asset_payload(toml.parent / asset["file"], asset["menu"])
+        kind, data = asset_payload(toml.parent / asset["file"], asset["pane"])
         assets.append({**asset, "kind": kind, "data": data})
+    pictures = {bitmap.bmap_size(a["data"]) for a in assets if a["pane"] == "picture"}
+    compiled = manifest.compile_manifest(document, pictures)
     packed, entries = pack_extension(compiled, modules, assets, api, firmware)
     checked_entries = unpack(packed)[1]
     classes = manifest_module_classes(compiled)

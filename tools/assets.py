@@ -59,7 +59,7 @@ def catalog(toml_path, rvx_path):
                 document["id"],
                 name,
                 bmap,
-                declared[name]["menu"],
+                declared[name]["pane"] == "icon",
                 declared[name]["preload"],
             )
         )
@@ -72,7 +72,7 @@ def core_catalog(assets_dir):
         record(
             manifest.CORE_ID,
             png.stem,
-            bitmap.png_to_bmap(png.read_bytes(), True),
+            bitmap.png_to_bmap(png.read_bytes(), "icon"),
             True,
             "never",
         )

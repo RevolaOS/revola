@@ -65,7 +65,7 @@ def write_icons(source, path):
     names = []
     for png in sorted((source / "assets").glob("*.png")):
         name = png.stem.replace("-", "_")
-        mask = bitmap.png_to_bmap(png.read_bytes(), True)
+        mask = bitmap.png_to_bmap(png.read_bytes(), "icon")
         stream = rvx.lz_encode(mask)
         body = ",".join(str(b) for b in stream)
         lines.append(f"static const uint8_t icon_{name}[] = {{{body}}};")

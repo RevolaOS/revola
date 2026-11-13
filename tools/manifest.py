@@ -40,7 +40,9 @@ manifest.toml:
     [[asset]]
     name = "eq-icon"             # [a-z0-9_-]{1,31}
     file = "assets/eq.png"       # .png becomes a bitmap, anything else is data
-    menu = true                  # a menu bitmap: 78 x 121 coverage, drawn in the system colour
+    pane = "icon"                # for a menu pane: icon (a 78 x 121 coverage mask, drawn in
+                                 # the system colour), picture (one of the pane sizes, which
+                                 # picks the pane's shape) or badge (20 x 16, beside a count line)
     preload = "optional"         # read into RAM as stored with the main module:
                                  # always, optional (the default, when Optimize allows)
                                  # or never (the default with compress = false)
@@ -53,11 +55,13 @@ manifest.toml:
 Raw sites are for code no core site covers yet; first-party extensions use core
 sites only.
 
-Ships in the SDK tarball, so it depends on nothing outside this file.
+Ships in the SDK tarball with bitmap.py beside it and depends on nothing else.
 """
 
 import re
 import struct
+
+import bitmap
 
 MAGIC = 0x464D5652  # RVMF
 VERSION = 3
@@ -80,7 +84,7 @@ CORE_ID = "revola"
 RESERVED_IDS = {CORE_ID}
 MODULE_PATTERN = re.compile(r"[a-z0-9_-]+")
 ASSET_PATTERN = re.compile(r"[a-z0-9_-]{1,31}")
-ASSET_KEYS = {"name", "file", "preload", "compress", "menu"}
+ASSET_KEYS = {"name", "file", "preload", "compress", "pane"}
 PRELOAD = ("always", "optional", "never")
 CONTENT_PATTERN = re.compile(r"[A-Z][a-z0-9]{1,15}")
 # The core's folders; the pattern fixes the case, so an exact match covers FAT's.
@@ -170,8 +174,9 @@ def compile_site(site, strings):
     return SITE.pack(address, expected, SITE_KINDS[kind], argc, strings.add(name))
 
 
-def compile_manifest(document):
-    """The compiled manifest for a parsed manifest.toml dictionary."""
+def compile_manifest(document, pictures=()):
+    """The compiled manifest for a parsed manifest.toml dictionary; `pictures`
+    are the (width, height) of its `pane = "picture"` assets."""
     unknown = set(document) - MANIFEST_KEYS
     if unknown:
         raise ValueError(f"unknown keys {sorted(unknown)}")
@@ -248,7 +253,7 @@ def compile_manifest(document):
         MAGIC,
         VERSION,
         api_word(document.get("api", "1.0")),
-        stability_bits(document),
+        stability_bits(document) | pane_bits(document, pictures),
         len(records),
         len(site_records),
         len(strings.data),
@@ -290,6 +295,16 @@ def stability_bits(document):
     return STABILITY[document["stability"]]
 
 
+def pane_bits(document, pictures=()):
+    """The flags bits of the pane shapes the extension's rows can need: bit 2
+    when an asset is an icon, then a bit per picture size in `pictures`, in
+    bitmap.PICTURE_SIZES order."""
+    bits = 1 << 2 if any(a["pane"] == "icon" for a in assets(document)) else 0
+    for size in pictures:
+        bits |= 1 << (3 + bitmap.PICTURE_SIZES.index(tuple(size)))
+    return bits
+
+
 def assets(document):
     """The manifest's assets in declaration order, checked, with defaults filled in."""
     checked = []
@@ -305,15 +320,16 @@ def assets(document):
             )
         if not isinstance(asset.get("file"), str) or not asset["file"]:
             raise ValueError(f"asset {name}: file is a path")
-        for key in ("compress", "menu"):
-            if not isinstance(asset.get(key, False), bool):
-                raise ValueError(f"asset {name}: {key} is true or false")
-        bitmap = asset["file"].lower().endswith(".png")
-        if bitmap and "compress" in asset:
+        if not isinstance(asset.get("compress", True), bool):
+            raise ValueError(f"asset {name}: compress is true or false")
+        png = asset["file"].lower().endswith(".png")
+        if png and "compress" in asset:
             raise ValueError(f"asset {name}: bitmaps are always compressed")
-        if asset.get("menu") and not bitmap:
-            raise ValueError(f"asset {name}: a menu bitmap is a .png")
-        menu = asset.get("menu", False)
+        pane = asset.get("pane")
+        if pane is not None and pane not in bitmap.PANES:
+            raise ValueError(f"asset {name}: pane is one of {', '.join(bitmap.PANES)}")
+        if pane and not png:
+            raise ValueError(f"asset {name}: a pane {pane} is a .png")
         compress = asset.get("compress", True)
         preload = asset.get("preload", "optional" if compress else "never")
         if preload not in PRELOAD:
@@ -326,7 +342,7 @@ def assets(document):
                 "file": asset["file"],
                 "preload": preload,
                 "compress": compress,
-                "menu": menu,
+                "pane": pane,
             }
         )
     return checked

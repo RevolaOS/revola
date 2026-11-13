@@ -7,10 +7,13 @@ bottom, right, payload bytes) and its payload; rows are padded to a word.
 - Picture, with at most 256 colours: indexed, a 32-bit palette count, the
   palette as B, G, R, A, then one byte per pixel. Otherwise B, G, R, A per
   pixel, not premultiplied.
-- Menu bitmap: what the stock Settings pane icons are, a 78 x 121 mask of one
-  coverage byte per pixel (0 clear, 255 full) that the device draws in its own
-  colour. Coverage is the alpha channel when any pixel is translucent, else the
-  gray level of an opaque grayscale PNG.
+- Pane picture (`pane = "picture"` in the manifest): a picture of one of the
+  sizes the menu panes show (PICTURE_SIZES), or the 20 x 16 badge beside a
+  pane's count line (`"badge"`).
+- Pane icon (`"icon"`): what the stock Settings pane icons are, a 78 x 121 mask
+  of one coverage byte per pixel (0 clear, 255 full) that the device draws in
+  its own colour. Coverage is the alpha channel when any pixel is translucent,
+  else the gray level of an opaque grayscale PNG.
 
 Ships in the SDK beside rvx-pack, so it depends on nothing outside this file.
 
@@ -24,7 +27,15 @@ HEADER = struct.Struct("<HHHHiiiii")
 INDEXED8 = 0x64  # BMapFormat_Indexed8
 BGRA8888 = 0x1888  # BMapFormat_BGRA8888
 MASK8 = 8  # BMapFormat_Mask8, the stock Settings pane icons
-MENU_SIZE = (78, 121)
+ICON_SIZE = (78, 121)
+BADGE_SIZE = (20, 16)
+# The pictures the menu panes show, in the order of the manifest's pane flags
+# bits after the icon's: a square picture with lines under it, a wide one, one
+# with two lines over it, one with a count line and badge under it, and one in
+# the World Clock pane's clock box.
+PICTURE_SIZES = ((119, 119), (142, 87), (130, 128), (146, 110), (132, 145))
+# What an asset's `pane` value may be.
+PANES = ("icon", "picture", "badge")
 
 
 def paeth(a, b, c):
@@ -109,8 +120,12 @@ def read_png(data):
     return width, height, bytes(pixels)
 
 
-def encode_bmap(width, height, rgba):
-    """BMap bytes for RGBA pixels: indexed with at most 256 colours, else BGRA."""
+def encode_bmap(width, height, rgba, sizes=()):
+    """BMap bytes for RGBA pixels: indexed with at most 256 colours, else BGRA;
+    `sizes` are the (width, height) the picture may have, any when empty."""
+    if sizes and (width, height) not in sizes:
+        allowed = ", ".join(f"{w} x {h}" for w, h in sizes)
+        raise ValueError(f"the picture is {width} x {height}, not one of {allowed}")
     if len(rgba) != width * height * 4:
         raise ValueError("RGBA pixel length does not match its dimensions")
     pixels = [rgba[i : i + 4] for i in range(0, len(rgba), 4)]
@@ -139,10 +154,10 @@ def encode_bmap(width, height, rgba):
 
 
 def encode_mask(width, height, rgba):
-    """Menu bitmap bytes for RGBA pixels: a MENU_SIZE coverage mask."""
-    if (width, height) != MENU_SIZE:
+    """Pane icon bytes for RGBA pixels: an ICON_SIZE coverage mask."""
+    if (width, height) != ICON_SIZE:
         raise ValueError(
-            f"a menu bitmap is {MENU_SIZE[0]} x {MENU_SIZE[1]}, not {width} x {height}"
+            f"a pane icon is {ICON_SIZE[0]} x {ICON_SIZE[1]}, not {width} x {height}"
         )
     pixels = [rgba[i : i + 4] for i in range(0, len(rgba), 4)]
     if any(a != 255 for _, _, _, a in pixels):
@@ -150,9 +165,7 @@ def encode_mask(width, height, rgba):
     elif all(r == g == b for r, g, b, _ in pixels):
         coverage = [r for r, _, _, _ in pixels]
     else:
-        raise ValueError(
-            "a menu bitmap is coverage: give it alpha, or make it grayscale"
-        )
+        raise ValueError("a pane icon is coverage: give it alpha, or make it grayscale")
     stride = (width + 3) & ~3
     payload = b"".join(
         bytes(coverage[y * width : (y + 1) * width]) + bytes(stride - width)
@@ -161,5 +174,18 @@ def encode_mask(width, height, rgba):
     return HEADER.pack(MASK8, 0, stride, 8, 0, 0, height, width, len(payload)) + payload
 
 
-def png_to_bmap(data, menu=False):
-    return (encode_mask if menu else encode_bmap)(*read_png(data))
+def png_to_bmap(data, pane=None):
+    """The BMap of a PNG; `pane` is what it is for a menu pane, one of PANES,
+    None for a bitmap of any size."""
+    if pane is not None and pane not in PANES:
+        raise ValueError(f"pane is one of {', '.join(PANES)}, not {pane!r}")
+    if pane == "icon":
+        return encode_mask(*read_png(data))
+    sizes = {"picture": PICTURE_SIZES, "badge": (BADGE_SIZE,)}.get(pane, ())
+    return encode_bmap(*read_png(data), sizes=sizes)
+
+
+def bmap_size(bmap):
+    """(width, height) of a BMap."""
+    _, _, _, _, top, left, bottom, right, _ = HEADER.unpack_from(bmap)
+    return right - left, bottom - top
