@@ -145,13 +145,16 @@ SITE(ContextMenu_ScreenActionCompare_call, SITE_ContextMenu_ScreenActionCompare_
      BL(SITE_ContextMenu_ScreenActionCompare_call, ADDR_String_CompareCString), 0, 1, 2, 0)
 
 /* A controller is deactivated: (controller, leaving), leaving nonzero when it is
- * popped. The plain resource screen class and the Settings list class; every
- * controller of the class passes through, so handlers check the controller. */
+ * popped. The plain resource screen class, the Settings list class and the Games
+ * list class; every controller of the class passes through, so handlers check the
+ * controller. */
 SITE(ScreenController_Deactivate_slot, SITE_ScreenController_Deactivate_slot, VTABLE,
      ADDR_ResourceScreen_Deactivate, ADDR_ResourceScreen_Deactivate, 0, 1, 2, 0)
 SITE(SettingsMenuListController_Deactivate_slot, SITE_SettingsMenuListController_Deactivate_slot,
      VTABLE, ADDR_SettingsMenuListController_Deactivate,
      ADDR_SettingsMenuListController_Deactivate, 0, 1, 2, 0)
+SITE(GamesMenuController_Deactivate_slot, SITE_GamesMenuController_Deactivate_slot, VTABLE,
+     ADDR_GamesMenuController_Deactivate, ADDR_GamesMenuController_Deactivate, 0, 1, 2, 0)
 
 /* UI start enumerates the View templates: (bank, id*, bytes*) through the ROM
  * index; a handler yields more when the original returns NULL. */
@@ -218,6 +221,40 @@ SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlock
 SITE(GameManifest_InitReader_call, SITE_GameManifest_InitReader_call, CALL,
      ADDR_GameManifest_InitReader,
      BL(SITE_GameManifest_InitReader_call, ADDR_GameManifest_InitReader), 0, 1, 4, 0)
+
+/* The games service's two list scans, (service, list, volume, root): the built-in root
+ * first, then the disk root. A handler adds a root by calling
+ * GamesService_ScanRoot again, or leaves one out by not continuing. */
+SITE(GamesService_ScanBuiltInRoot_call, SITE_GamesService_ScanBuiltInRoot_call, CALL,
+     ADDR_GamesService_ScanRoot,
+     BL(SITE_GamesService_ScanBuiltInRoot_call, ADDR_GamesService_ScanRoot), 0, 1, 4, 0)
+SITE(GamesService_ScanDiskRoot_call, SITE_GamesService_ScanDiskRoot_call, CALL,
+     ADDR_GamesService_ScanRoot,
+     BL(SITE_GamesService_ScanDiskRoot_call, ADDR_GamesService_ScanRoot), 0, 1, 4, 0)
+
+/* The games service's list build: (service). Returns early while the list is built;
+ * a handler that clears the list first makes it scan again. Called on the UI task;
+ * the service exists only once the UI task has started, after core_boot. */
+SITE(GamesService_BuildList_entry, SITE_GamesService_BuildList_entry, ENTRY,
+     REPLAY(GamesService_BuildList_entry), 0xe92d4070, 0xe1a04000, 1, 1, 0)
+
+/* The play count caption of a Games row, (service, id): the games service asks for
+ * "Never Played" or "Played Once" at the first site and for "Played %d Times", which
+ * it formats itself, at the second. A handler answers its own string by not
+ * continuing. */
+SITE(GamesService_PlayedString_call, SITE_GamesService_PlayedString_call, CALL,
+     ADDR_ResourceService_GetString,
+     BL(SITE_GamesService_PlayedString_call, ADDR_ResourceService_GetString), 0, 1, 2, 0)
+SITE(GamesService_PlayedTimesString_call, SITE_GamesService_PlayedTimesString_call, CALL,
+     ADDR_ResourceService_GetString,
+     BL(SITE_GamesService_PlayedTimesString_call, ADDR_ResourceService_GetString), 0, 1, 2, 0)
+
+/* Path of a game's file: (out, directory_kind, identifier, storage, relative_path),
+ * the last on the stack; every reader of a package derives its paths here. Called on
+ * the UI task and the game's; nothing is inside it while core_boot runs during UI
+ * start-up. */
+SITE(GameFiles_BuildPath_entry, SITE_GameFiles_BuildPath_entry, ENTRY,
+     REPLAY(GameFiles_BuildPath_entry), 0xe92d40fe, 0xe1a05001, 1, 4 | STACK(1), 0)
 
 /* Position of an entry in a list order: (entry, order, reverse), position in r0 and
  * the entry in r1. Nothing is inside it while core_boot runs during UI start-up. */

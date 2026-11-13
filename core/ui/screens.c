@@ -325,7 +325,7 @@ static void screen_left(void *controller)
     }
 }
 
-/* Every deactivate of the two controller classes passes here; only the
+/* Every deactivate of the three controller classes passes here; only the
  * runtime's controllers are in `open`. */
 static uint32_t deactivated(uint32_t controller, uint32_t leaving, const struct core_next *next)
 {
@@ -487,6 +487,7 @@ void core_screens_invalidate(struct rv_extension_record *owner, const struct rv_
 static const struct core_hook hooks[] = {
     {CORE_SITE_ScreenController_Deactivate_slot, CORE_HOOK_FILTER, 0, deactivated},
     {CORE_SITE_SettingsMenuListController_Deactivate_slot, CORE_HOOK_FILTER, 0, deactivated},
+    {CORE_SITE_GamesMenuController_Deactivate_slot, CORE_HOOK_FILTER, 0, deactivated},
 };
 
 void core_screens_init(void *resource_bank)
