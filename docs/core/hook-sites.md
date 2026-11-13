@@ -15,7 +15,7 @@ A row gives the address, the kind, what an unbound site does, the Apple words ex
 | `ENTRY` | the first two words of a function |
 | `ENTRY_NORETURN` | as `ENTRY`, for a function that does not return |
 
-`CALL`, `VTABLE`, `WORD` and `INSERT` sites are patched when the first handler binds and restored when the last unbinds. Entry sites are written once by `core_boot` and fall through to a replay stub while unbound.
+`CALL`, `VTABLE`, `WORD` and `INSERT` sites are patched when the first handler binds and restored when the last unbinds. Entry sites are written once by `core_boot` and fall through to a replay stub while unbound, through the pass-through filter for four-argument sites, whose stub pushes `next` where Apple's fifth argument was.
 
 `core_boot` runs inside Apple's UI task after the other tasks exist, so a two-word entry write is only safe for a function no started task can be executing at that moment. A site is declared `ENTRY` only with that argument. Every write runs with IRQ and FIQ masked and is followed by `core_cache_sync`.
 

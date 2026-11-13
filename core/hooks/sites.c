@@ -181,6 +181,19 @@ static const struct core_hook passes[] = {
     {0, CORE_HOOK_FILTER, 0, pass4},
 };
 
+/* The slot while nothing is bound. An entry site's stub always runs, and with four
+ * register arguments it pushes `next` as the first stack argument, where Apple's
+ * fifth argument was, with copies of Apple's stack arguments above it. The replay
+ * would read `next` as that argument, so every four-argument entry site is
+ * entered through the pass-through, which passes the stack arguments on. */
+static uint32_t unbound_target(const struct core_site_row *row)
+{
+    int entry = row->kind == CORE_SITE_ENTRY || row->kind == CORE_SITE_ENTRY_NORETURN;
+    if (entry && (row->argc & 15) == 4)
+        return (uint32_t)pass4;
+    return row->original;
+}
+
 static int is_pass(const struct core_hook *hook)
 {
     return hook >= passes && hook < passes + sizeof passes / sizeof passes[0];
@@ -228,7 +241,7 @@ void core_sites_init(void)
     probe_mmu();
     for (uint32_t i = 0; i < CORE_SITE_COUNT; i++) {
         const struct core_site_row *row = &core_sites[i];
-        core_site_slots[i] = row->original;
+        core_site_slots[i] = unbound_target(row);
         if (row->kind == CORE_SITE_ENTRY || row->kind == CORE_SITE_ENTRY_NORETURN)
             patch_entry(row, core_site_stubs[i]);
     }
@@ -258,7 +271,7 @@ static void publish(uint32_t site, struct hook_list *list)
     const struct core_site_row *row = row_of(site);
     struct hook_list *old = lists[site];
     uint32_t count = list ? list->count : 0;
-    uint32_t target = row->original;
+    uint32_t target = unbound_target(row);
     if (count == 1)
         target = (uint32_t)list->hooks[0]->handler;
     else if (count > 1)
