@@ -174,9 +174,8 @@ def compile_site(site, strings):
     return SITE.pack(address, expected, SITE_KINDS[kind], argc, strings.add(name))
 
 
-def compile_manifest(document, pictures=()):
-    """The compiled manifest for a parsed manifest.toml dictionary; `pictures`
-    are the (width, height) of its `pane = "picture"` assets."""
+def compile_manifest(document):
+    """The compiled manifest for a parsed manifest.toml dictionary."""
     unknown = set(document) - MANIFEST_KEYS
     if unknown:
         raise ValueError(f"unknown keys {sorted(unknown)}")
@@ -253,7 +252,7 @@ def compile_manifest(document, pictures=()):
         MAGIC,
         VERSION,
         api_word(document.get("api", "1.0")),
-        stability_bits(document) | pane_bits(document, pictures),
+        stability_bits(document),
         len(records),
         len(site_records),
         len(strings.data),
@@ -293,16 +292,6 @@ def stability_bits(document):
     if document["stability"] not in STABILITY:
         raise ValueError(f"stability must be one of {', '.join(STABILITY)}")
     return STABILITY[document["stability"]]
-
-
-def pane_bits(document, pictures=()):
-    """The flags bits of the pane shapes the extension's rows can need: bit 2
-    when an asset is an icon, then a bit per picture size in `pictures`, in
-    bitmap.PICTURE_SIZES order."""
-    bits = 1 << 2 if any(a["pane"] == "icon" for a in assets(document)) else 0
-    for size in pictures:
-        bits |= 1 << (3 + bitmap.PICTURE_SIZES.index(tuple(size)))
-    return bits
 
 
 def assets(document):

@@ -29,10 +29,9 @@ BGRA8888 = 0x1888  # BMapFormat_BGRA8888
 MASK8 = 8  # BMapFormat_Mask8, the stock Settings pane icons
 ICON_SIZE = (78, 121)
 BADGE_SIZE = (20, 16)
-# The pictures the menu panes show, in the order of the manifest's pane flags
-# bits after the icon's: a square picture with lines under it, a wide one, one
-# with two lines over it, one with a count line and badge under it, and one in
-# the World Clock pane's clock box.
+# The pictures the menu panes show: a square picture with lines under it, a
+# wide one, one with two lines over it, one with a count line and badge under
+# it, and one in the World Clock pane's clock box.
 PICTURE_SIZES = ((119, 119), (142, 87), (130, 128), (146, 110), (132, 145))
 # What an asset's `pane` value may be.
 PANES = ("icon", "picture", "badge")

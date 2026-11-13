@@ -510,8 +510,7 @@ def pack(prefix, out, toml, elves, api, firmware):
     for asset in manifest.assets(document):
         kind, data = asset_payload(toml.parent / asset["file"], asset["pane"])
         assets.append({**asset, "kind": kind, "data": data})
-    pictures = {bitmap.bmap_size(a["data"]) for a in assets if a["pane"] == "picture"}
-    compiled = manifest.compile_manifest(document, pictures)
+    compiled = manifest.compile_manifest(document)
     packed, entries = pack_extension(compiled, modules, assets, api, firmware)
     checked_entries = unpack(packed)[1]
     classes = manifest_module_classes(compiled)

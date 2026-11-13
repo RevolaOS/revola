@@ -126,21 +126,6 @@ class ManifestTests(unittest.TestCase):
             set(re.findall(r'"([A-Za-z]+)"', body)), manifest.CONTENT_RESERVED
         )
 
-    def test_pane_flags(self):
-        document = {
-            **DOCUMENT,
-            "asset": [
-                {"name": "icon", "file": "icon.png", "pane": "icon"},
-                {"name": "art", "file": "art.png", "pane": "picture"},
-                {"name": "note", "file": "note.txt"},
-            ],
-        }
-        self.assertEqual(manifest.pane_bits(document), 1 << 2)
-        self.assertEqual(manifest.pane_bits(document, [(142, 87)]), 1 << 2 | 1 << 4)
-        self.assertEqual(manifest.pane_bits(DOCUMENT, [(119, 119)]), 1 << 3)
-        with self.assertRaises(ValueError):
-            manifest.pane_bits(DOCUMENT, [(1, 1)])
-
     def test_stability_flag(self):
         def flags(document):
             return struct.unpack_from("<I", manifest.compile_manifest(document), 12)[0]
