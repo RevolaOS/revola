@@ -23,7 +23,7 @@ The core decodes only the menu bitmap shown and keeps a canvas's bitmaps decoded
 
 A theme that replaces artwork can replace every extension's bitmap assets too, Settings icons and canvas bitmaps alike, with `api->asset_set_provider(self, &provider)`. The provider is a `struct rv_asset_provider` of three optional functions the core calls with the owner extension's id hash and the asset's name hash (the core's 32-bit FNV-1a of the strings; the core's own bitmaps are owned by the hash of `"revola"`).
 
-Before the core decodes a bitmap it asks `replacement_bytes` for the size of the theme's bitmap for that asset, 0 for none, then `replace` for the bitmap itself into a block of that size: a whole BMap with its 28-byte header, as the core would decode it.
+Before the core decodes a bitmap it asks `replacement` whether the theme has one for that asset and how it is stored (`struct rv_asset_stream`: raw or one lz stream in the package format, its stored and decoded sizes), then `replacement_read` for the stored bytes, and decodes them itself into a whole BMap with its 28-byte header, as it would the extension's own.
 
 When the theme has none, the core decodes the extension's own bitmap and offers it to `adjust`, which may alter it in place.
 

@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 47
+#define RV_API_MINOR 48
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -246,14 +246,21 @@ enum rv_color_role {
  * through asset_set_provider. `owner` and `asset` are the extension's id and
  * the asset's name as the core hashes strings (32-bit FNV-1a); the core's own
  * assets are owned by the hash of "revola". A bitmap is a whole BMap, its
- * 28-byte header and its rows, as the core decodes it from the package. */
+ * 28-byte header and its rows, as the core decodes it from the package. The
+ * provider hands it over as stored, raw or as one lz stream in the package
+ * format, and the core decodes it like the extension's own. */
+enum { RV_ASSET_RAW, RV_ASSET_LZ };
+struct rv_asset_stream {
+    uint8_t codec;   /* RV_ASSET_RAW or RV_ASSET_LZ */
+    uint32_t stored; /* bytes as stored */
+    uint32_t bytes;  /* bytes once decoded: the whole BMap */
+};
 struct rv_asset_provider {
-    /* The bytes of the bitmap the provider holds for the asset, 0 for none. */
-    uint32_t (*replacement_bytes)(uint32_t owner, uint32_t asset);
-    /* Fills `bmap`, a block of the `bytes` replacement_bytes answered, with
-     * that bitmap; 1 when it did, 0 leaves the core to decode the extension's
-     * own. */
-    int (*replace)(uint32_t owner, uint32_t asset, void *bmap, uint32_t bytes);
+    /* 1 and *stream filled when the provider holds a bitmap for the asset. */
+    int (*replacement)(uint32_t owner, uint32_t asset, struct rv_asset_stream *stream);
+    /* Copies the `stored` bytes of that bitmap into `out`; 1 when it did, 0
+     * leaves the core to decode the extension's own. */
+    int (*replacement_read)(uint32_t owner, uint32_t asset, void *out, uint32_t stored);
     /* The extension's own bitmap, decoded, which it may alter; 1 when it did. */
     int (*adjust)(uint32_t owner, uint32_t asset, void *bmap, uint32_t bytes);
 };
@@ -581,7 +588,7 @@ struct rv_api {
 
     /* Assets from manifest.toml by name. asset_load returns the decoded asset in
      * a block from alloc, *bytes its size, or NULL when it is missing, damaged or
-     * does not fit; free it with free. A resident asset is copied from RAM.
+     * does not fit; free it with free. A preloaded asset is copied from RAM.
      * asset_read copies up to `bytes` from `offset` of an asset stored raw
      * (compress = false), *got the count; RV_BAD_ARGUMENT for a compressed one,
      * RV_NOT_FOUND when it is missing or unreadable. */
@@ -660,8 +667,8 @@ struct rv_api {
     /* An asset stored raw (compress = false) as a file handle for file_read,
      * file_seek and file_close, with offsets from the asset's start, for
      * streaming through it without reopening the extension's file on every
-     * read as asset_read does. RV_BAD_ARGUMENT for a compressed or a resident
-     * asset (those are in RAM: asset_load, asset_read), RV_NOT_FOUND when it
+     * read as asset_read does. RV_BAD_ARGUMENT for a compressed asset or one
+     * whose preload is not never (asset_load, asset_read), RV_NOT_FOUND when it
      * is missing or unreadable. UI task. */
     int (*asset_open)(rv_extension_handle self, const char *name, struct rv_file **file);
 
@@ -692,7 +699,7 @@ struct rv_api {
 
     /* Before the core decodes a bitmap asset for a Settings pane or a canvas
      * it asks `provider` (struct rv_asset_provider; any function may be NULL,
-     * and a replacement needs replacement_bytes and replace) for a
+     * and a replacement needs replacement and replacement_read) for a
      * replacement, and offers what it decoded itself for adjustment. The
      * table and its functions live in the main module or the heap: the core
      * releases the provider when the module or block holding the table goes.

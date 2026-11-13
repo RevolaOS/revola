@@ -22,6 +22,7 @@
 #include "ui/bitmaps.h"
 #include "ui/icons.h"
 #include "ui/panes.h"
+#include "loader/lz.h"
 #include "loader/rvx.h"
 #include "osos-2.0.5.h"
 #include "settings.h"
@@ -82,32 +83,57 @@ static uint32_t owner_hash(struct rv_extension_record *owner)
     return core;
 }
 
+/* The provider's bitmap for `hash`/`name` decoded into a block counted to the
+ * provider's extension, when it holds one that is a whole BMap; else NULL. */
+static void *replacement(uint32_t hash, uint32_t name, uint32_t *bytes)
+{
+    struct rv_asset_stream stream;
+    if (!provider || !provider->replacement || !provider->replacement_read ||
+        !provider->replacement(hash, name, &stream) || stream.bytes < BMap_payload ||
+        stream.codec > RV_ASSET_LZ || (stream.codec == RV_ASSET_RAW && stream.stored != stream.bytes))
+        return NULL;
+    uint8_t *block = core_loader_allocate(provider_owner, stream.bytes);
+    if (!block)
+        return NULL;
+    int ok;
+    if (stream.codec == RV_ASSET_RAW) {
+        ok = provider->replacement_read(hash, name, block, stream.stored);
+    } else {
+        uint8_t *stored = core_loader_allocate(provider_owner, stream.stored);
+        struct core_lz_input in;
+        ok = stored && provider->replacement_read(hash, name, stored, stream.stored);
+        if (ok) {
+            core_lz_from_memory(&in, stored, stream.stored);
+            ok = core_lz_decode(&in, block, stream.bytes);
+        }
+        if (stored)
+            core_loader_free(provider_owner, stored);
+    }
+    if (ok && whole_bmap(block, stream.bytes)) {
+        *bytes = stream.bytes;
+        return block;
+    }
+    core_loader_free(provider_owner, block);
+    return NULL;
+}
+
 /* The bitmap asset `name` of `owner` as a block of *bytes, counted to
- * *charged: the provider's replacement when it holds one that is a whole BMap,
- * counted to the provider's extension, else the owner's own, decoded and
- * offered to the provider to adjust. NULL when there is none. */
+ * *charged: the provider's replacement, counted to the provider's extension,
+ * else the owner's own, decoded and offered to the provider to adjust. NULL
+ * when there is none. */
 static void *fetch(struct rv_extension_record *owner, uint32_t name, uint32_t *bytes,
                    struct rv_extension_record **charged)
 {
     uint32_t hash = owner_hash(owner);
-    uint32_t replacement = provider && provider->replacement_bytes && provider->replace
-                               ? provider->replacement_bytes(hash, name)
-                               : 0;
-    if (replacement >= BMap_payload) {
-        uint8_t *block = core_loader_allocate(provider_owner, replacement);
-        if (block && provider->replace(hash, name, block, replacement) &&
-            whole_bmap(block, replacement)) {
-            *bytes = replacement;
-            *charged = provider_owner;
-            return block;
-        }
-        if (block)
-            core_loader_free(provider_owner, block);
+    uint8_t *block = replacement(hash, name, bytes);
+    if (block) {
+        *charged = provider_owner;
+        return block;
     }
     uint8_t kind = RVX_BITMAP;
     *bytes = MENU_BYTES;
     *charged = owner;
-    uint8_t *block = owner ? core_loader_asset(owner, name, bytes, &kind) : core_icon_decode(name);
+    block = owner ? core_loader_asset(owner, name, bytes, &kind) : core_icon_decode(name);
     if (!block)
         return NULL;
     if (kind != RVX_BITMAP || !whole_bmap(block, *bytes)) {
