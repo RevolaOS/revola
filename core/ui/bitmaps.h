@@ -29,5 +29,10 @@ void core_bitmaps_release_range(struct rv_extension_record *owner, const void *s
  * another owner holds it. What is on screen is decoded again. */
 int core_bitmaps_provider(struct rv_extension_record *owner,
                           const struct rv_asset_provider *provider);
+/* The loader's questions to the provider for a preloaded block: whether it
+ * holds a bitmap for asset `name` of the extension hashed `owner`, and its
+ * stored bytes. 0 with no provider. */
+int core_bitmaps_replacement(uint32_t owner, uint32_t name, struct rv_asset_stream *stream);
+int core_bitmaps_replacement_read(uint32_t owner, uint32_t name, void *out, uint32_t stored);
 
 #endif

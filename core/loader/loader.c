@@ -37,6 +37,8 @@
 #include "hooks/sites.h"
 #include "ui/bitmaps.h"
 #include "ui/format.h"
+#include "ui/panes.h"
+#include "storage.h"
 #include <stddef.h>
 
 #define ROOT "/Revola/Extensions"
@@ -52,8 +54,21 @@
 #define MAX_ENTRIES 0xffff
 #define MAX_PAYLOAD (16u << 20) /* keeps sums of payload sizes far from overflow */
 
-/* The highest preload class read into RAM with the main module. */
+/* The highest preload class read into RAM with the main module, from Optimize
+ * For: Auto preloads the optional assets on a hard disk, where a read costs a
+ * spin-up, and leaves them on flash. */
 static uint8_t preload_limit = RVX_PRELOAD_ALWAYS;
+static int preload_refresh_pending;
+
+static uint8_t chosen_preload_limit(void)
+{
+    int32_t mode = core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_OPTIMIZE,
+                                         CORE_OPTIMIZE_AUTO);
+    if (mode == CORE_OPTIMIZE_AUTO)
+        mode = core_storage_is_flash(ATA_Identify) ? CORE_OPTIMIZE_MEMORY
+                                                   : CORE_OPTIMIZE_PERFORMANCE;
+    return mode == CORE_OPTIMIZE_PERFORMANCE ? RVX_PRELOAD_OPTIONAL : RVX_PRELOAD_ALWAYS;
+}
 
 struct manifest_header {
     uint32_t magic;
@@ -472,19 +487,36 @@ static void drop_preloaded(struct rv_extension_record *record)
     record->preloaded_count = 0;
 }
 
+/* The asset provider's stored bitmap for entry `e` of `record`, when it has one
+ * that is no larger than the room for the entry's own. */
+static int provided_stream(const struct rv_extension_record *record, const struct rvx_entry *e,
+                           struct rv_asset_stream *stream)
+{
+    return e->kind == RVX_BITMAP && core_bitmaps_replacement(record->owner, e->name, stream) &&
+           stream->codec <= RV_ASSET_LZ &&
+           (stream->codec == RV_ASSET_LZ || stream->stored == stream->bytes) &&
+           stream->stored <= MAX_PAYLOAD && stream->bytes <= MAX_PAYLOAD;
+}
+
 /* Reads the asset entries up to the preload limit, then their payloads in file
  * order, into one block: the entries with offsets rebased onto it, then the
- * payloads word-aligned. A block that does not fit or cannot be read leaves the
- * assets on disk; the load itself is fine. */
+ * payloads word-aligned. A bitmap the asset provider replaces carries the
+ * provider's stored bitmap instead, marked CORE_PRELOADED_PROVIDED; when the
+ * provider fails to deliver it, the extension's own. A block that does not
+ * fit or cannot be read leaves the assets on disk; the load itself is fine. */
 static int load_preloaded(struct rv_extension_record *record, void *handle)
 {
     uint32_t first = record->module_count, count = 0, bytes = 0;
     struct catalog c;
     const struct rvx_entry *e;
+    struct rv_asset_stream stream;
     if (!catalog_start(&c, record, handle, first, record->entry_count))
         return 0;
     while ((e = catalog_next(&c)) && e->preload <= preload_limit) {
-        bytes += (e->stored + 3) & ~3u;
+        uint32_t stored = e->stored;
+        if (provided_stream(record, e, &stream) && stream.stored > stored)
+            stored = stream.stored;
+        bytes += (stored + 3) & ~3u;
         count++;
     }
     if (!e && c.index != c.end)
@@ -500,9 +532,18 @@ static int load_preloaded(struct rv_extension_record *record, void *handle)
              read_all(handle, block, count * sizeof *block);
     for (uint32_t i = 0; ok && i < count; i++) {
         struct rvx_entry *r = &block[i];
+        uint8_t *payload = (uint8_t *)block + at;
         ok = entry_valid(record, r, first + i, i ? block[i - 1].preload : RVX_PRELOAD_ALWAYS) &&
-             r->stored <= bytes - at && core_file_seek(handle, r->offset) &&
-             read_all(handle, (uint8_t *)block + at, r->stored);
+             r->stored <= bytes - at;
+        if (ok && provided_stream(record, r, &stream) && stream.stored <= bytes - at &&
+            core_bitmaps_replacement_read(record->owner, r->name, payload, stream.stored)) {
+            r->codec = stream.codec;
+            r->stored = stream.stored;
+            r->bytes = stream.bytes;
+            r->reserved = CORE_PRELOADED_PROVIDED;
+        } else if (ok) {
+            ok = core_file_seek(handle, r->offset) && read_all(handle, payload, r->stored);
+        }
         r->offset = at;
         at += (r->stored + 3) & ~3u;
     }
@@ -513,6 +554,31 @@ static int load_preloaded(struct rv_extension_record *record, void *handle)
     record->preloaded = block;
     record->preloaded_count = count;
     return 1;
+}
+
+/* Reads the preloaded block of a loaded extension again, for the current limit
+ * and provider; a file that is gone or changed leaves its assets on disk. The
+ * old block is retired, since a decode may still read it. */
+static void reload_preloaded(struct rv_extension_record *record)
+{
+    struct rvx_entry *old = record->preloaded;
+    struct rvx_header file;
+    void *handle;
+    record->preloaded = NULL;
+    record->preloaded_count = 0;
+    if (open_extension(record->file, &handle, &file, NULL)) {
+        if (file.manifest_bytes == record->manifest_bytes &&
+            file.entry_count == record->entry_count && file.body_hash == record->body_hash)
+            load_preloaded(record, handle);
+        core_file_close(handle);
+    }
+    if (old)
+        retire(old);
+}
+
+void core_loader_preload_refresh(void)
+{
+    preload_refresh_pending = 1;
 }
 
 static const struct rvx_entry *preloaded_entry(const struct rv_extension_record *record,
@@ -562,6 +628,8 @@ static void *load_asset(struct rv_extension_record *record, uint32_t name, uint3
     const uint8_t *memory = core_loader_preloaded(record, name, &r);
     struct rvx_entry entry;
     struct core_lz_input in;
+    if (memory && (r->reserved & CORE_PRELOADED_PROVIDED))
+        memory = NULL;
     void *handle = NULL;
     int ok = 1;
     if (memory) {
@@ -964,6 +1032,11 @@ const struct rv_descriptor *core_loader_descriptor(const struct rv_extension_rec
 
 void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key)
 {
+    if (!record) {
+        if (key == CORE_KEY_OPTIMIZE)
+            core_loader_preload_refresh();
+        return;
+    }
     const struct rv_descriptor *d = core_loader_descriptor(record);
     if (d && d->setting_changed)
         d->setting_changed(key);
@@ -973,6 +1046,7 @@ void core_loader_settings_reset(void)
 {
     for (struct rv_extension_record *r = core_extensions; r; r = r->next)
         core_loader_setting_changed(r, RV_SETTING_KEY_ALL);
+    core_loader_preload_refresh();
 }
 
 static void *api_alloc(rv_extension_handle self, uint32_t bytes)
@@ -1116,6 +1190,8 @@ static int api_asset_read(rv_extension_handle self, const char *name, uint32_t o
     const uint8_t *memory = core_loader_preloaded(record, hash, &r);
     struct rvx_entry entry;
     void *handle = NULL;
+    if (memory && (r->reserved & CORE_PRELOADED_PROVIDED))
+        memory = NULL;
     if (memory)
         entry = *r;
     else if (!find_on_disk(record, hash, &handle, &entry))
@@ -1802,6 +1878,7 @@ static const struct core_hook disk_mode_exit_hook = {
 void core_loader_boot(void)
 {
     core_loader_crashed = (uint32_t)core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_CRASHED, 0);
+    preload_limit = chosen_preload_limit();
     if (held_buttons() & WheelButton_Previous) {
         core_loader_core_only = 1;
         return;
@@ -1890,6 +1967,14 @@ void core_loader_tick(void)
             else if (module_record(r, i)->trigger == TRIGGER_SCREEN && ++module->idle >= IDLE_TICKS)
                 unload_module(r, i);
         }
+    }
+    if (preload_refresh_pending) {
+        preload_refresh_pending = 0;
+        preload_limit = chosen_preload_limit();
+        for (struct rv_extension_record *r = core_extensions; r; r = r->next)
+            if (r->modules[0].loaded && !r->pending_unload)
+                reload_preloaded(r);
+        core_panes_refresh();
     }
 }
 

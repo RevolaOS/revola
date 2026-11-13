@@ -25,7 +25,12 @@ enum core_setting_key {
     CORE_KEY_POSITION_SCAN = 5,   /* bool: find list positions by scanning, no address index */
     CORE_KEY_ARTWORK_SHARE = 6,   /* bool: share identical artwork chains, drop duplicate images */
     CORE_KEY_CRASHED = 7,         /* int: owner of the extension the last crash disabled */
+    CORE_KEY_OPTIMIZE = 8,        /* int: Settings > Extensions > Optimize For, CORE_OPTIMIZE_ */
 };
+
+/* Whether optional assets are preloaded: Auto decides by the disk, Performance
+ * preloads them, Memory leaves them on disk. */
+enum { CORE_OPTIMIZE_AUTO, CORE_OPTIMIZE_PERFORMANCE, CORE_OPTIMIZE_MEMORY };
 
 uint32_t core_settings_owner(const char *id);
 void core_settings_load(void);

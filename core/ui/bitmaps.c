@@ -10,7 +10,7 @@
  *
  * Canvas bitmaps: decoded on first draw and kept while their canvas is open,
  * so redraws decode nothing; freed when it closes. One stored raw in the
- * preloaded block is lent from there while no provider has a say. Canvases copy
+ * preloaded block is lent from there while no provider has a say over it. Canvases copy
  * pixels while drawing, so these blocks are freed at once.
  *
  * An asset provider, one extension's say over every bitmap asset, is asked
@@ -83,38 +83,65 @@ static uint32_t owner_hash(struct rv_extension_record *owner)
     return core;
 }
 
-/* The provider's bitmap for `hash`/`name` decoded into a block counted to the
- * provider's extension, when it holds one that is a whole BMap; else NULL. */
-static void *replacement(uint32_t hash, uint32_t name, uint32_t *bytes)
+int core_bitmaps_replacement(uint32_t owner, uint32_t name, struct rv_asset_stream *stream)
 {
-    struct rv_asset_stream stream;
-    if (!provider || !provider->replacement || !provider->replacement_read ||
-        !provider->replacement(hash, name, &stream) || stream.bytes < BMap_payload ||
-        stream.codec > RV_ASSET_LZ || (stream.codec == RV_ASSET_RAW && stream.stored != stream.bytes))
-        return NULL;
-    uint8_t *block = core_loader_allocate(provider_owner, stream.bytes);
+    return provider && provider->replacement && provider->replacement_read &&
+           provider->replacement(owner, name, stream) && stream->bytes >= BMap_payload;
+}
+
+int core_bitmaps_replacement_read(uint32_t owner, uint32_t name, void *out, uint32_t stored)
+{
+    return provider && provider->replacement_read &&
+           provider->replacement_read(owner, name, out, stored);
+}
+
+/* A stored bitmap, raw or an lz stream, decoded into a block of `bytes`
+ * counted to the provider's extension; NULL when it is not a whole BMap. */
+static void *decode_stored(const void *stored, uint8_t codec, uint32_t stored_bytes, uint32_t bytes)
+{
+    uint8_t *block = core_loader_allocate(provider_owner, bytes);
     if (!block)
         return NULL;
-    int ok;
-    if (stream.codec == RV_ASSET_RAW) {
-        ok = provider->replacement_read(hash, name, block, stream.stored);
-    } else {
-        uint8_t *stored = core_loader_allocate(provider_owner, stream.stored);
+    int ok = 0;
+    if (codec == RV_ASSET_RAW && stored_bytes == bytes) {
+        const uint8_t *in = stored;
+        for (uint32_t i = 0; i < bytes; i++)
+            block[i] = in[i];
+        ok = 1;
+    } else if (codec == RV_ASSET_LZ) {
         struct core_lz_input in;
-        ok = stored && provider->replacement_read(hash, name, stored, stream.stored);
-        if (ok) {
-            core_lz_from_memory(&in, stored, stream.stored);
-            ok = core_lz_decode(&in, block, stream.bytes);
-        }
-        if (stored)
-            core_loader_free(provider_owner, stored);
+        core_lz_from_memory(&in, stored, stored_bytes);
+        ok = core_lz_decode(&in, block, bytes);
     }
-    if (ok && whole_bmap(block, stream.bytes)) {
-        *bytes = stream.bytes;
+    if (ok && whole_bmap(block, bytes))
         return block;
-    }
     core_loader_free(provider_owner, block);
     return NULL;
+}
+
+/* The provider's bitmap for asset `name` of `owner`, decoded into a block
+ * counted to the provider's extension: from the owner's preloaded block when
+ * it sits there, else read from the provider; NULL when it has none. */
+static void *replacement(struct rv_extension_record *owner, uint32_t hash, uint32_t name,
+                         uint32_t *bytes)
+{
+    const struct rvx_entry *entry;
+    const void *memory = owner ? core_loader_preloaded(owner, name, &entry) : NULL;
+    if (memory && (entry->reserved & CORE_PRELOADED_PROVIDED)) {
+        *bytes = entry->bytes;
+        return decode_stored(memory, entry->codec, entry->stored, entry->bytes);
+    }
+    struct rv_asset_stream stream;
+    if (!core_bitmaps_replacement(hash, name, &stream))
+        return NULL;
+    uint8_t *stored = core_loader_allocate(provider_owner, stream.stored);
+    void *block = NULL;
+    if (stored && core_bitmaps_replacement_read(hash, name, stored, stream.stored))
+        block = decode_stored(stored, stream.codec, stream.stored, stream.bytes);
+    if (stored)
+        core_loader_free(provider_owner, stored);
+    *bytes = stream.bytes;
+    return block;
 }
 
 /* The bitmap asset `name` of `owner` as a block of *bytes, counted to
@@ -125,7 +152,7 @@ static void *fetch(struct rv_extension_record *owner, uint32_t name, uint32_t *b
                    struct rv_extension_record **charged)
 {
     uint32_t hash = owner_hash(owner);
-    uint8_t *block = replacement(hash, name, bytes);
+    uint8_t *block = replacement(owner, hash, name, bytes);
     if (block) {
         *charged = provider_owner;
         return block;
@@ -169,7 +196,8 @@ int core_bitmaps_provider(struct rv_extension_record *owner, const struct rv_ass
     provider_owner = p ? owner : NULL;
     /* Everything decoded is fetched again: the pane icon on its next show, a
      * canvas's bitmaps on its next draw (it copies pixels while drawing, so a
-     * held block may go between draws). */
+     * held block may go between draws). The preloaded blocks follow at the
+     * next tick, which refreshes the pane again. */
     if (decoded.block) {
         core_loader_retire(decoded.block);
         decoded.block = NULL;
@@ -177,6 +205,7 @@ int core_bitmaps_provider(struct rv_extension_record *owner, const struct rv_ass
     for (uint32_t i = 0; i < CANVAS_HELD; i++)
         if (held[i].block)
             drop_held(i);
+    core_loader_preload_refresh();
     core_panes_refresh();
     return RV_OK;
 }
@@ -231,7 +260,9 @@ const void *core_bitmap_canvas(struct core_screen *screen, const struct rv_bitma
         return NULL;
     uint32_t name = core_settings_owner(bitmap->asset);
     const struct rvx_entry *entry;
-    const uint8_t *memory = provider ? NULL : core_loader_preloaded(owner, name, &entry);
+    const uint8_t *memory = core_loader_preloaded(owner, name, &entry);
+    if (memory && provider && !(entry->reserved & CORE_PRELOADED_PROVIDED))
+        memory = NULL; /* the provider may adjust it, so it is decoded into a copy */
     if (memory && entry->codec == RVX_RAW && entry->kind == RVX_BITMAP)
         return whole_bmap(memory, entry->bytes) ? memory : NULL;
     uint32_t i = 0;

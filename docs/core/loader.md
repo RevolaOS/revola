@@ -53,6 +53,8 @@ An asset's `preload` class says when it is read into RAM:
 | `optional` | the same when the core prefers speed over memory, else on disk; the default for menu bitmaps |
 | `never` | found by streaming the catalog through the stack when asked for |
 
-A preloaded block that does not fit leaves the assets on disk; the extension still loads.
+Settings > Extensions > Optimize For decides the `optional` class (`CORE_KEY_OPTIMIZE`): Performance preloads it, Memory leaves it on disk, Auto picks Performance on a hard disk, where every read costs a spin-up, and Memory on flash. Changing it, or an asset provider binding or releasing, reads every loaded extension's preloaded block again at the next grace tick, from the file as it is; a file that is gone or changed leaves its assets on disk. A bitmap the provider replaces is preloaded in the provider's stored form instead (`CORE_PRELOADED_PROVIDED`), counted to the owner, so a themed icon costs no disk read either; `asset_load` and `asset_read` still read the extension's own bytes from the file for it. A preloaded block that does not fit leaves the assets on disk; the extension still loads.
+
+Not yet done: Auto does not weigh heap pressure from the library (worth adding once a preloaded set measures in the hundreds of KB; the first-party icons are about 12 KB together), and an extension loaded before the provider binds at boot has its icons read twice.
 
 `api->asset_load` decodes a copy; `api->asset_read` reads part of a raw one. Bitmaps are decoded in `core/ui/bitmaps.c`. A menu bitmap (the stock Settings pane icon format, a 78 x 121 coverage mask) decodes into one block that lives until Apple asks for the next one, because Apple keeps drawing the last pane bitmap. Canvas bitmaps decode into blocks held while their canvas is open. Every block is counted to its extension.

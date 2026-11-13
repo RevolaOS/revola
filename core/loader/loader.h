@@ -46,16 +46,23 @@ struct rv_extension_record {
     struct core_module *modules;
     /* While the main module is loaded: preloaded_count catalog entries, the
      * preloaded assets, with offsets into this block, then their payloads as
-     * stored; NULL for none. */
+     * stored; NULL for none. An entry with CORE_PRELOADED_PROVIDED in its
+     * reserved byte carries the asset provider's bitmap instead of the
+     * extension's own, with the provider's codec and sizes. */
     struct rvx_entry *preloaded;
     uint32_t preloaded_count;
     uint32_t entry_count; /* catalog entries in the file */
     uint32_t body_hash; /* the header's, read when the main module loaded */
 };
 
+#define CORE_PRELOADED_PROVIDED 1
+
 /* Reads the store state and loads every enabled extension. Runs once the disk
  * is readable, after the settings store loaded. */
 void core_loader_boot(void);
+/* The Optimize For setting or the asset provider changed: the next grace tick
+ * reads every loaded extension's preloaded block again. */
+void core_loader_preload_refresh(void);
 /* Settings > Extensions: writes the enabled flag; loads now or unloads at the
  * next grace tick. `file` is the name on disk without .rvx. */
 int core_loader_set_enabled(const char *file, int enabled);
@@ -74,7 +81,8 @@ void core_loader_screen_popped(struct rv_extension_record *record, uint8_t modul
 uint32_t core_loader_owner_of(uint32_t address);
 /* The main module's descriptor while it is loaded, else NULL. */
 const struct rv_descriptor *core_loader_descriptor(const struct rv_extension_record *record);
-/* Tells the extension a setting changed (RV_SETTING_KEY_ALL for all). */
+/* Tells the extension a setting changed (RV_SETTING_KEY_ALL for all); with a
+ * NULL record, the core's own setting `key`. */
 void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key);
 /* Tells every loaded extension the store was emptied by Reset All Settings. */
 void core_loader_settings_reset(void);
