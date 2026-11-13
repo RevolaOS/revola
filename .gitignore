@@ -17,3 +17,5 @@ toolchains/
 *.bytes
 .DS_Store
 .claude/
+.pytest_cache/
+.venv/
