@@ -4,22 +4,8 @@ description = "Tints the background behind Cover Flow and album art."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.24"
+api = "1.47"
 
 [[module]]
 name = "main"
 trigger = "always"
-
-[[site]]
-name = "coverflow_clear"
-address = 0x08138304
-kind = "call"
-expected = 0xEB063D45  # BL GLES_ClearColorx
-argc = 4
-
-[[site]]
-name = "albumart_clear"
-address = 0x08164230
-kind = "call"
-expected = 0xEB058D7A  # BL GLES_ClearColorx
-argc = 4

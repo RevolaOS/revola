@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Loader test fixture: binds the two raw sites of its manifest, the clear color
- * calls of Cover Flow and the album art view, and clears to dark blue instead. */
+/* Loader test fixture: filters the clear colour calls of Cover Flow and the album
+ * art view and clears to dark blue instead. */
 
-#include "osos-2.0.5.h"
 #include "rv_api.h"
+#include "rv_sites.h"
 #include "rv_ui.h"
 
 static const struct rv_api *api;
@@ -20,11 +20,11 @@ static uint32_t clear_color(uint32_t red, uint32_t green, uint32_t blue, uint32_
 }
 
 static const struct rv_hook hooks[] = {
-    RV_HOOK_FILTER(RV_RAW_SITE(0), clear_color),
-    RV_HOOK_FILTER(RV_RAW_SITE(1), clear_color),
+    RV_HOOK_FILTER(RV_SITE_CoverFlow_ClearColor_call, clear_color),
+    RV_HOOK_FILTER(RV_SITE_AlbumArt_ClearColor_call, clear_color),
 };
 
-static const struct rv_descriptor extension = {.size = sizeof extension, .hooks = hooks, .hook_count = 2};
+static const struct rv_descriptor extension = {.size = sizeof extension, RV_HOOKS(hooks)};
 
 const struct rv_descriptor *rv_module_entry(const struct rv_api *core, rv_extension_handle handle)
 {

@@ -8,7 +8,7 @@
  * unbind, restore after the last), one claims the call site AppendBorrowedBlock to show
  * patch and restore by peek, and an entry site proves the replay stub. Raw sites:
  * claim, refusals, patch and restore of GameManifest_InitReader_call, pool exhaustion
- * and reuse after two grace ticks; the tint fixture holds two more raw sites. */
+ * and reuse after two grace ticks. */
 
 #ifdef CORE_SELFTEST
 #include "loader/loader.h"
@@ -42,9 +42,8 @@ struct core_selftest {
     uint32_t loader_stage;
     /* Raw sites, as core_raw_result: claim, second claim of the address, mismatch,
      * core site overlap (then the overlapped index), entry kind; then the bind
-     * result, the claims that fit beside the retiring site and tint's two, the
-     * claim past them and the claim after two grace ticks. Words: original,
-     * bound, restored. */
+     * result, the claims that fit beside the retiring site, the claim past them
+     * and the claim after two grace ticks. Words: original, bound, restored. */
     uint32_t raw_results[10];
     uint32_t raw_words[3];
 } core_selftest;
