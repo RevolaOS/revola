@@ -69,8 +69,8 @@
 #define RV_SCREEN_CONTEXT(rows_) .context = (rows_), .context_count = RV_COUNT(rows_)
 
 /* A row in `menu_` (an rv_menu) after the stock row `after_` (0 for the end).
- * `row_` is one of the row macros; .caption and .bitmap fill the Settings
- * preview pane, .shown_by names the bool setting that shows the row. */
+ * `row_` is one of the row macros; .caption and .bitmap fill the menu's pane,
+ * .shown_by names the bool setting that shows the row. */
 #define RV_MENU_ENTRY(menu_, after_, row_, ...)                                                 \
     {.menu = (menu_), .after = (after_), .row = row_ __VA_OPT__(, ) __VA_ARGS__}
 

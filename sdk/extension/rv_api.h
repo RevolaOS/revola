@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 51
+#define RV_API_MINOR 53
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -214,9 +214,11 @@ enum rv_transition {
 };
 
 /* A bitmap asset of the extension by name, from a PNG in manifest.toml:
- * `.bitmap = RV_BITMAP("eq-icon")`. Menu bitmaps (an entry's .bitmap) are
- * assets with `menu = true`: 78 x 121 coverage masks the system draws in its own
- * colour, like the stock Settings icons; the core decodes only the one shown. */
+ * `.bitmap = RV_BITMAP("eq-icon")`. A menu entry's bitmap is an asset with
+ * `pane = "icon"`, a 78 x 121 coverage mask the system draws in its own colour
+ * like the stock Settings icons, or `pane = "picture"`, a colour picture of one
+ * of the pane sizes; its badge is a `pane = "badge"` asset. The core decodes
+ * only the ones shown. */
 struct rv_bitmap {
     const char *asset;
 };
@@ -452,14 +454,17 @@ enum rv_menu {
 };
 
 /* A row the extension adds to `menu`. `after` is a stock row of that menu from
- * rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. Under Settings the preview
- * pane shows the label, `caption` as the line below and `bitmap` as the icon
- * while the row is highlighted; either may be NULL, and the pane then shows
- * nothing in its place. The icon sits on the box the system draws behind stock
- * Settings icons unless `plain_icon` is set. With `shown_by`, the key of a
- * declared bool setting, the row shows while that setting is on; under Main
- * and Music, Settings > Main Menu and Music Menu list the row and flip it.
- * Without, the row always shows. */
+ * rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. While the row is highlighted
+ * the menu's pane shows `bitmap` and `caption`: under Settings the label, the
+ * caption as the line below and the bitmap, an icon, on the box the system
+ * draws behind stock Settings icons unless `plain_icon` is set; under Main,
+ * Music, Videos and Extras the picture with the caption, or without one the
+ * label, in the pane shape the picture's size picks (docs/sdk/menus.md), with
+ * `lines` and `badge` where the shape has them. Either may be NULL, and the
+ * pane then shows nothing in its place. With `shown_by`, the key of a declared
+ * bool setting, the row shows while that setting is on; under Main and Music,
+ * Settings > Main Menu and Music Menu list the row and flip it. Without, the
+ * row always shows. */
 struct rv_menu_entry {
     uint8_t menu;       /* rv_menu */
     uint8_t plain_icon; /* 1: the pane shows `bitmap` without the system's box behind it */
@@ -475,6 +480,14 @@ struct rv_menu_entry {
     /* Context menus: asked each time the menu opens, with the item and row it
      * opened on; 0 leaves the row out. NULL always shows it. */
     int (*available)(const struct rv_context *ctx);
+    /* The two more lines of a pane shape that has them, static or computed for
+     * line 0 and 1. */
+    const char *lines[2];
+    const char *(*line_text)(const struct rv_context *ctx, uint32_t line);
+    /* The 20 x 16 badge (`pane = "badge"`) before the 146 x 110 pane's count
+     * line, none when NULL. */
+    const struct rv_bitmap *badge;
+    const struct rv_bitmap *(*badge_for)(const struct rv_context *ctx);
 };
 
 /* What the core reports to a debugger's trace probe, with the argument. */
@@ -626,6 +639,10 @@ struct rv_api {
     /* ui_invalidate for `rect` of the canvas, in its coordinates; the draw
      * callback runs as for ui_invalidate. */
     void (*ui_invalidate_rect)(rv_extension_handle self, const struct rv_rect *rect);
+    /* Reads the panes that last showed a row of the extension again: its
+     * caption_text, line_text, bitmap_for and badge_for. Nothing happens while
+     * no pane has shown one. */
+    void (*pane_refresh)(rv_extension_handle self);
 
     /* Files in the extension's data folder, /Revola/Data/<id>/. `name` is a
      * path inside it ("presets/rock.bin") without "..". file_open with

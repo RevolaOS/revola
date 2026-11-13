@@ -33,11 +33,11 @@ Screen ids are local to the extension. `api->ui_push(self, id, arg)` opens one f
 
 `RV_MENU_ENTRY(menu, after, row)` puts a row into a stock menu after a stock row from `rv_menus.h`. See [Menu placement](menus.md).
 
-The menus are `RV_MENU_MAIN`, `RV_MENU_MUSIC`, `RV_MENU_EXTRAS` and `RV_MENU_SETTINGS`, and the context menus `RV_MENU_NOW_PLAYING_CONTEXT`, `RV_MENU_SONG_CONTEXT`, `RV_MENU_ALBUM_CONTEXT`, `RV_MENU_ARTIST_CONTEXT`, `RV_MENU_PODCAST_EPISODE_CONTEXT`, `RV_MENU_ITUNES_U_EPISODE_CONTEXT`, `RV_MENU_AUDIOBOOK_CONTEXT`, `RV_MENU_MOVIE_CONTEXT`, `RV_MENU_TV_EPISODE_CONTEXT` and `RV_MENU_VIDEO_PLAYLIST_CONTEXT`. A row in a context menu receives the item the menu opened on in its `rv_context`.
+The menus are `RV_MENU_MAIN`, `RV_MENU_MUSIC`, `RV_MENU_EXTRAS`, `RV_MENU_SETTINGS` and `RV_MENU_VIDEOS`, and the context menus `RV_MENU_NOW_PLAYING_CONTEXT`, `RV_MENU_SONG_CONTEXT`, `RV_MENU_ALBUM_CONTEXT`, `RV_MENU_ARTIST_CONTEXT`, `RV_MENU_PODCAST_EPISODE_CONTEXT`, `RV_MENU_ITUNES_U_EPISODE_CONTEXT`, `RV_MENU_AUDIOBOOK_CONTEXT`, `RV_MENU_MOVIE_CONTEXT`, `RV_MENU_TV_EPISODE_CONTEXT` and `RV_MENU_VIDEO_PLAYLIST_CONTEXT`. A row in a context menu receives the item the menu opened on in its `rv_context`.
 
 | Entry field | |
 |---|---|
-| `.caption`, `.bitmap` | fill the Settings preview pane; `.caption_text` and `.bitmap_for` give them as they are now |
+| `.caption`, `.bitmap`, `.lines`, `.badge` | fill the menu's pane beside the list, see [Menu placement](menus.md); `.caption_text`, `.line_text`, `.bitmap_for` and `.badge_for` give them as they are now, read again on `api->pane_refresh` |
 | `.shown_by` | a bool setting that shows the row; Settings > Main Menu and Music Menu flip it |
 | `.available` | decides each time a context menu opens whether the row is offered |
 
@@ -62,7 +62,7 @@ Every UI callback receives a `struct rv_context`: row actions and text, canvas d
 | `api->ui_refresh(self, id)` | re-reads the rows and the empty message |
 | `api->ui_select(self, id, row)` | highlights a row, clamped to the count, now or when a covered screen becomes active again |
 
-`api->ui_redraw(self)` redraws everything on screen, for a change to colours or artwork the stock views have already drawn.
+`api->ui_redraw(self)` redraws everything on screen, for a change to colours or artwork the stock views have already drawn. `api->pane_refresh(self)` reads the panes that last showed a row of the extension again (see [Menu placement](menus.md)); nothing happens while no pane has shown one.
 
 An empty list has no selection.
 

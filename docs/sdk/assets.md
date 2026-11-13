@@ -7,7 +7,7 @@
 | `name` | how the extension refers to it, `[a-z0-9_-]{1,31}` |
 | `file` | the source file |
 | `preload` | when the asset is read into RAM, as stored, with the main module: `always`, for what a hook needs without disk access, such as a small table; `optional` (the default), when Settings > Extensions > Optimize prefers speed over memory; `never` (the default with `compress = false`), read from the file when asked for, for what is large or rarely used |
-| `menu = true` | a menu bitmap, such as an entry's `.bitmap` in the Settings pane: like the stock icons, a 78 x 121 coverage mask the system draws in its own colour, taken from the PNG's alpha, or its gray level when it is opaque grayscale |
+| `pane` | what the bitmap is for a menu pane, an entry's `.bitmap` or `.badge`: `"icon"`, a Settings icon like the stock ones, a 78 x 121 coverage mask the system draws in its own colour, taken from the PNG's alpha, or its gray level when it is opaque grayscale; `"picture"`, a colour picture of one of the pane sizes, 119 x 119, 142 x 87, 130 x 128, 146 x 110 or 132 x 145, which picks the pane's shape (see [Menu placement](menus.md)); `"badge"`, the 20 x 16 badge before the 146 x 110 pane's count line. The packer rejects another size |
 | `compress = false` | data only: stored raw, so `asset_read` can seek in it, and `preload` must be `never`; bitmaps are always compressed |
 
 | Call | |
@@ -17,7 +17,7 @@
 | `api->asset_open(self, name, &file)` | such an asset, with `preload = "never"`, as a file handle for `file_read`, `file_seek` and `file_close`, offsets from its start; for streaming through a large one |
 | `RV_BITMAP("name")` | a bitmap for `gfx->bitmap` and entry `.bitmap` fields |
 
-The core decodes only the menu bitmap shown and keeps a canvas's bitmaps decoded while the canvas is open, so `gfx->bitmap` costs a decode on the first draw only. Everything decoded is counted against the extension.
+The core decodes only the pane picture shown and keeps a canvas's bitmaps decoded while the canvas is open, so `gfx->bitmap` costs a decode on the first draw only. Everything decoded is counted against the extension.
 
 ## Asset provider
 
