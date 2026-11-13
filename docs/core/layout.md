@@ -40,7 +40,7 @@ The main files; helpers sit next to them.
 | `gfx.c` | The drawing table canvases draw with |
 | `controllers.c` | Controller vtable copies |
 | `menus.c` | Menu rows |
-| `panes.c` | The Settings preview pane |
+| `panes.c` | The panes of Main, Music, Videos, Extras and Settings: shared layouts per menu and pane shape |
 | `toggles.c` | Main Menu and Music Menu settings rows |
 | `properties.c` | Settings properties and actions |
 | `bitmaps.c` | Bitmap decoding |

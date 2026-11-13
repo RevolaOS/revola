@@ -13,7 +13,9 @@ struct core_screen;
 #define CORE_CLONE_SCRATCH_BYTES 1536
 
 /* Sources for `count` consecutive views of a template, applied to the instance
- * that uses the template so the views are rebound on every display. */
+ * that uses the template so the views are rebound on every display: a view the
+ * stock instance binds gets the source in place of its own, the others are
+ * bound anew. */
 struct view_sources {
     uint32_t view;   /* first view id */
     uint32_t source; /* first source id */
@@ -31,6 +33,7 @@ struct layout_clone {
     uint32_t from, to;   /* template or VLyt id replaced, 0 for none; a new VLyt id needs a
                             TEVT stored under it, or loading the layout's events aborts */
     const struct view_sources *extra; /* sources for the views of template `to` */
+    uint32_t bindings;   /* VLyt the instance of template `from` gets, 0 to keep its own */
 };
 
 /* Ids a screen of this declaration takes from its owner's block. */

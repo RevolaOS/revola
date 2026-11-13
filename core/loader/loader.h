@@ -120,6 +120,9 @@ enum core_manifest_text {
 #define CORE_MANIFEST_MAX 1024
 #define CORE_MANIFEST_CONTENT_MAX 4
 #define CORE_MANIFEST_STABILITY(flags) ((flags) & 3) /* 0 unset, alpha, beta, stable */
+/* A bit per pane kind the assets ask for, in the packer's order: an icon, then
+ * the picture sizes 119 x 119, 142 x 87, 130 x 128, 146 x 110 and 132 x 145. */
+#define CORE_MANIFEST_PANES(flags) ((flags) >> 2 & 0x3f)
 uint32_t core_loader_manifest(const char *file, uint8_t *buffer, uint8_t *failure);
 const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifest_text field);
 /* The content folders the manifest names, in order; NULL past the last. */

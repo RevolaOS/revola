@@ -16,6 +16,13 @@ extern uint32_t core_template_slider;
 extern uint32_t core_template_canvas;
 extern uint32_t core_template_empty;
 
+/* A copy of a stock template under a new id, with the views of `second`, if
+ * not 0, appended; the views take the ids after it in that order and keep
+ * their sources. View `replaced` (-1 for none) becomes an image view in its
+ * box. 0 once Apple has built its templates: a copy made later would never be
+ * built. */
+uint32_t core_templates_copy(uint32_t stock_template, uint32_t second, int replaced);
+
 /* Template `template`'s enter style when the layout it enters from has kind
  * `kind`, -1 for none. */
 int16_t core_templates_enter_style(uint32_t template, uint32_t kind);

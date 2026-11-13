@@ -53,7 +53,7 @@ int core_screen_menu_build(const struct core_screen *s, uint8_t *scratch, uint32
     }
     uint32_t screen = first + 1 + d->context_count, layout = screen + 1, next = screen + 2;
     struct layout_clone clone = {RES_ContextMenu_Layout, layout, RES_StatusBarWhite_Text,
-                                  s->id + 2, 0, 0, 0, NULL};
+                                  s->id + 2, 0, 0, 0, NULL, 0};
     if (!core_clone_layout(&clone, &next, scratch, bytes) || next > screen + 4)
         return 0;
     uint32_t event_bytes, none = 0;

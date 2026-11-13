@@ -7,10 +7,14 @@
 
 struct core_screen;
 
-/* The BMap resource of an extension's menu bitmap, valid until Apple asks for
+/* The BMap resource of an extension's pane icon, valid until Apple asks for
  * another one or the extension unloads; NULL when it is missing or not in the
  * stock pane icon format. */
-const void *core_bitmap(struct rv_extension_record *owner, const struct rv_bitmap *bitmap);
+const void *core_bitmap_icon(struct rv_extension_record *owner, const struct rv_bitmap *bitmap);
+/* The same block whatever its format and size, for a pane picture, and for the
+ * badge shown beside it. */
+const void *core_bitmap_picture(struct rv_extension_record *owner, const struct rv_bitmap *bitmap);
+const void *core_bitmap_badge(struct rv_extension_record *owner, const struct rv_bitmap *bitmap);
 /* A bitmap asset the canvas `screen` draws, decoded on first use and kept until
  * the screen is closed; NULL when it is missing or not a whole BMap. */
 const void *core_bitmap_canvas(struct core_screen *screen, const struct rv_bitmap *bitmap);

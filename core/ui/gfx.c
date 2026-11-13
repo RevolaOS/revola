@@ -286,7 +286,7 @@ static void card(int width, int height, const char *left_text, const char *right
     if (icon) {
         const void *box = ResourceService_GetBitmap(UI_GetResourceService(),
                                                     RES_SettingsPreview_Background_Image);
-        const void *glyph = core_bitmap(screen ? screen->owner : NULL, icon);
+        const void *glyph = core_bitmap_icon(screen ? screen->owner : NULL, icon);
         if (box)
             bmap_part((width - 78) / 2, CARD_BAND - 39, box, 79, 0);
         if (glyph)

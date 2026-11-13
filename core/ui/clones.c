@@ -61,16 +61,23 @@ static void put_word(uint8_t *at, uint32_t value)
 }
 
 /* The VCvs of one instance with the title view's source and the item table
- * rebound and `extra` sources appended: a block per view holding option blocks,
+ * rebound and `extra` sources applied: a block per view holding option blocks,
  * or one ViewBinding_ItemTable block naming the ITEM table. `vcvs` may be NULL
  * when the instance has none. Returns the bytes written, 0 when nothing changed. */
 static uint32_t rebind_views(struct core_writer *w, const void *vcvs, const struct layout_clone *c,
                              const struct view_sources *extra)
 {
     uint32_t start = w->at, changed = 0, count = vcvs ? core_blocks_count(vcvs) : 0;
-    core_write_word(w, count + (extra ? extra->count : 0));
+    uint32_t bound = 0, added = 0; /* extra views the stock VCvs gives a source, as a bit each */
+    struct core_block view, option;
+    for (uint32_t i = 0; extra && i < count && core_block_at(vcvs, i, &view); i++)
+        for (uint32_t o = 0; view.kind - extra->view < extra->count && core_block_at(view.data, o, &option); o++)
+            if (option.kind == Resource_SORC)
+                bound |= 1u << (view.kind - extra->view);
+    for (uint32_t i = 0; extra && i < extra->count; i++)
+        added += !(bound >> i & 1);
+    core_write_word(w, count + added);
     for (uint32_t i = 0; i < count; i++) {
-        struct core_block view;
         if (!core_block_at(vcvs, i, &view))
             break;
         uint32_t begin = core_write_block_begin(w, view.kind);
@@ -81,14 +88,17 @@ static uint32_t rebind_views(struct core_writer *w, const void *vcvs, const stru
             core_write_block_end(w, begin);
             continue;
         }
+        uint32_t source = view.kind == c->title_view ? c->title : 0;
+        if (extra && view.kind - extra->view < extra->count)
+            source = extra->source + (view.kind - extra->view);
         core_write_word(w, core_blocks_count(view.data));
         for (uint32_t o = 0;; o++) {
             struct core_block option;
             if (!core_block_at(view.data, o, &option))
                 break;
             uint32_t b = core_write_block_begin(w, option.kind);
-            if (option.kind == Resource_SORC && view.kind == c->title_view && c->title) {
-                core_write_word(w, c->title);
+            if (option.kind == Resource_SORC && source) {
+                core_write_word(w, source);
                 changed = 1;
             } else {
                 core_write_bytes(w, option.data, option.bytes);
@@ -98,6 +108,8 @@ static uint32_t rebind_views(struct core_writer *w, const void *vcvs, const stru
         core_write_block_end(w, begin);
     }
     for (uint32_t i = 0; extra && i < extra->count; i++) {
+        if (bound >> i & 1)
+            continue;
         uint32_t begin = core_write_block_begin(w, extra->view + i);
         core_write_word(w, 1);
         uint32_t option = core_write_block_begin(w, Resource_SORC);
@@ -155,7 +167,7 @@ int core_clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scr
                     set(Resource_VCvs, id, out, w.at);
                     /* The stock instance's frame, keyed by its VCvs id. */
                     uint32_t vcrv_bytes;
-                    const void *vcrv = vcvs ? stock(Resource_VCrv, view_id, &vcrv_bytes) : NULL;
+                    const void *vcrv = view_id ? stock(Resource_VCrv, view_id, &vcrv_bytes) : NULL;
                     if (vcrv)
                         set(Resource_VCrv, id, vcrv, vcrv_bytes);
                     put_word(words + SsinInstance_view_bindings, id);
@@ -165,6 +177,8 @@ int core_clone_layout(const struct layout_clone *c, uint32_t *next, uint8_t *scr
                  offset += 4)
                 if (c->from && core_word_at(words, offset) == c->from)
                     put_word(words + offset, c->to);
+            if (c->bindings && template == c->from)
+                put_word(words + SsinInstance_layout_events_id, c->bindings);
         }
         uint32_t list_id = (*next)++;
         set(Resource_SSin, list_id, ssin_copy, ssin_bytes);
@@ -252,7 +266,7 @@ int core_clone_text(struct core_screen *s)
     uint32_t none = 0; /* the Legal controller handles Menu itself: no layout events */
     struct layout_clone c = {RES_Settings_Legal_Layout, s->id + 1, RES_StatusBarWhite_Text,
                              s->id + 2, 0, RES_Settings_Legal_Template, core_template_text,
-                             &paragraphs};
+                             &paragraphs, 0};
     int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= rows;
     if (built) {
         set(Resource_SEVT, s->id + 1, &none, 4);
@@ -281,7 +295,7 @@ static int clone_brightness(struct core_screen *s, uint32_t template, const stru
     core_set_source(s->id + 2, s->id + 2, 1);
     struct layout_clone c = {RES_Settings_Brightness_Screen_Default, s->id + 1,
                              RES_StatusBar_Title_Text, s->id + 2, 0,
-                             RES_Settings_Brightness_Template, template, views};
+                             RES_Settings_Brightness_Template, template, views, 0};
     int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= CORE_SCREEN_ROWS(s);
     if (built) {
         uint32_t none = 0;

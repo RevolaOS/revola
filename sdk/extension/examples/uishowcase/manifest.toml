@@ -4,17 +4,42 @@ description = "Shows every kind of screen and row an extension can add."
 version = "0.1.0"
 author = "RevolaOS"
 license = "GPL-3.0-only"
-api = "1.50"
+api = "1.53"
 stability = "beta"
 
 [[module]]
 name = "main"
 trigger = "always"
 
-[[asset]]                 # the Settings pane icon: a menu bitmap, like the stock ones
-name = "pane"
-file = "assets/pane.png"
-menu = true
+[[asset]]                 # the Settings pane icon: a mask like the stock ones
+name = "icon"
+file = "assets/icon.png"
+pane = "icon"
+
+[[asset]]                 # 146 x 110: the pane with a count line and a badge
+name = "badged"
+file = "assets/badged.png"
+pane = "picture"
+
+[[asset]]                 # the badge before that count line
+name = "badge"
+file = "assets/badge.png"
+pane = "badge"
+
+[[asset]]                 # 119 x 119: the Music and Videos pane
+name = "square"
+file = "assets/square.png"
+pane = "picture"
+
+[[asset]]                 # 130 x 128: the pane with two lines over the picture
+name = "lines"
+file = "assets/lines.png"
+pane = "picture"
+
+[[asset]]                 # 132 x 145: the World Clock pane's clock box
+name = "clock-box"
+file = "assets/clock-box.png"
+pane = "picture"
 
 [[asset]]                 # a colour bitmap the canvas draws
 name = "disc"

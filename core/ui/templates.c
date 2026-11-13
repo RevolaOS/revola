@@ -3,9 +3,11 @@
 /* View templates the core adds to Apple's. Templates are built once, when the UI
  * starts, from every View resource the enumeration yields, so the core builds
  * its own at boot and yields them after Apple's: a text page of paragraph
- * views, a slider with the Brightness bar and value text, and a canvas of one
- * core view. All screens of a kind share the template's views; a screen
- * rebinds them to its own sources through its VCvs each time it is displayed. */
+ * views, a slider with the Brightness bar and value text, a canvas of one core
+ * view, an empty one, and the copies of stock pane templates the menu panes
+ * take while the enumeration still runs. All screens of a kind share the
+ * template's views; a screen rebinds them to its own sources through its VCvs
+ * each time it is displayed. */
 
 #include "ui/templates.h"
 #include "osos-2.0.5.h"
@@ -21,10 +23,14 @@ uint32_t core_template_empty;
 static void *bank;
 static uint32_t empty_source;
 
-/* In the order the enumeration yields them. */
-#define MAX_TEMPLATES 4
+/* In the order the enumeration yields them: the four built at boot and the
+ * copies the panes take, one per copied pane kind. */
+#define MAX_TEMPLATES 8
+static const void *copy_second; /* views appended to the stock ones by write_copy */
+static int copy_replaced;       /* view replaced by an image view in its box, -1 for none */
 static uint32_t templates[MAX_TEMPLATES];
 static uint32_t template_count;
+static int enumerated; /* Apple built its templates: a later one is never built */
 
 static const void *stock(uint32_t type, uint32_t id, uint32_t *bytes)
 {
@@ -92,9 +98,11 @@ static uint32_t build(uint32_t stock_template, uint32_t ids, template_writer wri
 {
     uint32_t bytes;
     const void *views = stock(Resource_View, stock_template, &bytes);
-    uint32_t id = core_resource_take(0, ids);
     struct core_writer w = {NULL, 0};
-    if (!views || !id || template_count == MAX_TEMPLATES || !write(&w, id, views))
+    if (!views || enumerated || template_count == MAX_TEMPLATES || !write(&w, 0, views))
+        return 0;
+    uint32_t id = core_resource_take(0, ids);
+    if (!id)
         return 0;
     w.out = Heap_AllocateZeroed(w.at);
     if (!w.out)
@@ -198,11 +206,78 @@ static int write_canvas(struct core_writer *w, uint32_t t, const void *views)
     return 1;
 }
 
+/* View `i` of the stock template, then of the second one. */
+static int copied_view(const void *views, uint32_t i, struct core_block *view)
+{
+    uint32_t count = core_blocks_count(views);
+    const void *from = i < count ? views : copy_second;
+    return from && core_block_at(from, i < count ? i : i - count, view) &&
+           view->bytes >= ViewDescriptor_id + 4;
+}
+
+/* Every view of the stock template, then of the second one, with the id after
+ * `t` that its position has; an edge anchored to another copied view stays
+ * anchored to its copy. The replaced view becomes the Games pane's image view
+ * in the replaced view's box: its four edges, each an offset, a reference view
+ * and an anchor mode. */
+static int write_copy(struct core_writer *w, uint32_t t, const void *views)
+{
+    static const uint8_t edges[4][3] = {
+        {ViewDescriptor_left_offset, ViewDescriptor_left_reference_view, ViewDescriptor_left_anchor_mode},
+        {ViewDescriptor_top_offset, ViewDescriptor_top_reference_view, ViewDescriptor_top_anchor_mode},
+        {ViewDescriptor_bottom_offset, ViewDescriptor_bottom_reference_view,
+         ViewDescriptor_bottom_anchor_mode},
+        {ViewDescriptor_right_offset, ViewDescriptor_right_reference_view,
+         ViewDescriptor_right_anchor_mode},
+    };
+    struct core_block view, other, image;
+    uint32_t bytes, count = core_blocks_count(views) + (copy_second ? core_blocks_count(copy_second) : 0);
+    const void *games = stock(Resource_View, RES_ExtrasPreview_Games_Template, &bytes);
+    if (copy_replaced >= 0 && !(games && core_block_at(games, 0, &image)))
+        return 0;
+    core_write_word(w, count);
+    for (uint32_t i = 0; i < count; i++) {
+        if (!copied_view(views, i, &view))
+            return 0;
+        uint32_t words[26];
+        words[0] = ViewDescriptor_id;
+        words[1] = t + 1 + i;
+        for (uint32_t e = 0; e < 4; e++)
+            for (uint32_t f = 0; f < 3; f++) {
+                uint32_t value = core_word_at(view.data, edges[e][f]);
+                for (uint32_t j = 0; f == 1 && value && j < count; j++)
+                    if (copied_view(views, j, &other) &&
+                        core_word_at(other.data, ViewDescriptor_id) == value)
+                        value = t + 1 + j;
+                words[2 + 2 * (3 * e + f)] = edges[e][f];
+                words[3 + 2 * (3 * e + f)] = value;
+            }
+        const struct core_block *from = (int)i == copy_replaced ? &image : &view;
+        uint32_t begin = core_write_block_begin(w, from->kind);
+        core_write_copy(w, from->data, from->bytes, words, 13);
+        core_write_block_end(w, begin);
+    }
+    return 1;
+}
+
+uint32_t core_templates_copy(uint32_t stock_template, uint32_t second_template, int replaced)
+{
+    uint32_t bytes, ids;
+    const void *views = stock(Resource_View, stock_template, &bytes);
+    copy_second = second_template ? stock(Resource_View, second_template, &bytes) : NULL;
+    copy_replaced = replaced;
+    if (!views || (second_template && !copy_second))
+        return 0;
+    ids = 1 + core_blocks_count(views) + (copy_second ? core_blocks_count(copy_second) : 0);
+    return build(stock_template, ids, write_copy);
+}
+
 /* Apple's template enumeration walks the ROM index only; the core's templates
  * follow it. Called again with the last id handed out, so the next one follows. */
 static uint32_t next_template(uint32_t resource_bank, uint32_t id, uint32_t bytes,
                               const struct core_next *next)
 {
+    enumerated = 1;
     uint32_t result = core_next_call(next, resource_bank, id, bytes, 0);
     if (result)
         return result;

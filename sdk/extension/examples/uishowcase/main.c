@@ -3,10 +3,11 @@
 /* Every UI declaration of the SDK behind a row that names it: the row kinds
  * with the screen calls of rv_api, the screen kinds with their layouts, and the
  * menus an entry can appear in. Open it from Settings, Main, Music (after
- * Settings > Music Menu turns it on) or Extras. It declares fifteen screens and
- * the core makes three more from the settings. Its assets are in
- * manifest.toml: the pane icon, the canvas bitmap and a note the canvas reads
- * back and draws. */
+ * Settings > Music Menu turns it on), Videos or Extras; each row shows a
+ * pane picture of its menu's kind. It declares fifteen screens and the core
+ * makes three more from the settings. Its assets are in manifest.toml: the
+ * pane pictures, the canvas bitmap and a note the canvas reads back and
+ * draws. */
 
 #include "rv_api.h"
 #include "rv_canvas.h"
@@ -59,7 +60,32 @@ static int even_row(const struct rv_context *ctx)
     return ctx->row >= 0 && ctx->row % 2 == 0;
 }
 
-/* The Settings pane's caption, computed each time the row is highlighted. */
+/* The two lines over the Extras pane's picture: a month and the seconds since
+ * the module loaded, which a timer keeps current through pane_refresh while
+ * the row is highlighted. */
+static uint32_t ticks;
+
+static void tick(void *arg)
+{
+    (void)arg;
+    ticks++;
+    api->pane_refresh(self);
+}
+
+static const char *pane_line(const struct rv_context *ctx, uint32_t line)
+{
+    static char text[11];
+    (void)ctx;
+    if (line == 0)
+        return "Nov";
+    char *end = text + sizeof text - 1, *at = end;
+    *at = 0;
+    for (uint32_t n = ticks; at > text && (n || at == end); n /= 10)
+        *--at = (char)('0' + n % 10);
+    return at;
+}
+
+/* The pane's caption, computed each time the row is highlighted. */
 static const char *pane_caption(const struct rv_context *ctx)
 {
     static char text[24];
@@ -406,7 +432,7 @@ static void card_draw(const struct rv_context *ctx, const struct rv_gfx *g, int 
     char number[16], size[16];
     api->format_number(number, sizeof number, 1234567);
     api->format_size(size, sizeof size, 6 * 1024 + 100);
-    g->card(width, height, number, size, RV_BITMAP("pane"));
+    g->card(width, height, number, size, RV_BITMAP("icon"));
     if (!disc)
         disc = api->asset_load(self, "disc", 0);
     if (disc) {
@@ -517,10 +543,11 @@ static const struct rv_row screen_rows[] = {
 
 /* Entries. */
 static const char *const entries_text[] = {
-    "Settings: this extension's row, after Legal, with a caption and an icon in the preview pane.",
-    "Main Menu: after Extras. The Main Menu settings can hide it.",
-    "Music: at the end, hidden until the Music Menu settings turn it on.",
-    "Extras: at the end.",
+    "Settings: this extension's row, after Legal, with a caption and an icon in the pane.",
+    "Main Menu: after Extras, with a 146 x 110 picture, a count line and a badge. The Main Menu settings can hide it.",
+    "Music: at the end, hidden until the Music Menu settings turn it on; a square picture under the label.",
+    "Videos: at the end, with the same square picture.",
+    "Extras: at the end, with a 130 x 128 picture, a month and a seconds count over it, then a row with a picture in the World Clock pane's clock box.",
     "Long press on Now Playing, a song, an album or an artist: a Count up row.",
 };
 
@@ -558,11 +585,19 @@ static const struct rv_screen screens[] = {
 
 static const struct rv_menu_entry entries[] = {
     RV_MENU_ENTRY(RV_MENU_SETTINGS, RV_SETTINGS_LEGAL, RV_ROW_PUSH("UI Showcase", "menu"),
-                  .caption_text = pane_caption, .bitmap = RV_BITMAP("pane")),
+                  .caption_text = pane_caption, .bitmap = RV_BITMAP("icon")),
     RV_MENU_ENTRY(RV_MENU_MAIN, RV_MAIN_EXTRAS, RV_ROW_PUSH("UI Showcase", "menu"),
-                  .shown_by = KEY_IN_MAIN),
-    RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .shown_by = KEY_IN_MUSIC),
-    RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("UI Showcase", "menu")),
+                  .shown_by = KEY_IN_MAIN, .caption = "Every screen kind",
+                  .bitmap = RV_BITMAP("badged"), .badge = RV_BITMAP("badge")),
+    RV_MENU_ENTRY(RV_MENU_MUSIC, 0, RV_ROW_PUSH("UI Showcase", "menu"), .shown_by = KEY_IN_MUSIC,
+                  .bitmap = RV_BITMAP("square")),
+    RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("UI Showcase", "menu"),
+                  .caption_text = pane_caption, .bitmap = RV_BITMAP("lines"),
+                  .line_text = pane_line),
+    RV_MENU_ENTRY(RV_MENU_EXTRAS, 0, RV_ROW_PUSH("Showcase Globe", "menu"),
+                  .bitmap = RV_BITMAP("clock-box"), .caption = "Over the world map"),
+    RV_MENU_ENTRY(RV_MENU_VIDEOS, 0, RV_ROW_PUSH("UI Showcase", "menu"), .caption = "Videos too",
+                  .bitmap = RV_BITMAP("square")),
     RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Count up", count_up)),
     RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_PUSH("Show context", "origin")),
     RV_MENU_ENTRY(RV_MENU_NOW_PLAYING_CONTEXT, 0, RV_ROW_ACTION("Push context", push_origin)),
@@ -586,5 +621,6 @@ const struct rv_descriptor *rv_module_entry(const struct rv_api *core, rv_extens
     api = core;
     self = handle;
     read_assets();
+    api->timer_start(self, 1000, 1, tick, NULL);
     return &extension;
 }

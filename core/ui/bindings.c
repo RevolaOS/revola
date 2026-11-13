@@ -3,8 +3,8 @@
 /* The event bindings of the rows extensions add to Apple's menus. The stock
  * rows' bindings live in each screen's CEVT, so when Apple loads a screen's
  * events the core reads one more stream into them: list.pid.<item>.chosen for a
- * menu row, contextualMenu.<handler> for a context menu row, and for a Settings
- * row its delayedselected binding, which shows the row in the preview pane. */
+ * menu row, contextualMenu.<handler> for a context menu row, and on a menu with
+ * a pane the row's delayedselected binding, which shows the row in the pane. */
 
 #include "ui/menurows.h"
 #include "osos-2.0.5.h"
@@ -55,10 +55,10 @@ static void write_bindings(struct core_writer *w, uint32_t screen_id, uint32_t l
         }
         core_write_event(w, name, handler, NULL, NULL, 0);
         count++;
-        if (r->root != RV_MENU_SETTINGS)
+        const char *const layout[] = {core_panes_layout_name(r->root)};
+        if (!layout[0])
             continue;
-        /* The preview pane: the row's pane handler, then the shared layout. */
-        static const char *const layout[] = {core_panes_layout_name};
+        /* The pane: the row's pane handler, then the menu's pane layout name. */
         n = core_put_text(name, name + sizeof name, "list.pid.");
         n = core_put_number(n, name + sizeof name, r->item);
         core_put_text(n, name + sizeof name, ".delayedselected");
@@ -71,13 +71,15 @@ static void write_bindings(struct core_writer *w, uint32_t screen_id, uint32_t l
             w->out[begin + b] = (uint8_t)(count >> (8 * b));
 }
 
-/* Adds the rows' bindings to a screen's event map after Apple loaded its own. */
+/* Adds a pane layout's stock events and the rows' bindings to a layout's event
+ * map after Apple loaded its own. */
 static uint32_t layout_events(uint32_t layout, const struct core_next *next)
 {
     uint32_t result = core_next_call(next, layout, 0, 0, 0);
     uint8_t *screen = *(uint8_t **)((uint8_t *)layout + Layout_screen);
     uint32_t screen_id = screen ? core_word_at(screen, LayoutScreen_id) : 0;
     uint32_t layout_id = core_word_at((void *)layout, Layout_id);
+    core_panes_layout_events((void *)layout, layout_id, screen_id, screen);
     struct core_writer measure = {NULL, 0};
     write_bindings(&measure, screen_id, layout_id);
     if (measure.at <= 4)

@@ -1142,6 +1142,13 @@ static void api_ui_refresh(rv_extension_handle self, const char *screen)
         core_screens_refresh(s);
 }
 
+static void api_pane_refresh(rv_extension_handle self)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (record)
+        core_panes_refresh_owner(record);
+}
+
 static void api_ui_select(rv_extension_handle self, const char *screen, uint32_t row)
 {
     struct rv_extension_record *record = valid_handle(self);
@@ -1441,6 +1448,7 @@ static const struct rv_api api = {
     .timer_start = api_timer_start,
     .timer_stop = api_timer_stop,
     .ui_invalidate_rect = api_ui_invalidate_rect,
+    .pane_refresh = api_pane_refresh,
     .file_open = api_file_open,
     .file_read = api_file_read,
     .file_write = api_file_write,

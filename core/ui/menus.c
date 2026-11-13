@@ -38,6 +38,7 @@ static const struct root roots[CORE_MENU_COUNT] = {
     [RV_MENU_EXTRAS] = {RES_ExtrasMenu_Items, RES_ExtrasMenu_Stopwatch_Item, {RES_ExtrasMenu_Screen}},
     [RV_MENU_SETTINGS] = {RES_SettingsMenu_Items, RES_SettingsMenu_Legal_Item,
                           {RES_SettingsMenu_Main_Screen}},
+    [RV_MENU_VIDEOS] = {RES_VideosMenu_Items, RES_VideosMenu_Settings_Item, {RES_VideosMenu_Screen}},
     [RV_MENU_NOW_PLAYING_CONTEXT] = {0, 0, {RES_NowPlaying_Screen}},
     [RV_MENU_SONG_CONTEXT] = {0, 0, {RES_MediaLists_Songs_Screen, RES_MediaLists_NestedPlaylists_Screen,
                                   RES_MediaLists_Genius_Screen, RES_MediaLists_GeniusPlaylist_Screen}},
@@ -170,8 +171,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_
             apply_visibility(r);
             continue;
         }
-        /* Item, title source, and for a Settings row its pane handler. */
-        uint32_t item = core_resource_take(key, root == RV_MENU_SETTINGS ? 3 : 2);
+        /* Item, title source, and on a menu with a pane the row's pane handler. */
+        uint32_t item = core_resource_take(key, core_panes_layout_name(root) ? 3 : 2);
         if (!item)
             return RV_NO_MEMORY;
         r = &set->rows[set->count++];
@@ -195,8 +196,8 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_
             core_resource_set(Resource_String, item + 1, e->row.label, n + 1);
             continue;
         }
-        if (root == RV_MENU_SETTINGS)
-            core_panes_prepare();
+        core_panes_prepare(root, owner ? CORE_MANIFEST_PANES(core_loader_manifest_flags(owner->manifest))
+                                       : 0);
         /* The item id is the title property, the source id the value's. */
         if (e->row.kind == RV_ROW_KIND_SETTING || e->row.kind == RV_ROW_KIND_INFO)
             core_set_source2(item + 1, item, item + 1, SourceDestination_InlineValue);
@@ -356,9 +357,9 @@ const struct rv_menu_entry *core_menus_entry(uint32_t item, struct rv_extension_
 int core_menus_pane(uint32_t id, uint32_t argument)
 {
     EACH_ROW(r)
-        if (r->entry && r->root == RV_MENU_SETTINGS && r->item + 2 == id) {
+        if (r->entry && core_panes_layout_name(r->root) && r->item + 2 == id) {
             if (argument != ActionSupportQuery)
-                core_panes_show(r->item);
+                core_panes_show(r->root, r->item);
             return 1;
         }
     return 0;
@@ -447,6 +448,8 @@ static const struct core_hook hooks[] = {
     {CORE_SITE_Music_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Main_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Music_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_Videos_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
+    {CORE_SITE_Videos_SecondaryAction_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
     {CORE_SITE_Extras_Action_slot, CORE_HOOK_FILTER, 5, core_screens_action_filter},
 };
 

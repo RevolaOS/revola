@@ -2,11 +2,13 @@
 
 /* Bitmap assets as BMap resources for Apple.
  *
- * Menu bitmaps: the stock Settings pane icon format, a 78 x 121 coverage mask
- * (BMapFormat_Mask8) drawn in the view's colour. Only the one shown is decoded:
- * Apple keeps the pane bitmap's pointer until it asks for the next one, and
- * draws it again while a row without a pane is selected. A replaced block is
- * retired, not freed, so a draw still under way finds its pixels.
+ * Pane bitmaps: an icon in the stock Settings pane format, a 78 x 121 coverage
+ * mask (BMapFormat_Mask8) drawn in the view's colour, a picture, a whole BMap
+ * whose size names the pane that shows it, and the badge shown beside one.
+ * Only the ones shown are decoded: Apple keeps the pane bitmap's pointer until
+ * it asks for the next one, and draws it again while a row without a pane is
+ * selected. A replaced block is retired, not freed, so a draw still under way
+ * finds its pixels.
  *
  * Canvas bitmaps: decoded on first draw and kept while their canvas is open,
  * so redraws decode nothing; freed when it closes. One stored raw in the
@@ -30,16 +32,19 @@
 #include <stddef.h>
 
 #define CANVAS_HELD 8
-#define MENU_WIDTH 78
-#define MENU_HEIGHT 121
-#define MENU_STRIDE 80
-#define MENU_BYTES (BMap_payload + MENU_STRIDE * MENU_HEIGHT)
+#define ICON_WIDTH 78
+#define ICON_HEIGHT 121
+#define ICON_STRIDE 80
+#define ICON_BYTES (BMap_payload + ICON_STRIDE * ICON_HEIGHT)
 
+/* The pane's picture and its badge, shown at the same time. */
+enum { PICTURE, BADGE, SLOTS };
 static struct {
     struct rv_extension_record *owner;
     uint32_t name;
+    uint32_t bytes;
     void *block;
-} decoded;
+} decoded[SLOTS];
 
 struct held {
     struct core_screen *screen;
@@ -54,14 +59,14 @@ static const struct rv_asset_provider *provider;
 static struct rv_extension_record *provider_owner;
 
 /* Exactly the header of a stock pane icon. */
-static int menu_bmap(const uint8_t *b, uint32_t bytes)
+static int icon_bmap(const uint8_t *b, uint32_t bytes)
 {
     const int32_t *bounds = (const int32_t *)(b + BMap_bounds);
-    return bytes == MENU_BYTES && *(const uint16_t *)(b + BMap_format) == BMapFormat_Mask8 &&
-           *(const uint16_t *)(b + BMap_stride) == MENU_STRIDE &&
+    return bytes == ICON_BYTES && *(const uint16_t *)(b + BMap_format) == BMapFormat_Mask8 &&
+           *(const uint16_t *)(b + BMap_stride) == ICON_STRIDE &&
            *(const uint16_t *)(b + BMap_depth) == 8 && !bounds[0] && !bounds[1] &&
-           bounds[2] == MENU_HEIGHT && bounds[3] == MENU_WIDTH &&
-           *(const uint32_t *)(b + BMap_payload_bytes) == MENU_STRIDE * MENU_HEIGHT;
+           bounds[2] == ICON_HEIGHT && bounds[3] == ICON_WIDTH &&
+           *(const uint32_t *)(b + BMap_payload_bytes) == ICON_STRIDE * ICON_HEIGHT;
 }
 
 /* A BMap whose header and rows fit `bytes`. */
@@ -158,7 +163,7 @@ static void *fetch(struct rv_extension_record *owner, uint32_t name, uint32_t *b
         return block;
     }
     uint8_t kind = RVX_BITMAP;
-    *bytes = MENU_BYTES;
+    *bytes = ICON_BYTES;
     *charged = owner;
     block = owner ? core_loader_asset(owner, name, bytes, &kind) : core_icon_decode(name);
     if (!block)
@@ -198,10 +203,11 @@ int core_bitmaps_provider(struct rv_extension_record *owner, const struct rv_ass
      * canvas's bitmaps on its next draw (it copies pixels while drawing, so a
      * held block may go between draws). The preloaded blocks follow at the
      * next tick, which refreshes the pane again. */
-    if (decoded.block) {
-        core_loader_retire(decoded.block);
-        decoded.block = NULL;
-    }
+    for (uint32_t i = 0; i < SLOTS; i++)
+        if (decoded[i].block) {
+            core_loader_retire(decoded[i].block);
+            decoded[i].block = NULL;
+        }
     for (uint32_t i = 0; i < CANVAS_HELD; i++)
         if (held[i].block)
             drop_held(i);
@@ -210,28 +216,43 @@ int core_bitmaps_provider(struct rv_extension_record *owner, const struct rv_ass
     return RV_OK;
 }
 
-const void *core_bitmap(struct rv_extension_record *owner, const struct rv_bitmap *bitmap)
+/* The decoded block of `bitmap` in `slot`: with `icon` a pane icon, else any
+ * whole BMap. */
+static const void *shown(struct rv_extension_record *owner, const struct rv_bitmap *bitmap, int icon,
+                         uint32_t slot)
 {
     if (!bitmap || !bitmap->asset)
         return NULL;
     uint32_t name = core_settings_owner(bitmap->asset);
-    if (decoded.block && decoded.owner == owner && decoded.name == name)
-        return decoded.block;
-    uint32_t bytes;
-    struct rv_extension_record *charged;
-    void *block = fetch(owner, name, &bytes, &charged);
-    if (!block)
-        return NULL;
-    if (!menu_bmap(block, bytes)) {
-        core_loader_free(charged, block);
-        return NULL;
+    if (!(decoded[slot].block && decoded[slot].owner == owner && decoded[slot].name == name)) {
+        uint32_t bytes;
+        struct rv_extension_record *charged;
+        void *block = fetch(owner, name, &bytes, &charged);
+        if (!block)
+            return NULL;
+        if (decoded[slot].block)
+            core_loader_retire(decoded[slot].block);
+        decoded[slot].owner = owner;
+        decoded[slot].name = name;
+        decoded[slot].bytes = bytes;
+        decoded[slot].block = block;
     }
-    if (decoded.block)
-        core_loader_retire(decoded.block);
-    decoded.owner = owner;
-    decoded.name = name;
-    decoded.block = block;
-    return block;
+    return !icon || icon_bmap(decoded[slot].block, decoded[slot].bytes) ? decoded[slot].block : NULL;
+}
+
+const void *core_bitmap_icon(struct rv_extension_record *owner, const struct rv_bitmap *bitmap)
+{
+    return shown(owner, bitmap, 1, PICTURE);
+}
+
+const void *core_bitmap_picture(struct rv_extension_record *owner, const struct rv_bitmap *bitmap)
+{
+    return shown(owner, bitmap, 0, PICTURE);
+}
+
+const void *core_bitmap_badge(struct rv_extension_record *owner, const struct rv_bitmap *bitmap)
+{
+    return shown(owner, bitmap, 0, BADGE);
 }
 
 int core_bitmap_whole(const void *bmap)
@@ -300,10 +321,11 @@ void core_bitmaps_screen_closed(struct core_screen *screen)
 void core_bitmaps_release(struct rv_extension_record *owner)
 {
     core_bitmaps_release_range(owner, NULL, NULL);
-    if (decoded.block && decoded.owner == owner) {
-        core_loader_retire(decoded.block);
-        decoded.block = NULL;
-    }
+    for (uint32_t i = 0; i < SLOTS; i++)
+        if (decoded[i].block && decoded[i].owner == owner) {
+            core_loader_retire(decoded[i].block);
+            decoded[i].block = NULL;
+        }
     for (uint32_t i = 0; i < CANVAS_HELD; i++)
         if (held[i].block && (held[i].screen->owner == owner || held[i].owner == owner))
             drop_held(i);
