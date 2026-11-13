@@ -35,12 +35,12 @@ The main files; helpers sit next to them.
 | `screens.c`, `clones.c` | Screen registry and clones of stock screens |
 | `lists.c` | List screens, full width or beside the Settings preview pane |
 | `indexed.c` | List rows expanded by index |
-| `templates.c` | Templates built at boot |
+| `templates.c` | View templates of the core screens and the pane copies, built on first use |
 | `canvas.c` | Canvas view and slider input |
 | `gfx.c` | The drawing table canvases draw with |
 | `controllers.c` | Controller vtable copies |
 | `menus.c` | Menu rows |
-| `panes.c` | The panes of Main, Music, Videos, Extras and Settings: shared layouts per menu and pane shape |
+| `panes.c` | The panes of Main, Music, Videos, Extras and Settings: shared layouts per menu and pane shape, built on first highlight and added to the menu on screen |
 | `toggles.c` | Main Menu and Music Menu settings rows |
 | `properties.c` | Settings properties and actions |
 | `bitmaps.c` | Bitmap decoding |
