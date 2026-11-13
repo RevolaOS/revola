@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 46
+#define RV_API_MINOR 47
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -36,6 +36,7 @@
 
 /* The loader's record of the extension; passed back to every call. */
 typedef struct rv_extension_record *rv_extension_handle;
+
 struct rv_timer;
 struct rv_file;
 
@@ -49,7 +50,8 @@ enum rv_result {
     RV_BAD_SITE,   /* no site with that id in this core */
     RV_BAD_ARGUMENT,
     RV_NOT_FOUND,
-    RV_ALREADY_BOUND, /* this extension already has the handler at that site */
+    RV_ALREADY_BOUND, /* the extension's handler is already at the site, or another
+                         extension holds the colour roles or the asset provider */
 };
 
 enum rv_hook_mode {
@@ -240,6 +242,22 @@ enum rv_color_role {
     RV_COLOR_ROLE_COUNT,
 };
 
+/* A theme's say over every extension's bitmap assets, the core's own included,
+ * through asset_set_provider. `owner` and `asset` are the extension's id and
+ * the asset's name as the core hashes strings (32-bit FNV-1a); the core's own
+ * assets are owned by the hash of "revola". A bitmap is a whole BMap, its
+ * 28-byte header and its rows, as the core decodes it from the package. */
+struct rv_asset_provider {
+    /* The bytes of the bitmap the provider holds for the asset, 0 for none. */
+    uint32_t (*replacement_bytes)(uint32_t owner, uint32_t asset);
+    /* Fills `bmap`, a block of the `bytes` replacement_bytes answered, with
+     * that bitmap; 1 when it did, 0 leaves the core to decode the extension's
+     * own. */
+    int (*replace)(uint32_t owner, uint32_t asset, void *bmap, uint32_t bytes);
+    /* The extension's own bitmap, decoded, which it may alter; 1 when it did. */
+    int (*adjust)(uint32_t owner, uint32_t asset, void *bmap, uint32_t bytes);
+};
+
 /* The stock fonts: the title bar's, the text pages' and the preview pane's
  * large caption. */
 enum rv_font { RV_FONT_TITLE, RV_FONT_TEXT, RV_FONT_LARGE, RV_FONT_COUNT };
@@ -314,6 +332,16 @@ enum rv_row_status {
     RV_ROW_STATUS_PLAYING,
 };
 
+/* What the Settings preview pane shows while a row of a list screen beside it
+ * is highlighted: a caption line and an icon on the system's box, as an entry
+ * under Settings shows them; the callbacks give them as they are now. */
+struct rv_pane {
+    const char *caption;
+    const struct rv_bitmap *bitmap;
+    const char *(*caption_text)(const struct rv_context *ctx);
+    const struct rv_bitmap *(*bitmap_for)(const struct rv_context *ctx);
+};
+
 /* A screen the core registers for the extension. `id` is what RV_ROW_PUSH,
  * ui_push and a module's manifest trigger call it, local to the extension.
  * Labels and text are read from the module while the screen is open; nothing
@@ -329,6 +357,7 @@ struct rv_screen {
         struct {
             const struct rv_row *rows;
             uint32_t count;
+            const struct rv_pane *panes; /* one per row for the split layout, or NULL */
         } list;
         struct {
             uint16_t key;
@@ -488,6 +517,9 @@ struct rv_descriptor {
     uint32_t screen_count;
     const struct rv_menu_entry *entries;
     uint32_t entry_count;
+    /* A table of the module's own functions for the extension's other modules,
+     * read with module_service; may be NULL. */
+    const void *service;
 };
 
 struct rv_api {
@@ -496,7 +528,9 @@ struct rv_api {
 
     /* Bind beyond the descriptor; unbind only what hook_bind bound (the
      * descriptor's hooks are unbound by the loader). A handler the extension
-     * already has at the site returns RV_ALREADY_BOUND and binds nothing. */
+     * already has at the site returns RV_ALREADY_BOUND and binds nothing. A
+     * handler may unbind itself once its hook_next has returned: the core
+     * reads nothing of the hook after the call. */
     int (*hook_bind)(rv_extension_handle self, const struct rv_hook *hook);
     int (*hook_unbind)(rv_extension_handle self, const struct rv_hook *hook);
     /* Continue a filter chain; unused trailing arguments are 0. */
@@ -609,6 +643,70 @@ struct rv_api {
      * hook extends. One of the extension's 4,096 ids; the copy is freed with
      * the extension. 0 when the ids or the heap run out. UI task. */
     uint32_t (*string_resource)(rv_extension_handle self, const char *text);
+
+    /* Files of the content folders the manifest names under /Revola/
+     * (`content = "Themes"`): what a listener copies onto the iPod for the
+     * extension to find. `name` starts with the folder ("Themes/flat.rvt");
+     * content_open opens for reading, and file_read, file_seek and file_close
+     * work on the handle, closed on unload like a data file. content_list is
+     * folder_list for a folder there ("Themes" for the folder itself). A folder
+     * has one owner: an extension naming one another holds does not load.
+     * RV_BAD_ARGUMENT for a bad name or a folder the manifest does not name,
+     * RV_NOT_FOUND when the file layer refuses. UI task. */
+    int (*content_open)(rv_extension_handle self, const char *name, struct rv_file **file);
+    int (*content_list)(rv_extension_handle self, const char *name,
+                        void (*each)(const char *entry, int is_folder, void *arg), void *arg);
+
+    /* An asset stored raw (compress = false) as a file handle for file_read,
+     * file_seek and file_close, with offsets from the asset's start, for
+     * streaming through it without reopening the extension's file on every
+     * read as asset_read does. RV_BAD_ARGUMENT for a compressed or a resident
+     * asset (those are in RAM: asset_load, asset_read), RV_NOT_FOUND when it
+     * is missing or unreadable. UI task. */
+    int (*asset_open)(rv_extension_handle self, const char *name, struct rv_file **file);
+
+    /* The colour roles canvases draw with (rv_gfx.color), RV_COLOR_ROLE_COUNT
+     * values that stay valid for as long as they are set: in the main module
+     * or the heap, since the core clears them when the module holding them
+     * unloads. NULL restores the stock colours. One extension at a time:
+     * RV_ALREADY_BOUND while another holds them. UI task. */
+    int (*ui_set_colors)(rv_extension_handle self, const rv_color *roles);
+    /* Redraws everything on screen, for a change that touched colours or
+     * artwork the stock views already drew. UI task. */
+    void (*ui_redraw)(rv_extension_handle self);
+
+    /* hook_next for a site with seven values: four in registers, two Apple
+     * passes on the stack and one the site adds after them, such as the view
+     * a blit handler needs; the handler receives it as its last argument. A
+     * site with fewer stack values passes the added one through hook_next. */
+    uint32_t (*hook_next7)(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                           uint32_t e, uint32_t f, uint32_t g);
+
+    /* The `service` of the module at `module` in the manifest, 0 for main, or
+     * NULL while it is not loaded. Modules share no symbols, so this is how
+     * one calls another: main reaches a manual module between its module_load
+     * and module_unload, and that module reaches main's table, valid for as
+     * long as the extension is loaded, from its own entry. One module owns
+     * each load and unload pair. */
+    const void *(*module_service)(rv_extension_handle self, uint32_t module);
+
+    /* Before the core decodes a bitmap asset for a Settings pane or a canvas
+     * it asks `provider` (struct rv_asset_provider; any function may be NULL,
+     * and a replacement needs replacement_bytes and replace) for a
+     * replacement, and offers what it decoded itself for adjustment. The
+     * table and its functions live in the main module or the heap: the core
+     * releases the provider when the module or block holding the table goes.
+     * A replacement is counted to the holder's memory. One extension at a
+     * time: RV_ALREADY_BOUND while another holds it; NULL releases. Setting
+     * or releasing it decodes the bitmaps on screen again. UI task. */
+    int (*asset_set_provider)(rv_extension_handle self,
+                              const struct rv_asset_provider *provider);
+
+    /* The booted firmware image, /Revola/Firmware/revola.bin, open for reading
+     * as a handle for file_read, file_seek and file_close, closed on unload
+     * like a data file: where a theme reads the stock artwork from.
+     * RV_NOT_FOUND when the file layer refuses. UI task. */
+    int (*firmware_open)(rv_extension_handle self, struct rv_file **file);
 };
 
 /* Every module exports this as rv_module_entry. The main module returns its

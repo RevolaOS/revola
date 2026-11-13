@@ -39,6 +39,9 @@
 #define RV_SCREEN_LIST(id_, title_, rows_, ...)                                                 \
     {.id = (id_), .title = (title_), .kind = RV_SCREEN_KIND_LIST,                               \
      .list = {(rows_), RV_COUNT(rows_)} __VA_OPT__(, ) __VA_ARGS__}
+#define RV_SCREEN_LIST_PANES(id_, title_, rows_, panes_, ...)                                   \
+    {.id = (id_), .title = (title_), .kind = RV_SCREEN_KIND_LIST,                               \
+     .list = {(rows_), RV_COUNT(rows_), (panes_)} __VA_OPT__(, ) __VA_ARGS__}
 #define RV_SCREEN_TEXT(id_, title_, paragraphs_, ...)                                           \
     {.id = (id_), .title = (title_), .kind = RV_SCREEN_KIND_TEXT,                               \
      .text = {(paragraphs_), RV_COUNT(paragraphs_)} __VA_OPT__(, ) __VA_ARGS__}

@@ -1,9 +1,9 @@
 {
-  "api": "1.46",
+  "api": "1.47",
   "sha256": {
     "README.md": "f9d751b9508bd5c4d1ea1d97ef2256dd6f3a89938ebe4b08d0f2d1a717abca4c",
     "rv.mk": "1008a008e32ed7d808e969ded70361ba830fb7578e4c10c0320612ab404d49ec",
-    "rv_api.h": "ba8cccb368411834b5821386c9eaece5b7e57399b711e48fb1ba50318d34d575",
+    "rv_api.h": "6371724d0cd57cc7b4c434f6ddb3ca6a9ffc82c675fc214c5c8349c790bc89fc",
     "rv_audio.h": "754782f7862843dc378c479eea5fa4512c1ea727245f8c17d46cf419046b2093",
     "rv_canvas.c": "d234263b35f1da093ed07030bda94e51d21a95f0cc3ddc74091683b86f3f4d58",
     "rv_canvas.h": "998983651919c9fdb1832e054ee43e4118cb88cebf5626476c661084338f28bc",
@@ -12,7 +12,7 @@
     "rv_math.c": "231203e931a0ce707b009d544a5da31b99cb63d03ba097469f6e7754e484d26f",
     "rv_math.h": "474cd66878477ca542d502f435545187d444af0475ca8f70810d19ca131f8307",
     "rv_media.h": "6d7aba087ae5f7de6c3dfe3767e1dbbdcc9295337e783eada5aecd51869619f6",
-    "rv_ui.h": "414cf407d3beb94a69a26d522b7af0d4af52b1f50eb48d0447b46f605d232f75",
+    "rv_ui.h": "5a2a500fbe2edd61ae47defcfa6b28635cce0e3e7c58496509cbda18e9967723",
     "rvx.lds": "57d4dd4a7dc3fd62fcaa71856aedbee531fa0f17f61806de9b2390b4df4fb37b"
   }
 }

@@ -20,6 +20,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | Screen | What the user sees |
 |---|---|
 | `RV_SCREEN_LIST(id, title, rows)` | a menu, full width or beside the Settings preview pane as the screen it opens from decides; `.layout` overrides |
+| `RV_SCREEN_LIST_PANES(id, title, rows, panes)` | the same with an `rv_pane` per row: the caption and icon the pane shows while that row is highlighted, static or from `.caption_text` and `.bitmap_for`; a row without a bitmap shows a caption alone |
 | `RV_SCREEN_CHOICE`, `RV_SCREEN_MULTI_CHOICE`, `RV_SCREEN_SLIDER` | a screen over a setting with a title of its own; beside Settings a choice screen's pane names the highlighted choice under its `.bitmap`, as Settings > EQ does |
 | `RV_SCREEN_TEXT(id, title, paragraphs)` | a text page |
 | `RV_SCREEN_DYNAMIC_LIST(id, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
@@ -61,6 +62,8 @@ Every UI callback receives a `struct rv_context`: row actions and text, canvas d
 | `api->ui_refresh(self, id)` | re-reads the rows and the empty message |
 | `api->ui_select(self, id, row)` | highlights a row, clamped to the count, now or when a covered screen becomes active again |
 
+`api->ui_redraw(self)` redraws everything on screen, for a change to colours or artwork the stock views have already drawn.
+
 An empty list has no selection.
 
 ## Context menus
@@ -69,7 +72,7 @@ An empty list has no selection.
 
 ## Canvases
 
-A canvas draws with the `rv_gfx` table it is given: fills, text in the stock fonts placed or aligned in a rectangle, colour roles themes can change and mixes between them, wrapped paragraphs, list rows, bitmaps whole, in part or tiled, and the Settings > About card the core's Usage page uses. The [canvas kit](canvas.md) builds an editor's palette, plots and value cells over it. Input is wheel and key events, plus `RV_INPUT_HOLD` when the hold switch moves. The input callback returns 1 for an event it consumed; a release goes where its press went, whatever the callback returns for it. A canvas may redraw part of itself with `ui_invalidate_rect`. Its `.closed` runs after the last draw of its slide-out, so that is where what the canvas draws with is freed.
+A canvas draws with the `rv_gfx` table it is given: fills, text in the stock fonts placed or aligned in a rectangle, colour roles (which one extension at a time may replace for every canvas with `api->ui_set_colors`, as a theme does; a theme replaces menu bitmaps the same way through the [asset provider](assets.md#asset-provider)) and mixes between them, wrapped paragraphs, list rows, bitmaps whole, in part or tiled, and the Settings > About card the core's Usage page uses. The [canvas kit](canvas.md) builds an editor's palette, plots and value cells over it. Input is wheel and key events, plus `RV_INPUT_HOLD` when the hold switch moves. The input callback returns 1 for an event it consumed; a release goes where its press went, whatever the callback returns for it. A canvas may redraw part of itself with `ui_invalidate_rect`. Its `.closed` runs after the last draw of its slide-out, so that is where what the canvas draws with is freed.
 
 ## Resource ids
 
@@ -77,10 +80,10 @@ Screens and entries are limited by the heap and by the extension's 4,096 resourc
 
 | Declaration | Ids |
 |---|---|
-| list | 18 + 2 per row |
-| choice, multi-choice or dynamic list | 20 |
+| list | 19 + 2 per row |
+| choice, multi-choice or dynamic list | 21 |
 | context menu | 5 + 1 per context row |
 | text page | 8 + 1 per paragraph |
 | slider | 10 |
-| canvas | 8 |
+| canvas | 8 (held bitmaps, in total across open canvases) |
 | menu entry | 2, or 3 under Settings |

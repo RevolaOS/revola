@@ -32,7 +32,7 @@
 | [User interface](sdk/ui.md) | Declaring screens, rows, settings and entries; canvases; resource limits |
 | [Menu placement](sdk/menus.md) | Putting a row into a stock menu |
 | [Settings](sdk/settings.md) | Reading, writing and reacting to settings |
-| [Files](sdk/files.md) | The extension's data folder |
+| [Files](sdk/files.md) | The extension's data folder and the content folders it owns |
 | [Assets](sdk/assets.md) | Bitmaps and data packed into the `.rvx` |
 | [Raw sites](sdk/raw-sites.md) | Hooking code no core site covers |
 | [Audio effects](sdk/audio.md) | The output PCM site and the effect stages |

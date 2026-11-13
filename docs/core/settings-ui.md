@@ -17,10 +17,10 @@ A list with Usage followed by the installed extensions. The pane says how many a
 | Off after crash | the last crash was attributed to it (`CORE_KEY_CRASHED`) | yes |
 | Needs update | built for a newer core API minor | yes |
 | Failed | any other load failure | yes |
-| Incompatible | unsupported package or manifest format, another API major, another firmware id, or a version-2 manifest without the note field | no |
+| Incompatible | unsupported package or manifest format, another API major or another firmware id | no |
 | Unreadable | truncated or invalid metadata | no |
 | Duplicate | another file with the same manifest id loaded | yes |
-| Conflict | a replace handler on a site another handler holds; the site is named | yes |
+| Conflict | a replace handler on a site another handler holds, or a content folder another extension owns; the site or the holder is named | yes |
 | Site mismatch | a raw site whose address does not hold the expected word | yes |
 | No memory | heap exhausted, or more than 4,096 resource ids declared | yes |
 

@@ -8,7 +8,7 @@ An extension is a set of modules built against one revola release and packed int
 | [User interface](ui.md) | Declaring screens, rows, settings and entries; canvases; resource limits |
 | [Menu placement](menus.md) | Putting a row into a stock menu |
 | [Settings](settings.md) | Reading, writing and reacting to settings |
-| [Files](files.md) | The extension's data folder |
+| [Files](files.md) | The extension's data folder and the content folders it owns |
 | [Assets](assets.md) | Bitmaps and data packed into the `.rvx` |
 | [Raw sites](raw-sites.md) | Hooking code no core site covers |
 | [Audio effects](audio.md) | The output PCM site and the effect stages |
@@ -32,7 +32,8 @@ An extension is a set of modules built against one revola release and packed int
 | `osos-2.0.5.h`, `osos-2.0.5.ld` | Apple functions, data, constants and struct offsets by name; modules call Apple directly |
 | `rvx.lds` | Module layout: linked at 0, text, rodata, data and bss in one segment |
 | `rv.mk` | Make include |
-| `rvx-pack`, `manifest.py`, `bitmap.py` | Pack `manifest.toml`, the module ELFs and the assets into the `.rvx`; Python 3.11+ and the `arm-elf-eabi-` binutils |
+| `rvx-pack`, `rvx.py`, `manifest.py`, `bitmap.py` | Pack `manifest.toml`, the module ELFs and the assets into the `.rvx`; Python 3.11+ and the `arm-elf-eabi-` binutils |
+| `assets.py`, `assets.json` | The bitmap assets of a built extension as JSON records (id, asset, format, size), what a theme must match to replace one; `assets.json` holds the core's own |
 | `docs/` | These pages |
 
 `rv_libc.h` provides `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`, `rv_format` (printf into a buffer), `rv_format_duration` ("3:07"), `rv_format_int` ("100 %"), `rv_format_tenths` ("-0.5 dB"), `rv_format_hz` ("1.5k Hz") and `rv_copy_utf8` (a copy that never cuts inside a UTF-8 sequence). `api->format_number` and `api->format_size` write "12,345" and "6.0 KB".

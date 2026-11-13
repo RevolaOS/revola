@@ -24,6 +24,21 @@ A module is one ELF, linked at 0 with `rvx.lds` and relocated by the loader into
 
 A screen module keeps the code of a rarely used page off the heap until it opens. The core binds the hooks and registers the screens of a non-main module when it loads and drops them when it unloads.
 
+## Services
+
+Modules share no symbols. A module that other modules call points its descriptor's `service` at a table of its functions; `api->module_service(self, module)` returns that pointer, module 0 being `main`, or NULL while the module is not loaded. `main` reaches a manual module between its `module_load` and `module_unload`; the manual module reaches `main`'s table from its own entry, valid for as long as the extension is loaded. One module owns each load and unload pair, since `module_unload` keeps no count.
+
+When the extension unloads, `main`'s `unload` callback runs first, while the other modules are still loaded and may still be loaded with `module_load`; then the other modules unload, highest manifest index first, then `main`.
+
+```c
+struct worker_service { int (*run)(const struct job *job); };
+/* in the manual module */
+static const struct worker_service service = {run};
+static const struct rv_descriptor module = {.size = sizeof module, .service = &service};
+/* in main, after api->module_load(self, 1) */
+const struct worker_service *worker = api->module_service(self, 1);
+```
+
 ## Build rules
 
 `rv.mk` builds Thumb with `-mlong-calls -fno-pic -fno-jump-tables` and no C library beyond `rv_libc.h`. Only `R_ARM_ABS32` relocations may remain, which `rvx-pack` checks. Memory from `api->alloc` is counted against the extension and shown in Settings > Extensions.

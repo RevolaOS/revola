@@ -9,7 +9,7 @@ An extension is one file, `/Revola/Extensions/<id>.rvx`. Installing, sharing and
 | Part | Contents |
 |---|---|
 | Header | format, core API major, firmware build id; the loader refuses any mismatch |
-| Manifest | id, name, description, version, author, license, API, stability, note, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
+| Manifest | id, name, description, version, author, license, API, stability, note, content folders, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
 | Catalog | one entry per module and asset: module i is entry i, resident assets follow, then the rest |
 | Payloads | module images with their relocation tables, then the assets |
 
@@ -17,7 +17,7 @@ A module image is read into one block of the Apple heap, text, data and bss in a
 
 ## Boot scan
 
-`core_loader_boot` runs in `core_preferences_init` after the settings store loaded. It lists the `.rvx` files once, in a heap block as long as the folder, freed when the scan ends, reads each manifest and keeps nothing for a disabled extension. An extension is enabled when the store says so (key 0 under its id hash) or, with no store value, when its id is in `loader/bundled.def`, the first-party extensions that are on after install. For an enabled one it allocates a record holding the manifest and loads the main module. The module's entry returns the descriptor, whose hooks are bound in order. A collision unbinds what was bound, drops the image and leaves the failure and the site id on the record for Settings > Extensions.
+`core_loader_boot` runs in `core_preferences_init` after the settings store loaded. It lists the `.rvx` files once, in a heap block as long as the folder, freed when the scan ends, reads each manifest and keeps nothing for a disabled extension. An extension is enabled when the store says so (key 0 under its id hash) or, with no store value, when its id is in `loader/bundled.def`, the first-party extensions that are on after install. The bundled extensions load first, so a content folder or a site that one of them and another extension both claim goes to the bundled one, whatever the file names. For an enabled one it allocates a record holding the manifest and loads the main module. The module's entry returns the descriptor, whose hooks are bound in order. A collision unbinds what was bound, drops the image and leaves the failure and the site id on the record for Settings > Extensions.
 
 ## Identity
 
@@ -31,7 +31,9 @@ The FAT file name is only used to build paths. Identity is the manifest id, and 
 | `manual` | `api->module_load` | `api->module_unload` |
 | `screen` | when a push looks up one of the screen ids its manifest entry lists (`core_loader_screen`) | ten ticks after the last of its screens was popped |
 
-Every module may return a descriptor. The core binds and registers a non-main module's hooks and screens when it loads and drops them when it unloads, keeping its screen records stale so the next load reuses their ids. Screen lookups and open counts are per extension.
+Every module may return a descriptor. The core binds and registers a non-main module's hooks and screens when it loads and drops them when it unloads, keeping its screen records stale so the next load reuses their ids. Screen lookups and open counts are per extension. A descriptor's `service` pointer is handed to the extension's other modules by `module_service` while the module is loaded.
+
+Unloading an extension calls the main module's `unload` first, while its other modules are still loaded, then unloads the modules from the highest index down to main.
 
 Disabling marks the record; the next grace tick unloads it. Code and hook storage are retired and freed two ticks after unbind, when no task can still be inside them. Images are owned by the Apple heap, so a reload reuses the same addresses and the heap totals return to where they were. The self-test checks this.
 

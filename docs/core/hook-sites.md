@@ -19,11 +19,11 @@ A row gives the address, the kind, what an unbound site does, the Apple words ex
 
 `core_boot` runs inside Apple's UI task after the other tasks exist, so a two-word entry write is only safe for a function no started task can be executing at that moment. A site is declared `ENTRY` only with that argument. Every write runs with IRQ and FIQ masked and is followed by `core_cache_sync`.
 
-A row's `COPY(n, r)` terms make a value Apple keeps in a callee-saved register available as site argument `n`, for a call whose callee takes fewer arguments than the handler needs.
+A row's `COPY(n, r)` terms make a value Apple keeps in a callee-saved register available as site argument `n`, for a call whose callee takes fewer arguments than the handler needs. When all four argument registers are live, `PUSH(r)` pushes the register after Apple's two stack arguments instead (`PUSH` goes with `STACK(2)`), so the handler receives it as its seventh value and passes it on with `hook_next7`. `PUSH` is for a handler that needs the register before and after the call it wraps; an observer that only records the register ahead of the call is an `INSERT` row and needs no stub term.
 
 ## Handlers
 
-A handler receives the Apple arguments followed by `next`: in `r[argc]`, or as the first stack argument for four-argument sites, ahead of up to two arguments Apple itself passes on the stack.
+A handler receives the Apple arguments followed by `next`: in `r[argc]`, or as the first stack argument for four-argument sites, ahead of up to two arguments Apple itself passes on the stack and a `PUSH` register.
 
 | Handler | Behaviour |
 |---|---|
