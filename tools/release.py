@@ -8,8 +8,9 @@ or without the decrypted Apple image; the image only lets the build check the si
 table against it (expected words, no branch into an entry site's second word). A
 release built without the image therefore needs a checked build on a developer
 machine first. The script refuses a dirty tree or a missing tag, builds the recipes, the Rockbox bootloader
-images, the SDK, every extension of a pinned extensions checkout and the USB helper
-of a pinned installer checkout, writes the bundle specification, exports, signs and
+images, the SDK, every extension of a pinned extensions checkout, every first-party
+theme of a pinned themes checkout and the USB helper of a pinned installer checkout,
+writes the bundle specification, exports, signs and
 packs the bundle with the installer's CLI, and with --upload publishes everything as
 a GitHub release of this repository.
 """
@@ -18,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -116,13 +118,53 @@ def build_extensions(extensions, sdk, out, api_major):
     return packages
 
 
-def specification(version, minimum, out, helper, extensions, api_major):
+def build_themes(themes, out):
+    """Every theme folder of the checkout but classic, which the Appearance extension
+    carries itself, compiled to one .rvt each with the version of its theme.toml."""
+    dist = out / "themes"
+    if dist.exists():
+        shutil.rmtree(dist)
+    packages = {}
+    for manifest in sorted(themes.glob("themes/*/theme.toml")):
+        folder = manifest.parent
+        theme = tomllib.loads(manifest.read_text())
+        if "id" not in theme:
+            raise ValueError(f"{folder.name}: theme.toml has no id")
+        if theme["id"] == "classic":
+            continue
+        if not isinstance(theme.get("version"), str):
+            raise ValueError(f"{theme['id']}: theme.toml needs a version string")
+        run([sys.executable, "-m", "rvt", "compile", folder, "--out", dist], themes)
+        file = dist / theme["id"] / f"{theme['id']}.rvt"
+        if not file.is_file():
+            raise ValueError(f"{theme['id']}: no .rvt was built")
+        packages[theme["id"]] = {
+            "format": "rvt",
+            "version": theme["version"],
+            "file": str(file),
+        }
+    return packages
+
+
+def catalog_fingerprint(themes):
+    """The themes catalog fingerprint every .rvt header carries, from the checkout's
+    catalog of the pinned firmware."""
+    catalog = json.loads((themes / f"rvt/data/{firmware.NAME}.json").read_text())
+    fingerprint = catalog["fingerprint"]
+    if not isinstance(fingerprint, str) or not re.fullmatch(
+        r"[0-9a-f]{16}", fingerprint
+    ):
+        raise ValueError(f"themes: catalog fingerprint {fingerprint!r} is not 8 bytes")
+    return fingerprint
+
+
+def specification(version, minimum, out, helper, extensions, themes, core):
     return {
         "purpose": "release",
         "version": version,
         "minimum_installer_version": minimum,
         "compatibility": firmware.load()["compatibility"],
-        "core": {"api": api_major, "firmware_build_id": firmware.build_id()},
+        "core": core,
         "components": {
             "usb_helper": {
                 "format": "revola-upload-v1",
@@ -155,6 +197,7 @@ def specification(version, minimum, out, helper, extensions, api_major):
             },
         },
         "extensions": extensions,
+        "themes": themes,
     }
 
 
@@ -247,6 +290,7 @@ def main():
     parser.add_argument("--out", type=Path, default=ROOT / "build/release")
     parser.add_argument("--installer", type=Path, default=ROOT.parent / "installer")
     parser.add_argument("--extensions", type=Path, default=ROOT.parent / "extensions")
+    parser.add_argument("--themes", type=Path, default=ROOT.parent / "themes")
     parser.add_argument(
         "--seed",
         type=Path,
@@ -272,7 +316,6 @@ def main():
         target = firmware.load()
         sdklock.check()
         build_identity = identity(ROOT, args.tag)
-        version = build_identity["version"]
         if args.upload and args.seed is None:
             raise ValueError(
                 "--upload needs --seed; the installer accepts only signed bundles"
@@ -285,10 +328,16 @@ def main():
             "revola": git(ROOT, "rev-parse", "HEAD"),
             "installer": pinned(args.installer, "installer"),
             "extensions": pinned(args.extensions, "extensions"),
+            "themes": pinned(args.themes, "themes"),
         }
         prefix = build.compiler_prefix(args.cross_prefix, target["toolchain"]["gcc"])
+        release(args, build_identity, pins, prefix)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
+
+
+def release(args, build_identity, pins, prefix):
+    version = build_identity["version"]
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     config = build.BuildConfig(ROOT / ".build", prefix, args.jobs, args.assembler)
@@ -307,9 +356,15 @@ def main():
     build.build_sdk(config, out, version)
     sdk = config.work / "sdk"
     extensions = build_extensions(args.extensions, sdk, out, api_major)
+    themes = build_themes(args.themes, out)
     helper = build_helper(args.installer, Path(prefix).parent, out, args.jobs)
+    core = {
+        "api": api_major,
+        "firmware_build_id": firmware.build_id(),
+        "catalog_fingerprint": catalog_fingerprint(args.themes),
+    }
     spec = specification(
-        version, args.minimum_installer_version, out, helper, extensions, api_major
+        version, args.minimum_installer_version, out, helper, extensions, themes, core
     )
     assets = bundle(args.assembler, out, spec, args.seed, version)
     (assets / "build.json").write_text(

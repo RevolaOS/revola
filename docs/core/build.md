@@ -27,14 +27,14 @@ cd tools && python3 -m unittest discover -s tests
 | `loader-recipe` | `build/companion.json`, `build/companion.data` | Stops before assembly |
 | `bootloader` | `build/bootloader-ipod6g.ipod` | The patched Rockbox bootloader from the checkout pinned in `boot/dependencies.lock` |
 | `all` | everything above except `examples` | The default; needs `--inputs` and `--nor` |
-| `sdk` | `build/revola-sdk-<version>.tar.gz` | The staged SDK with the generated headers and `docs/` |
+| `sdk` | `build/revola-sdk-<version>.tar.gz` | The staged SDK with the generated headers, `docs/`, the packer and `assets.json`, the core's bitmap assets for theme tooling |
 | `examples` | `build/examples/<id>/<id>.rvx` | The fixture extensions under `sdk/examples`, built against a staged SDK |
 
 `--selftest` compiles the dispatcher and loader self-test into the core. Results land in `core_selftest`, read with `ipodvm peek`.
 
 The build prints the core's resident bytes. The link fails above `CORE_BYTES` (96 KiB) in `core/layout.h`.
 
-The build tool reads the site table from the linked core, rejects entry sites whose displaced words use `pc`, are conditional, branch, or are the target of a branch at `entry+4`, checks every expected word against the pinned image when Apple inputs are present, and records the same expectations in the recipe for the installer.
+The build tool reads the site table from the linked core, rejects entry sites whose displaced words use `pc`, are conditional, branch, or are the target of a branch at `entry+4`, checks every expected word against the pinned image when Apple inputs are present, and records the same expectations in the recipe for the installer. It also rejects any patch inside the resident bitmap bank (`BMapPayloads_address` in the firmware header), so the installed image stays a source of stock artwork for the Appearance extension.
 
 ## Running in the emulator
 
@@ -61,10 +61,11 @@ python3 tools/release.py --tag v2026.11.1-beta.1 --minimum-installer-version 202
 | Rockbox dual-boot installer and uninstaller, `nor.json` | the Rockbox checkout pinned in `boot/dependencies.lock` |
 | SDK tarball | the staged SDK |
 | Every extension | a clean `../extensions` checkout (`--extensions`), built with its top-level `make` against the staged SDK |
+| Every first-party theme but Classic | a clean `../themes` checkout (`--themes`), `python3 -m rvt compile themes/<id>`; Classic is the Appearance extension's own asset |
 | USB helper | a clean `../installer` checkout (`--installer`), `usb-helper/build.py` |
 | Bundle | `revola bundle export`, `sign`, `pack` from the installer CLI, spec `build/release/spec.json` |
 
-`build/release/release/` holds the assets as uploaded, plus `build.json` with the commits of the three checkouts. Versions are calendar versions in SemVer shape, `YYYY.M.N` (year, month without a leading zero, release number within the month) with an optional `-beta.N`; the installer, Cargo and the Tauri updater all compare them as SemVer. `--minimum-installer-version` is the oldest installer allowed to use the bundle; SemVer orders `2026.11.1-beta.1` before `2026.11.1`, so a beta installer needs a beta minimum. Without `--upload` nothing leaves the machine; without `--seed` the bundle is unsigned and only good for a local test through the installer's "Use a local package".
+`build/release/release/` holds the assets as uploaded, plus `build.json` with the commits of the four checkouts. Versions are calendar versions in SemVer shape, `YYYY.M.N` (year, month without a leading zero, release number within the month) with an optional `-beta.N`; the installer, Cargo and the Tauri updater all compare them as SemVer. `--minimum-installer-version` is the oldest installer allowed to use the bundle; SemVer orders `2026.11.1-beta.1` before `2026.11.1`, so a beta installer needs a beta minimum. Without `--upload` nothing leaves the machine; without `--seed` the bundle is unsigned and only good for a local test through the installer's "Use a local package".
 
 ## SDK versioning
 
