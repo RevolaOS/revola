@@ -162,12 +162,17 @@ static const char *manifest_text(enum core_manifest_text field)
     return page->manifest_bytes ? core_loader_manifest_text(page->manifest, field) : "";
 }
 
-/* The name of the extension holding the site `record` lost, or the core's. */
+/* The name of the extension holding the site, or with no site the content
+ * folder, `record` lost; or the core's. */
 static const char *conflict_holder(const struct rv_extension_record *record)
 {
     for (const struct rv_extension_record *r = core_extensions; r; r = r->next) {
         const struct rv_descriptor *d = core_loader_descriptor(r);
-        if (r == record || !r->hooks_bound || !d)
+        if (r == record || !d)
+            continue;
+        if (!record->conflict_site && core_loader_shares_content(r, record))
+            return core_loader_manifest_text(r->manifest, CORE_MANIFEST_NAME);
+        if (!r->hooks_bound)
             continue;
         for (uint32_t i = 0; i < d->hook_count; i++)
             if (d->hooks[i].site == record->conflict_site)

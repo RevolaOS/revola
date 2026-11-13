@@ -32,6 +32,7 @@
 #include "rv_api.h"
 #include "loader/rvx.h"
 #include "ui/screens.h"
+#include "ui/gfx.h"
 #include "settings.h"
 #include "hooks/sites.h"
 #include "storage.h"
@@ -42,7 +43,7 @@
 #define ROOT "/Revola/Extensions"
 #define SUFFIX ".rvx"
 #define MANIFEST_MAGIC 0x464d5652u /* RVMF */
-#define MANIFEST_VERSION 2
+#define MANIFEST_VERSION 3
 #define MANIFEST_MAX CORE_MANIFEST_MAX
 #define MAX_MODULES 15
 #define IDLE_TICKS 10 /* grace ticks a screen module stays loaded with no screen open */
@@ -67,7 +68,8 @@ struct manifest_header {
     uint32_t site_count;
     uint32_t strings_bytes;
     uint16_t text[CORE_MANIFEST_TEXTS];
-    uint16_t reserved;
+    uint16_t content; /* first of content_count consecutive folder names */
+    uint32_t content_count;
 };
 
 struct manifest_module {
@@ -93,10 +95,11 @@ struct core_module {
     uint32_t bytes;
     const struct rv_descriptor *descriptor; /* NULL for a module that returned none */
     struct core_hook *hooks;                /* core-owned copies of its descriptor's hooks */
-    uint8_t loaded;
-    uint8_t idle;         /* ticks without an open screen */
-    uint8_t screens_open; /* its screens on the navigation stack */
-    uint8_t unload_pending; /* module_unload asked while a screen was open */
+    uint8_t loaded : 1;
+    uint8_t unload_pending : 1;  /* module_unload asked while a screen was open */
+    uint8_t unload_notified : 1; /* its unload callback ran ahead of the unload */
+    uint8_t idle;                /* ticks without an open screen */
+    uint8_t screens_open;        /* its screens on the navigation stack */
 };
 
 /* Header of every loader block. `owner` becomes the retire link once retired. */
@@ -158,11 +161,7 @@ static uint32_t length(const char *text)
 static int same_name(const char *a, const char *b)
 {
     for (;; a++, b++) {
-        char x = *a, y = *b;
-        if (x >= 'A' && x <= 'Z')
-            x += 'a' - 'A';
-        if (y >= 'A' && y <= 'Z')
-            y += 'a' - 'A';
+        int x = core_loader_lower(*a), y = core_loader_lower(*b);
         if (x != y)
             return 0;
         if (!x)
@@ -281,6 +280,26 @@ static const char *text(const struct rv_extension_record *record, uint16_t offse
     return strings(record->manifest) + offset;
 }
 
+/* A content folder name inside the string table: a capital, then 1 to 15
+ * lower-case letters or digits, none of the core's own folders. */
+static int content_folder_valid(const char *folder, const char *end)
+{
+    static const char *const core_folders[] = {"Extensions", "Data", "Settings", "Firmware",
+                                               "Crashes"};
+    uint32_t n = 0;
+    if (folder >= end || *folder < 'A' || *folder > 'Z')
+        return 0;
+    for (const char *c = folder + 1; c < end && *c; c++, n++)
+        if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9')))
+            return 0;
+    if (n < 1 || n > 15)
+        return 0;
+    for (uint32_t i = 0; i < sizeof core_folders / sizeof *core_folders; i++)
+        if (same_name(folder, core_folders[i]))
+            return 0;
+    return 1;
+}
+
 static enum core_extension_failure manifest_valid(const uint8_t *buffer, uint32_t bytes)
 {
     const struct manifest_header *header = (const struct manifest_header *)buffer;
@@ -293,21 +312,21 @@ static enum core_extension_failure manifest_valid(const uint8_t *buffer, uint32_
         header->strings_bytes > bytes || buffer[bytes - 1] != 0)
         return CORE_EXTENSION_UNREADABLE;
     uint32_t table = tables_bytes(header);
-    uint32_t header_bytes = sizeof *header, texts = CORE_MANIFEST_TEXTS;
-    /* A version-2 layout with six text offsets and no reserved word is incompatible.
-     * Recognize it for diagnostics only; its modules must never be loaded. */
-    int legacy = bytes == table - 2 * sizeof(uint16_t) + header->strings_bytes;
-    if (legacy) {
-        header_bytes -= 2 * sizeof(uint16_t);
-        table -= 2 * sizeof(uint16_t);
-        texts--;
-    }
     if (bytes != table + header->strings_bytes)
         return CORE_EXTENSION_UNREADABLE;
-    for (uint32_t i = 0; i < texts; i++)
+    for (uint32_t i = 0; i < CORE_MANIFEST_TEXTS; i++)
         if (header->text[i] >= header->strings_bytes)
             return CORE_EXTENSION_UNREADABLE;
-    const struct manifest_site *sites = (const struct manifest_site *)(buffer + header_bytes);
+    if (header->content_count > CORE_MANIFEST_CONTENT_MAX ||
+        (header->content_count && header->content >= header->strings_bytes))
+        return CORE_EXTENSION_UNREADABLE;
+    const char *folder = (const char *)buffer + table + header->content;
+    for (uint32_t i = 0; i < header->content_count; i++) {
+        if (!content_folder_valid(folder, (const char *)buffer + bytes))
+            return CORE_EXTENSION_UNREADABLE;
+        folder += length(folder) + 1;
+    }
+    const struct manifest_site *sites = (const struct manifest_site *)(buffer + sizeof *header);
     for (uint32_t i = 0; i < header->site_count; i++)
         if (sites[i].name >= header->strings_bytes)
             return CORE_EXTENSION_UNREADABLE;
@@ -320,7 +339,7 @@ static enum core_extension_failure manifest_valid(const uint8_t *buffer, uint32_
             return CORE_EXTENSION_UNREADABLE;
     if (!buffer[table + header->text[CORE_MANIFEST_ID]])
         return CORE_EXTENSION_UNREADABLE;
-    return legacy ? CORE_EXTENSION_INCOMPATIBLE : CORE_EXTENSION_OK;
+    return CORE_EXTENSION_OK;
 }
 
 /* Opens ROOT "/" file SUFFIX and reads its header; 0 when either fails. */
@@ -587,6 +606,11 @@ void *core_loader_block(uint32_t bytes)
     return allocate(NULL, bytes);
 }
 
+void *core_loader_allocate(struct rv_extension_record *record, uint32_t bytes)
+{
+    return allocate(record, bytes);
+}
+
 void core_loader_retire(void *block)
 {
     retire(block);
@@ -647,6 +671,31 @@ static int claim_raw_sites(struct rv_extension_record *record)
         release_raw_sites(record);
         return 0;
     }
+    return 1;
+}
+
+int core_loader_shares_content(const struct rv_extension_record *a,
+                               const struct rv_extension_record *b)
+{
+    const char *mine, *theirs;
+    for (uint32_t i = 0; (mine = core_loader_manifest_content(a->manifest, i)); i++)
+        for (uint32_t j = 0; (theirs = core_loader_manifest_content(b->manifest, j)); j++)
+            if (same_name(mine, theirs))
+                return 1;
+    return 0;
+}
+
+/* A content folder has one owner: the first extension to load with it. A
+ * second one fails as a conflict, with no site to name. */
+static int claim_content(struct rv_extension_record *record)
+{
+    for (const struct rv_extension_record *r = core_extensions; r; r = r->next)
+        if (r != record && r->modules[0].loaded && core_loader_shares_content(record, r)) {
+            record->failure = CORE_EXTENSION_CONFLICT;
+            record->conflict_site = 0;
+            release_raw_sites(record);
+            return 0;
+        }
     return 1;
 }
 
@@ -851,6 +900,12 @@ static uint32_t api_hook_next(const void *next, uint32_t a, uint32_t b, uint32_t
     return core_next_call6(next, a, b, c, d, e, f);
 }
 
+static uint32_t api_hook_next7(const void *next, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                               uint32_t e, uint32_t f, uint32_t g)
+{
+    return core_next_call7(next, a, b, c, d, e, f, g);
+}
+
 static int core_key(uint16_t key)
 {
     return key == RV_SETTING_KEY_ENABLED || key == RV_SETTING_KEY_ALL;
@@ -926,8 +981,12 @@ static void *api_alloc(rv_extension_handle self, uint32_t bytes)
 static void api_free(rv_extension_handle self, void *block)
 {
     struct rv_extension_record *record = valid_handle(self);
-    if (record && block)
-        release(record, block);
+    if (!record || !block || header_of(block)->owner != record)
+        return;
+    const uint8_t *end = (uint8_t *)block + header_of(block)->bytes;
+    core_gfx_release_range(record, block, end);
+    core_bitmaps_release_range(record, block, end);
+    release(record, block);
 }
 
 static int load_module(struct rv_extension_record *record, uint32_t index);
@@ -943,6 +1002,22 @@ static int api_module_load(rv_extension_handle self, uint32_t module)
     if (record->modules[module].loaded)
         return RV_OK;
     return load_module(record, module) ? RV_OK : RV_NOT_FOUND;
+}
+
+static int api_asset_set_provider(rv_extension_handle self,
+                                  const struct rv_asset_provider *provider)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_bitmaps_provider(record, provider) : RV_BAD_ARGUMENT;
+}
+
+static const void *api_module_service(rv_extension_handle self, uint32_t module)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    if (!record || module >= record->module_count || !record->modules[module].loaded ||
+        !record->modules[module].descriptor)
+        return NULL;
+    return record->modules[module].descriptor->service;
 }
 
 static void api_module_unload(rv_extension_handle self, uint32_t module)
@@ -1161,6 +1236,88 @@ static int api_folder_list(rv_extension_handle self, const char *name,
     return record ? core_data_list(record, name, each, arg) : RV_BAD_ARGUMENT;
 }
 
+static int api_content_open(rv_extension_handle self, const char *name, struct rv_file **file)
+{
+    if (!file)
+        return RV_BAD_ARGUMENT;
+    *file = NULL;
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_content_open(record, name, file) : RV_BAD_ARGUMENT;
+}
+
+static int api_firmware_open(rv_extension_handle self, struct rv_file **file)
+{
+    if (!file)
+        return RV_BAD_ARGUMENT;
+    *file = NULL;
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_firmware_open(record, file) : RV_BAD_ARGUMENT;
+}
+
+static int api_content_list(rv_extension_handle self, const char *name,
+                            void (*each)(const char *entry, int is_folder, void *arg), void *arg)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_data_content_list(record, name, each, arg) : RV_BAD_ARGUMENT;
+}
+
+static int api_asset_open(rv_extension_handle self, const char *name, struct rv_file **file)
+{
+    if (!file)
+        return RV_BAD_ARGUMENT;
+    *file = NULL;
+    struct rv_extension_record *record = valid_handle(self);
+    if (!record || !name)
+        return RV_BAD_ARGUMENT;
+    struct rvx_entry entry;
+    const struct rvx_entry *resident;
+    void *handle;
+    uint32_t hash = fnv1a(name);
+    if (core_loader_resident(record, hash, &resident))
+        return RV_BAD_ARGUMENT;
+    if (!find_on_disk(record, hash, &handle, &entry))
+        return RV_NOT_FOUND;
+    int result = entry.codec == RVX_RAW
+                     ? core_data_adopt(record, handle, entry.offset, entry.bytes, file)
+                     : RV_BAD_ARGUMENT;
+    if (result != RV_OK)
+        core_file_close(handle);
+    return result;
+}
+
+static int api_ui_set_colors(rv_extension_handle self, const rv_color *roles)
+{
+    struct rv_extension_record *record = valid_handle(self);
+    return record ? core_gfx_colors(record, roles) : RV_BAD_ARGUMENT;
+}
+
+#define VIEW_TREE_DEPTH 16 /* deeper than any stock screen; bounds the walk of a broken tree */
+
+/* A view moved to its own compositor layer keeps its pixels until its own
+ * window is dirtied, so a change to colours or artwork dirties every view in
+ * the tree. Only container views (their find slot is View_FindViewById) carry
+ * the child array: a vtable word, the count and the pointer to the children. */
+static void invalidate_tree(uint8_t *view, uint32_t depth)
+{
+    View_InvalidateRect(view, (const int32_t *)(view + View_bounds));
+    void **vtable = RV_FIELD(view, 0, void **);
+    if (depth > VIEW_TREE_DEPTH ||
+        vtable[View_find_view_method / 4] != (void *)ADDR_View_FindViewById)
+        return;
+    uint32_t count = RV_FIELD(view, View_child_count, uint32_t);
+    uint8_t **children = RV_FIELD(view, View_child_items, uint8_t **);
+    for (uint32_t i = 0; children && i < count; i++)
+        if (children[i])
+            invalidate_tree(children[i], depth + 1);
+}
+
+static void api_ui_redraw(rv_extension_handle self)
+{
+    void *root = valid_handle(self) ? UI_GetRootView() : NULL;
+    if (root)
+        invalidate_tree(root, 0);
+}
+
 static struct rv_timer *api_timer_start(rv_extension_handle self, uint32_t ms, int repeat,
                                         void (*callback)(void *arg), void *arg)
 {
@@ -1214,6 +1371,15 @@ static const struct rv_api api = {
     .irq_restore = core_irq_restore,
     .ui_select = api_ui_select,
     .string_resource = api_string_resource,
+    .content_open = api_content_open,
+    .content_list = api_content_list,
+    .asset_open = api_asset_open,
+    .ui_set_colors = api_ui_set_colors,
+    .ui_redraw = api_ui_redraw,
+    .hook_next7 = api_hook_next7,
+    .module_service = api_module_service,
+    .asset_set_provider = api_asset_set_provider,
+    .firmware_open = api_firmware_open,
 };
 
 /* Modules */
@@ -1222,9 +1388,10 @@ static const struct rv_descriptor *enter(struct rv_extension_record *record, voi
                                         uint32_t entry)
 {
     rv_module_entry_fn fn = (rv_module_entry_fn)((uint32_t)image + entry);
+    uint32_t outer = core_panic_extension;
     core_panic_extension = record->owner;
     const struct rv_descriptor *descriptor = fn(&api, record);
-    core_panic_extension = 0;
+    core_panic_extension = outer;
     return descriptor;
 }
 
@@ -1291,7 +1458,7 @@ static int load_module_now(struct rv_extension_record *record, uint32_t index)
             release(record, image);
         return 0;
     }
-    if (index == 0 && !claim_raw_sites(record)) {
+    if (index == 0 && (!claim_raw_sites(record) || !claim_content(record))) {
         release(record, image);
         drop_resident(record);
         return 0;
@@ -1355,6 +1522,21 @@ static int load_module(struct rv_extension_record *record, uint32_t index)
     return loaded;
 }
 
+/* The module's unload callback, once; the extension's other modules are still
+ * loaded when main's runs, so it may use their services. */
+static void notify_unload(struct rv_extension_record *record, uint32_t index)
+{
+    struct core_module *module = &record->modules[index];
+    const struct rv_descriptor *descriptor = module->descriptor;
+    if (!module->loaded || module->unload_notified || !descriptor || !descriptor->unload)
+        return;
+    module->unload_notified = 1;
+    uint32_t outer = core_panic_extension;
+    core_panic_extension = record->owner;
+    descriptor->unload();
+    core_panic_extension = outer;
+}
+
 static void unload_module(struct rv_extension_record *record, uint32_t index)
 {
     struct core_module *module = &record->modules[index];
@@ -1364,12 +1546,13 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     core_timer_stop_code(record, index ? module->image : NULL,
                          (uint8_t *)module->image + module->bytes);
     const struct rv_descriptor *descriptor = module->descriptor;
-    if (descriptor && descriptor->unload) {
-        core_panic_extension = record->owner;
-        descriptor->unload();
-        core_panic_extension = 0;
-    }
-    if (index == 0)
+    notify_unload(record, index);
+    module->unload_notified = 0;
+    core_gfx_release_range(record, index ? module->image : NULL,
+                           (uint8_t *)module->image + module->bytes);
+    if (index)
+        core_bitmaps_release_range(record, module->image, (uint8_t *)module->image + module->bytes);
+    else
         core_data_close_all(record);
     if (index == 0 && descriptor) {
         int parked = core_menus_release(record);
@@ -1451,6 +1634,7 @@ static struct rv_extension_record *load_extension(const char *file)
 
 static void unload_extension(struct rv_extension_record *record)
 {
+    notify_unload(record, 0);
     for (uint32_t i = record->module_count; i--;)
         unload_module(record, i);
     struct rv_extension_record **link = &core_extensions;
@@ -1556,6 +1740,18 @@ static struct found *scan(uint32_t *count, uint8_t *buffer)
     return list;
 }
 
+/* Loads the listed files, the bundled extensions first so that a claim both a
+ * bundled and another extension make, a content folder or a site, goes to the
+ * bundled one whatever the file names; `only_new` skips files with a record. */
+static void load_found(const struct found *list, uint32_t count, int only_new)
+{
+    for (int pass = 0; pass < 2; pass++)
+        for (uint32_t i = 0; i < count; i++)
+            if (!list[i].duplicate && default_on(list[i].owner) == !pass &&
+                !(only_new && find_file(list[i].file)))
+                load_extension(list[i].file);
+}
+
 /* The body hash in the header of `file`, 0 when it cannot be opened. */
 static uint32_t body_hash_of(const char *file)
 {
@@ -1590,9 +1786,7 @@ static void rescan(void)
         if (changed)
             core_resource_retire(owner);
     }
-    for (uint32_t i = 0; i < count; i++)
-        if (!list[i].duplicate && !find_file(list[i].file))
-            load_extension(list[i].file);
+    load_found(list, count, 1);
     release(NULL, list);
 }
 
@@ -1636,9 +1830,7 @@ void core_loader_boot(void)
         core_recovery_clear();
     }
 
-    for (uint32_t i = 0; i < count; i++)
-        if (!list[i].duplicate)
-            load_extension(list[i].file);
+    load_found(list, count, 0);
     if (list)
         release(NULL, list);
     core_hook_bind(&disk_mode_exit_hook);
@@ -1796,6 +1988,17 @@ const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifes
 {
     const struct manifest_header *header = (const struct manifest_header *)manifest;
     return field < CORE_MANIFEST_TEXTS ? strings(manifest) + header->text[field] : "";
+}
+
+const char *core_loader_manifest_content(const uint8_t *manifest, uint32_t index)
+{
+    const struct manifest_header *header = (const struct manifest_header *)manifest;
+    if (index >= header->content_count)
+        return NULL;
+    const char *folder = strings(manifest) + header->content;
+    while (index--)
+        folder += length(folder) + 1;
+    return folder;
 }
 
 uint32_t core_loader_manifest_flags(const uint8_t *manifest)

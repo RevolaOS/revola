@@ -16,7 +16,7 @@ enum core_extension_failure {
     CORE_EXTENSION_BAD_MANIFEST,
     CORE_EXTENSION_BAD_MODULE,  /* missing file, wrong format, API major or firmware */
     CORE_EXTENSION_NO_MEMORY,
-    CORE_EXTENSION_CONFLICT,    /* a hook claim collided; conflict_site names the site */
+    CORE_EXTENSION_CONFLICT,    /* a hook or content-folder claim collided, see conflict_site */
     CORE_EXTENSION_BAD_SITE,    /* the module binds a site this core does not have */
     CORE_EXTENSION_BAD_DESCRIPTOR, /* none returned, or a declaration failed its check */
     CORE_EXTENSION_TOO_NEW,     /* the manifest asks for a newer API minor than this core's */
@@ -35,7 +35,7 @@ struct rv_extension_record {
     uint8_t failure;
     uint8_t module_count;
     uint8_t pending_unload;
-    uint32_t conflict_site; /* site id of the collided claim, 0 otherwise */
+    uint32_t conflict_site; /* the site id of the collided hook claim; 0 when a content folder collided */
     uint8_t raw_count;      /* raw sites claimed for the main module */
     uint8_t raw_sites[CORE_RAW_SITES]; /* their site indices, RV_RAW_SITE(n) order */
     uint32_t live;          /* heap held for it now: its record, images, api->alloc blocks,
@@ -108,9 +108,15 @@ enum core_manifest_text {
     CORE_MANIFEST_TEXTS,
 };
 #define CORE_MANIFEST_MAX 1024
+#define CORE_MANIFEST_CONTENT_MAX 4
 #define CORE_MANIFEST_STABILITY(flags) ((flags) & 3) /* 0 unset, alpha, beta, stable */
 uint32_t core_loader_manifest(const char *file, uint8_t *buffer, uint8_t *failure);
 const char *core_loader_manifest_text(const uint8_t *manifest, enum core_manifest_text field);
+/* The content folders the manifest names, in order; NULL past the last. */
+const char *core_loader_manifest_content(const uint8_t *manifest, uint32_t index);
+/* 1 when the two extensions name a content folder in common, in either case. */
+int core_loader_shares_content(const struct rv_extension_record *a,
+                               const struct rv_extension_record *b);
 uint32_t core_loader_manifest_flags(const uint8_t *manifest);
 
 /* The resident asset `name` (FNV-1a) of `record`: its payload as stored in RAM
@@ -122,8 +128,15 @@ const void *core_loader_resident(const struct rv_extension_record *record, uint3
  * core_loader_retire. */
 void *core_loader_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
                         uint8_t *kind);
+/* ASCII lower case, for names the file system may return in capitals. */
+static inline int core_loader_lower(int c)
+{
+    return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+}
 /* Zeroed memory in a loader block of the core, for core_loader_retire. */
 void *core_loader_block(uint32_t bytes);
+/* Zeroed memory counted to `record`, for core_loader_retire or core_loader_free. */
+void *core_loader_allocate(struct rv_extension_record *record, uint32_t bytes);
 /* Frees a loader block two grace ticks from now, when Apple can no longer be
  * drawing from it. */
 void core_loader_retire(void *block);

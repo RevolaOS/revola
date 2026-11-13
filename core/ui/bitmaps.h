@@ -18,7 +18,16 @@ const void *core_bitmap_canvas(struct core_screen *screen, const struct rv_bitma
 int core_bitmap_whole(const void *bmap);
 /* Frees what `screen` decoded; it was closed. */
 void core_bitmaps_screen_closed(struct core_screen *screen);
-/* Drops every decoded bitmap of `owner`. */
+/* Drops every decoded bitmap of `owner`, and its asset provider. */
 void core_bitmaps_release(struct rv_extension_record *owner);
+/* Drops the owner's asset provider when it lies in [start, end), a module
+ * image or block about to be freed, or always when `start` is NULL. */
+void core_bitmaps_release_range(struct rv_extension_record *owner, const void *start,
+                                const void *end);
+/* api->asset_set_provider: `provider` is asked before every bitmap asset the core
+ * decodes and offered the result, NULL asks nobody; RV_ALREADY_BOUND while
+ * another owner holds it. What is on screen is decoded again. */
+int core_bitmaps_provider(struct rv_extension_record *owner,
+                          const struct rv_asset_provider *provider);
 
 #endif

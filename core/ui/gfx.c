@@ -6,7 +6,8 @@
  * list colours. Bitmaps are copied from a source context on the BMap, as
  * BitmapView_Draw does; bitmap assets stay decoded while the canvas is open
  * (ui/bitmaps.c). Paragraphs, rows and the card copy the stock text pages, lists
- * and Settings > About. TODO: a colour-role site for themes. */
+ * and Settings > About. An extension may replace the colour roles (ui_set_colors),
+ * which is how a theme reaches every canvas. */
 
 #include "ui/gfx.h"
 #include "ui/bitmaps.h"
@@ -38,9 +39,30 @@ static const struct {
 static uint32_t fonts[RV_FONT_COUNT][2];
 static uint8_t fonts_built;
 
+static const rv_color *colors;
+static const struct rv_extension_record *colors_owner;
+
+int core_gfx_colors(const struct rv_extension_record *owner, const rv_color *roles)
+{
+    if (colors_owner && colors_owner != owner)
+        return RV_ALREADY_BOUND;
+    colors = roles;
+    colors_owner = roles ? owner : NULL;
+    return RV_OK;
+}
+
+void core_gfx_release_range(const struct rv_extension_record *owner, const void *start,
+                            const void *end)
+{
+    int inside = !start || ((const void *)colors >= start && (const void *)colors < end);
+    if (colors_owner == owner && inside)
+        colors = NULL, colors_owner = NULL;
+}
+
 static rv_color color(uint8_t role)
 {
-    return role < RV_COLOR_ROLE_COUNT ? roles[role] : roles[RV_COLOR_TEXT];
+    const rv_color *table = colors ? colors : roles;
+    return role < RV_COLOR_ROLE_COUNT ? table[role] : table[RV_COLOR_TEXT];
 }
 
 static void set_color(rv_color c)
