@@ -27,8 +27,8 @@ cd tools && python3 -m unittest discover -s tests
 | `loader-recipe` | `build/companion.json`, `build/companion.data` | Stops before assembly |
 | `bootloader` | `build/bootloader-ipod6g.ipod` | The patched Rockbox bootloader from the checkout pinned in `boot/dependencies.lock` |
 | `all` | everything above except `examples` | The default; needs `--inputs` and `--nor` |
-| `sdk` | `build/revola-sdk-<version>.tar.gz` | The staged SDK with the generated headers, `docs/`, the packer and `assets.json`, the core's bitmap assets for theme tooling |
-| `examples` | `build/examples/<id>/<id>.rvx` | The fixture extensions under `sdk/examples`, built against a staged SDK |
+| `sdk` | `build/revola-sdk-<version>.tar.gz` | The staged SDK: `extension/` with the generated headers, the packer and `assets.json` (the core's bitmap assets for theme tooling), `app/`, `docs/`, and the symbols and firmware id at the root |
+| `examples` | `build/examples/<id>/` | The fixture extensions under `sdk/extension/examples` and the apps under `sdk/app/examples`, built against a staged SDK |
 
 `--selftest` compiles the dispatcher and loader self-test into the core. Results land in `core_selftest`, read with `ipodvm peek`.
 
@@ -69,4 +69,4 @@ python3 tools/release.py --tag v2026.11.1-beta.1 --minimum-installer-version 202
 
 ## SDK versioning
 
-`sdk/api.lock` records the API version and the hash of every file in `sdk/`. The build and the `sdk` workflow fail when a file under `sdk/` changes at the same version, so an API change is always a visible version bump: `RV_API_MINOR` for additions, `RV_API_MAJOR` when an entry changes meaning. After the bump run `python3 tools/sdklock.py update`. The pages under `docs/sdk/` ship in the tarball but are not part of the lock.
+`sdk/api.lock` records the API version and the hash of every file in `sdk/extension/` and `sdk/app/` except the examples. The build and the `sdk` workflow fail when one changes at the same version, so an API change is always a visible version bump: `RV_API_MINOR` in `sdk/extension/rv_api.h` for additions, `RV_API_MAJOR` when an entry changes meaning. After the bump run `python3 tools/sdklock.py update`. The pages under `docs/sdk/` ship in the tarball but are not part of the lock.

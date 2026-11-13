@@ -290,7 +290,7 @@ def compile_and_run(source):
                 "-I",
                 str(ROOT / "firmware"),
                 "-I",
-                str(ROOT / "sdk"),
+                str(ROOT / "sdk/extension"),
                 str(path / "test.c"),
                 "-o",
                 str(path / "test"),

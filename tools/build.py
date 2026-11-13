@@ -113,47 +113,37 @@ def build_apple(config, out, inputs, recipe_only=False, nor=None):
         assemble(config, files, out / "loader.bin", inputs, nor=nor)
 
 
-SDK_FILES = (
-    "rv_api.h",
-    "rv_ui.h",
-    "rv_libc.h",
-    "rv_libc.c",
-    "rv_canvas.h",
-    "rv_canvas.c",
-    "rv_math.h",
-    "rv_math.c",
-    "rv_audio.h",
-    "rv_media.h",
-    "rvx.lds",
-    "rv.mk",
-    "README.md",
-)
+SDK_IGNORE = shutil.ignore_patterns("examples", "build", "__pycache__", ".DS_Store")
 
 
 def stage_sdk(config, directory):
-    """The SDK tree: committed headers, the guides, the generated site and firmware
-    ids, the symbols of the pinned OSOS and rvx-pack with the two modules it imports."""
+    """The SDK tree: `extension/` and `app/` as committed, the guides, the generated
+    site and firmware ids, the symbols of the pinned OSOS and rvx-pack with the
+    modules it imports."""
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
-    for name in SDK_FILES:
-        shutil.copyfile(ROOT / "sdk" / name, directory / name)
+    shutil.copyfile(ROOT / "sdk/README.md", directory / "README.md")
+    for tree in ("extension", "app"):
+        shutil.copytree(ROOT / "sdk" / tree, directory / tree, ignore=SDK_IGNORE)
     shutil.copytree(ROOT / "docs/sdk", directory / "docs")
     for name in (f"{firmware.NAME}.h", f"{firmware.NAME}.ld"):
         shutil.copyfile(firmware.DIRECTORY / name, directory / name)
-    # The command rv.mk runs.
-    shutil.copyfile(ROOT / "tools/rvx.py", directory / "rvx-pack")
+    extension = directory / "extension"
+    # The commands rv.mk and rv_app.mk run.
+    shutil.copyfile(ROOT / "tools/rvx.py", extension / "rvx-pack")
+    shutil.copyfile(ROOT / "sdk/app/eapp_package.py", directory / "app/eapp-pack")
     for name in ("manifest.py", "bitmap.py", "rvx.py", "assets.py"):
-        shutil.copyfile(ROOT / "tools" / name, directory / name)
-    (directory / "assets.json").write_text(
+        shutil.copyfile(ROOT / "tools" / name, extension / name)
+    (extension / "assets.json").write_text(
         "".join(
             json.dumps(record, sort_keys=True) + "\n"
             for record in assets.core_catalog(ROOT / "core/assets")
         )
     )
     names = sites.names(ROOT / "core", firmware.DIRECTORY, config.prefix)
-    (directory / "rv_sites.h").write_text(sites.header(names))
-    (directory / "rv_menus.h").write_text(
+    (extension / "rv_sites.h").write_text(sites.header(names))
+    (extension / "rv_menus.h").write_text(
         firmware.menus_header((firmware.DIRECTORY / f"{firmware.NAME}.h").read_text())
     )
     build_id = firmware.build_id()
@@ -173,11 +163,16 @@ def stage_sdk(config, directory):
 
 
 def build_examples(config, out):
-    """The fixture extensions under sdk/examples, built against the staged SDK."""
+    """The fixture extensions and apps under sdk/*/examples, built against the
+    staged SDK."""
     sdk = stage_sdk(config, config.work / "sdk")
-    for example in sorted((ROOT / "sdk/examples").iterdir()):
-        if not (example / "Makefile").is_file():
-            continue
+    examples = [
+        example
+        for tree in ("extension", "app")
+        for example in sorted((ROOT / "sdk" / tree / "examples").iterdir())
+        if (example / "Makefile").is_file()
+    ]
+    for example in examples:
         target = out / "examples" / example.name
         env = os.environ.copy()
         env["CROSS_COMPILE"] = config.prefix

@@ -1,6 +1,6 @@
 # RevolaOS SDK
 
-An extension is a set of modules built against one revola release and packed into one `.rvx` file. The SDK is the headers, linker script, Make include and packer an extension needs; nothing in it reaches into the core.
+An extension is a set of modules built against one revola release and packed into one `.rvx` file. The SDK's `extension/` directory is the headers, linker script, Make include and packer an extension needs; nothing in it reaches into the core. Apps and games, which run on Apple's eApp host instead, build against `app/`: see [Apps and games](apps.md).
 
 | Page | Contents |
 |---|---|
@@ -14,8 +14,11 @@ An extension is a set of modules built against one revola release and packed int
 | [Audio effects](audio.md) | The output PCM site and the effect stages |
 | [Canvas kit](canvas.md) | Palette, plots, value cells and Select/Menu input for an editor canvas |
 | [Media items](media.md) | Reading the items the context menus hand out and the player's |
+| [Apps and games](apps.md) | Building an app for Apple's eApp host and packaging it |
 
 ## Files of the SDK
+
+The symbols header and linker script of the Apple firmware, `rv_firmware.h` and `rv_firmware.mk` sit at the root of the SDK, shared with `app/`; everything else an extension uses is in `extension/`.
 
 | File | Contents |
 |---|---|
@@ -31,10 +34,10 @@ An extension is a set of modules built against one revola release and packed int
 | `rv_firmware.h`, `rv_firmware.mk` | `RV_FIRMWARE_ID` of the Apple firmware the symbols describe; the loader refuses a module built for another |
 | `osos-2.0.5.h`, `osos-2.0.5.ld` | Apple functions, data, constants and struct offsets by name; modules call Apple directly |
 | `rvx.lds` | Module layout: linked at 0, text, rodata, data and bss in one segment |
-| `rv.mk` | Make include |
+| `rv.mk` | Make include, `include $(SDK)/extension/rv.mk` with `SDK` the root of the SDK |
 | `rvx-pack`, `rvx.py`, `manifest.py`, `bitmap.py` | Pack `manifest.toml`, the module ELFs and the assets into the `.rvx`; Python 3.11+ and the `arm-elf-eabi-` binutils |
 | `assets.py`, `assets.json` | The bitmap assets of a built extension as JSON records (id, asset, format, size), what a theme must match to replace one; `assets.json` holds the core's own |
-| `docs/` | These pages |
+| `docs/` | These pages, at the root of the SDK |
 
 `rv_libc.h` provides `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`, `rv_format` (printf into a buffer), `rv_format_duration` ("3:07"), `rv_format_int` ("100 %"), `rv_format_tenths` ("-0.5 dB"), `rv_format_hz` ("1.5k Hz") and `rv_copy_utf8` (a copy that never cuts inside a UTF-8 sequence). `api->format_number` and `api->format_size` write "12,345" and "6.0 KB".
 
@@ -64,7 +67,7 @@ An installed extension is off until the listener turns it on in Settings > Exten
 ID := hello
 MODULES := main
 main_SOURCES := main.c
-include $(SDK)/rv.mk
+include $(SDK)/extension/rv.mk
 ```
 
 `main.c` exports `rv_module_entry`, keeps the API table and its handle, and returns a descriptor:
@@ -104,4 +107,4 @@ const struct rv_descriptor *rv_module_entry(const struct rv_api *core, rv_extens
 make SDK=/path/to/revola-sdk
 ```
 
-Copy `build/hello.rvx` to `/Revola/Extensions/hello.rvx` on the iPod, or onto an emulator disk with `ipodvm disk --copy`. Settings gets a Hello row after Legal. The fixture extensions under `sdk/examples/` of the revola repository show hooks, settings, two modules and every screen kind.
+Copy `build/hello.rvx` to `/Revola/Extensions/hello.rvx` on the iPod, or onto an emulator disk with `ipodvm disk --copy`. Settings gets a Hello row after Legal. The fixture extensions under `sdk/extension/examples/` of the revola repository show hooks, settings, two modules and every screen kind.

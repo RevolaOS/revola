@@ -11,7 +11,7 @@ from pathlib import Path
 import rvx
 
 CORE = Path(__file__).resolve().parents[2] / "core"
-SDK = Path(__file__).resolve().parents[2] / "sdk"
+SDK = Path(__file__).resolve().parents[2] / "sdk/extension"
 # Feeds core_lz_decode from stdin as a file (in chunks) or from memory.
 DRIVER = r"""
 #include "loader/file.h"

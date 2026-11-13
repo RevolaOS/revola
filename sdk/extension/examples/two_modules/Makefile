@@ -3,5 +3,5 @@ ID := two_modules
 MODULES := main viewer
 main_SOURCES := main.c
 viewer_SOURCES := viewer.c
-SDK ?= ../..
-include $(SDK)/rv.mk
+SDK ?= ../../..
+include $(SDK)/extension/rv.mk

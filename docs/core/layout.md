@@ -23,7 +23,7 @@ The main files; helpers sit next to them.
 | `core/recovery.c` | Crash record in reserved IRAM and the report written at the next boot |
 | `core/storage.c` | File access for the core |
 | `core/memory/` | Memory rules: `memory.c`, `artwork.c`, `trackcount.c` |
-| `sdk/` | What extensions build against, see [the SDK](../sdk/README.md) |
+| `sdk/` | What extensions (`extension/`) and apps (`app/`) build against, see [the SDK](../sdk/README.md) and [Apps and games](../sdk/apps.md) |
 | `firmware/` | Pinned Apple fingerprints (`apple.json`) and the symbols linker script and header copied from the reversing repository |
 | `boot/` | Companion loader (`companion/`), Rockbox bootloader patch and the pinned Rockbox commit |
 | `tools/` | Recipe builder, `rvx-pack` (`rvx.py`), manifest compiler, build and release scripts, tests |

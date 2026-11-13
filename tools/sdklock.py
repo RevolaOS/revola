@@ -6,7 +6,7 @@
     python3 tools/sdklock.py update   # records the current files and version
 
 sdk/api.lock holds the API version and the sha256 of every file the tarball
-ships from sdk/ (the examples are not part of the SDK).
+ships from sdk/, by path relative to sdk/ (the examples are not part of the SDK).
 """
 
 import argparse
@@ -21,8 +21,11 @@ SDK = ROOT / "sdk"
 LOCK = SDK / "api.lock"
 
 
+SKIPPED = {"api.lock", "examples", "build", "__pycache__", ".DS_Store"}
+
+
 def api_version(header=None):
-    text = (header or SDK / "rv_api.h").read_text()
+    text = (header or SDK / "extension/rv_api.h").read_text()
     major = re.search(r"#define RV_API_MAJOR (\d+)", text).group(1)
     minor = re.search(r"#define RV_API_MINOR (\d+)", text).group(1)
     return f"{major}.{minor}"
@@ -30,13 +33,20 @@ def api_version(header=None):
 
 def digests(sdk=None):
     sdk = sdk or SDK
-    files = sorted(p for p in sdk.iterdir() if p.is_file() and p.name != "api.lock")
-    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+    files = sorted(
+        p
+        for p in sdk.rglob("*")
+        if p.is_file() and not SKIPPED & set(p.relative_to(sdk).parts)
+    )
+    return {
+        p.relative_to(sdk).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in files
+    }
 
 
 def current(sdk=None):
     sdk = sdk or SDK
-    return {"api": api_version(sdk / "rv_api.h"), "sha256": digests(sdk)}
+    return {"api": api_version(sdk / "extension/rv_api.h"), "sha256": digests(sdk)}
 
 
 def check(sdk=None, lock=None):
@@ -52,7 +62,7 @@ def check(sdk=None, lock=None):
         )
         raise ValueError(
             f"sdk/ changed ({', '.join(changed)}) at API {now['api']}: bump "
-            "RV_API_MINOR or RV_API_MAJOR in sdk/rv_api.h, then run "
+            "RV_API_MINOR or RV_API_MAJOR in sdk/extension/rv_api.h, then run "
             "tools/sdklock.py update"
         )
     if now["sha256"] != recorded["sha256"]:

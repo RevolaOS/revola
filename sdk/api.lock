@@ -1,18 +1,18 @@
 {
-  "api": "1.50",
+  "api": "1.51",
   "sha256": {
-    "README.md": "f9d751b9508bd5c4d1ea1d97ef2256dd6f3a89938ebe4b08d0f2d1a717abca4c",
-    "rv.mk": "1008a008e32ed7d808e969ded70361ba830fb7578e4c10c0320612ab404d49ec",
-    "rv_api.h": "48f72f1d4a2536a27da025c3701dab8ab53b1b2335a74f42857fa6e18cc98c90",
-    "rv_audio.h": "754782f7862843dc378c479eea5fa4512c1ea727245f8c17d46cf419046b2093",
-    "rv_canvas.c": "cd49cdea1dc262ec18908deeab9b23f9dbff0e1d8a04228e11ee23f60ffe00ec",
-    "rv_canvas.h": "5f8f0656a30300c973fb2c075882982dbdf94ad13a019511805bff4f41a93e45",
-    "rv_libc.c": "b3cce32ac21669a79ee9b32e04d7514dab155d61fd486557d15e4320b129af02",
-    "rv_libc.h": "94e228bd9f70e2fbfac5bd585a5bd268550f279a60f680297f5fb4f1c50f5c1b",
-    "rv_math.c": "231203e931a0ce707b009d544a5da31b99cb63d03ba097469f6e7754e484d26f",
-    "rv_math.h": "474cd66878477ca542d502f435545187d444af0475ca8f70810d19ca131f8307",
-    "rv_media.h": "6d7aba087ae5f7de6c3dfe3767e1dbbdcc9295337e783eada5aecd51869619f6",
-    "rv_ui.h": "5a2a500fbe2edd61ae47defcfa6b28635cce0e3e7c58496509cbda18e9967723",
-    "rvx.lds": "57d4dd4a7dc3fd62fcaa71856aedbee531fa0f17f61806de9b2390b4df4fb37b"
+    "README.md": "dfc5ad19d0d7aea20ba8fadfea7b5c23ae669976919e7697502f322a78e8e7ed",
+    "extension/rv.mk": "b5f654d79c6320f4b963f38c6d31e18fc1754a3ce425eb2e303bc32b8d3327e1",
+    "extension/rv_api.h": "f9e339d3f3f51f57a1a22ec80dadc1dc2de33015eb4471c39bc1b5fa41319f0b",
+    "extension/rv_audio.h": "754782f7862843dc378c479eea5fa4512c1ea727245f8c17d46cf419046b2093",
+    "extension/rv_canvas.c": "cd49cdea1dc262ec18908deeab9b23f9dbff0e1d8a04228e11ee23f60ffe00ec",
+    "extension/rv_canvas.h": "5f8f0656a30300c973fb2c075882982dbdf94ad13a019511805bff4f41a93e45",
+    "extension/rv_libc.c": "b3cce32ac21669a79ee9b32e04d7514dab155d61fd486557d15e4320b129af02",
+    "extension/rv_libc.h": "94e228bd9f70e2fbfac5bd585a5bd268550f279a60f680297f5fb4f1c50f5c1b",
+    "extension/rv_math.c": "231203e931a0ce707b009d544a5da31b99cb63d03ba097469f6e7754e484d26f",
+    "extension/rv_math.h": "474cd66878477ca542d502f435545187d444af0475ca8f70810d19ca131f8307",
+    "extension/rv_media.h": "6d7aba087ae5f7de6c3dfe3767e1dbbdcc9295337e783eada5aecd51869619f6",
+    "extension/rv_ui.h": "5a2a500fbe2edd61ae47defcfa6b28635cce0e3e7c58496509cbda18e9967723",
+    "extension/rvx.lds": "57d4dd4a7dc3fd62fcaa71856aedbee531fa0f17f61806de9b2390b4df4fb37b"
   }
 }

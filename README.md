@@ -7,7 +7,7 @@ Core firmware for RevolaOS: the patches that make Apple's iPod Classic 2.0.5 fir
 | Path | Contents |
 |---|---|
 | `core/` | The firmware payload: boot, hook sites, loader, settings store, UI runtime, memory rules, panic screen |
-| `sdk/` | What extensions build against |
+| `sdk/` | What extensions and apps build against |
 | `firmware/` | Pinned Apple fingerprints and the symbols header and linker script copied from the reversing repository |
 | `boot/` | Companion loader and the Rockbox bootloader patch |
 | `tools/` | Build, recipe, packer and release scripts with their tests |
@@ -29,9 +29,9 @@ Targets, outputs and the emulator are in [Building the core](docs/core/build.md)
 
 | Page | Contents |
 |---|---|
-| [User guide](docs/guide/install.md) | Installing, extensions, recovery |
+| [User guide](docs/guide/install.md) | Installing, extensions, apps and games, recovery |
 | [Core](docs/README.md#core) | Layout, hook sites, loader, settings store, memory rules, failsafe |
-| [SDK](docs/sdk/README.md) | Writing an extension |
+| [SDK](docs/sdk/README.md) | Writing an extension or an app |
 | [STYLE.md](STYLE.md) | Principles and rules for every file |
 
 ## RevolaOS and RepriseOS

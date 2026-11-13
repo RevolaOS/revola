@@ -101,7 +101,7 @@ def build_recipe(
         "core",
         prefix,
         jobs,
-        includes=(firmware, source.parent, source.parent / "sdk"),
+        includes=(firmware, source.parent, source.parent / "sdk/extension"),
         thumb_symbols=True,
         just_symbols=firmware / "osos-2.0.5.ld",
     )

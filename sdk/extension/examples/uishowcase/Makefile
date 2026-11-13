@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
-ID := hello_world
+ID := uishowcase
 MODULES := main
 main_SOURCES := main.c
-SDK ?= ../..
-include $(SDK)/rv.mk
+SDK ?= ../../..
+include $(SDK)/extension/rv.mk
