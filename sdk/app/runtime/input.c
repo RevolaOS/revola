@@ -9,7 +9,7 @@ struct rv_app_wheel rv_app_read_wheel(void)
     int32_t delta = 0;
     uint32_t flags = 0;
 
-    EApp_ReadWheel(&delta, &flags);
+    GameInput_ReadWheel(&delta, &flags);
 
     return (struct rv_app_wheel){
         .delta = delta,

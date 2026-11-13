@@ -43,10 +43,10 @@ void *rv_app_alloc(size_t size)
         return NULL;
 
     size_t bytes = size + sizeof(union allocation_header);
-    union allocation_header *header = EApp_AllocateBlock(bytes);
+    union allocation_header *header = GameMemory_Allocate(bytes);
     /* The block entry serves from the reserve; larger requests go to the heap. */
     if (!header)
-        header = EApp_Reallocate(NULL, bytes);
+        header = GameMemory_Reallocate(NULL, bytes);
     if (!header)
         return NULL;
 
@@ -57,7 +57,7 @@ void *rv_app_alloc(size_t size)
 void rv_app_free(void *pointer)
 {
     if (pointer)
-        EApp_Free((union allocation_header *)pointer - 1);
+        GameMemory_Free((union allocation_header *)pointer - 1);
 }
 
 /* GCC emits calls to these for aggregates in an app without a C library. */

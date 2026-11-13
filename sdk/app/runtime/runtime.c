@@ -8,8 +8,8 @@ void rv_app_start(void);
 uint32_t rv_app_reserved_entry(void);
 
 const struct rv_app_eapp_header rv_app_eapp_header __attribute__((section(".eapp"), used)) = {
-    .magic = EApp_Magic,
-    .version = EApp_Version,
+    .magic = GameImage_Magic,
+    .version = GameImage_MaxVersion,
     .entry_count = RV_APP_EAPP_SLOT_COUNT,
     .entries = {
         [RV_APP_EAPP_SLOT_INIT] = (uint32_t)rv_app_start,
@@ -48,9 +48,9 @@ void rv_app_runtime_frame(const struct rv_app_eapp_frame_input *input,
     if (!input || !output)
         return;
 
-    if (exit_requested || input->state == EAppFrame_ShuttingDown ||
-        input->state == EAppFrame_ShutDown) {
-        output->state = EAppFrame_Done;
+    if (exit_requested || input->state == GameFrameState_ShuttingDown ||
+        input->state == GameFrameState_ShutDown) {
+        output->state = GameFrameState_Done;
         return;
     }
 
@@ -61,13 +61,13 @@ void rv_app_runtime_frame(const struct rv_app_eapp_frame_input *input,
         struct rv_app_input_event event = {
             .button = native->button,
             .type = native->type,
-            .timestamp_ms = native->value,
+            .timestamp_ms = native->timestamp,
         };
         address = native->next;
         if (rv_app_application.input)
             rv_app_application.input(&event);
         if (exit_requested) {
-            output->state = EAppFrame_Done;
+            output->state = GameFrameState_Done;
             return;
         }
     }
@@ -79,5 +79,5 @@ void rv_app_runtime_frame(const struct rv_app_eapp_frame_input *input,
     if (surface)
         rv_app_platform_present(surface);
     if (exit_requested)
-        output->state = EAppFrame_Done;
+        output->state = GameFrameState_Done;
 }

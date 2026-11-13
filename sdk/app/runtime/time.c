@@ -30,6 +30,6 @@ void rv_app_sleep_ms(uint32_t milliseconds)
     uint32_t start = rv_app_ticks_ms();
 
     do {
-        Thread_Yield();
+        Scheduler_YieldOrDelay(0);
     } while (rv_app_ticks_ms() - start < milliseconds);
 }

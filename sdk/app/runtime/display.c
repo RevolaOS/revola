@@ -9,12 +9,12 @@
 void *rv_app_platform_begin_frame(const struct rv_app_eapp_frame_input *input,
                                   struct rv_app_framebuffer *framebuffer)
 {
-    void *surface = EApp_GetSurface(EAppSurface_Draw);
+    void *surface = GameGraphics_GetCurrentSurface(GameSurface_Draw);
     if (!surface ||
-        FIELD(surface, EAppSurface_color_mode, uint8_t) != EAppSurfaceColorMode_RGB565 ||
-        FIELD(surface, EAppSurface_width, uint32_t) != 320 ||
-        FIELD(surface, EAppSurface_height, uint32_t) != 240 || !input->pixels ||
-        FIELD(surface, EAppSurface_pixels, uint32_t) != input->pixels)
+        FIELD(surface, GameSurface_color_mode, uint8_t) != GameSurfaceColorMode_RGB565 ||
+        FIELD(surface, GameSurface_width, uint32_t) != 320 ||
+        FIELD(surface, GameSurface_height, uint32_t) != 240 || !input->pixels ||
+        FIELD(surface, GameSurface_pixels, uint32_t) != input->pixels)
         return NULL;
 
     framebuffer->pixels = (uint16_t *)(uintptr_t)input->pixels;
@@ -26,5 +26,5 @@ void *rv_app_platform_begin_frame(const struct rv_app_eapp_frame_input *input,
 
 void rv_app_platform_present(void *surface)
 {
-    EApp_PresentSurface(0, surface);
+    GameGraphics_SwapBuffers(NULL, surface);
 }
