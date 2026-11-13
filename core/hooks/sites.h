@@ -104,8 +104,11 @@ int core_hook_bind(const struct core_hook *hook);
 int core_hook_unbind(const struct core_hook *hook);
 /* The bound hook on `site` with this handler, or NULL. */
 const struct core_hook *core_hook_find(uint32_t site, const void *handler);
-uint32_t core_next_call6(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
-                         uint32_t d, uint32_t e, uint32_t f);
+/* Continues a chain: the four register arguments, Apple's stack arguments and a
+ * PUSH register when the site has them. */
+uint32_t core_next_call7(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
+                         uint32_t d, uint32_t e, uint32_t f, uint32_t g);
+#define core_next_call6(next, a, b, c, d, e, f) core_next_call7(next, a, b, c, d, e, f, 0)
 #define core_next_call(next, a, b, c, d) core_next_call6(next, a, b, c, d, 0, 0)
 /* Frees handler arrays retired since the last call. Only at the grace point. */
 void core_grace_tick(void);

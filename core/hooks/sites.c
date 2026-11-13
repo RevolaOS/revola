@@ -96,10 +96,12 @@ typedef uint32_t (*fn1)(uint32_t, const struct core_next *);
 typedef uint32_t (*fn2)(uint32_t, uint32_t, const struct core_next *);
 typedef uint32_t (*fn3)(uint32_t, uint32_t, uint32_t, const struct core_next *);
 typedef uint32_t (*fn4)(uint32_t, uint32_t, uint32_t, uint32_t, const struct core_next *,
-                        uint32_t, uint32_t);
+                        uint32_t, uint32_t, uint32_t);
 
+/* Stack values a site does not have carry whatever the stub frame holds there;
+ * a callee with fewer parameters never reads them. */
 static uint32_t call(void *fn, uint8_t argc, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                     const struct core_next *next, uint32_t e, uint32_t f)
+                     const struct core_next *next, uint32_t e, uint32_t f, uint32_t g)
 {
     switch (argc & 15) {
     case 0:
@@ -111,23 +113,23 @@ static uint32_t call(void *fn, uint8_t argc, uint32_t a, uint32_t b, uint32_t c,
     case 3:
         return ((fn3)fn)(a, b, c, next);
     default:
-        return ((fn4)fn)(a, b, c, d, next, e, f);
+        return ((fn4)fn)(a, b, c, d, next, e, f, g);
     }
 }
 
-uint32_t core_next_call6(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
-                         uint32_t d, uint32_t e, uint32_t f)
+uint32_t core_next_call7(const struct core_next *next, uint32_t a, uint32_t b, uint32_t c,
+                         uint32_t d, uint32_t e, uint32_t f, uint32_t g)
 {
     const struct core_site_row *row = row_of(next->site);
     struct hook_list *list = lists[next->site];
     if (list && next->index < list->count) {
         struct core_next following = {next->site, next->index + 1};
         return call(list->hooks[next->index]->handler, row->argc, a, b, c, d, &following, e,
-                    f);
+                    f, g);
     }
     typedef uint32_t (*original_fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
-                                    uint32_t);
-    return ((original_fn)row->original)(a, b, c, d, e, f);
+                                    uint32_t, uint32_t);
+    return ((original_fn)row->original)(a, b, c, d, e, f, g);
 }
 
 /* Chain entries: the slot target while two or more handlers are bound. The stub
@@ -149,10 +151,10 @@ static uint32_t chain3(uint32_t a, uint32_t b, uint32_t c, const struct core_nex
     return chain(n, a, b, c, 0);
 }
 static uint32_t chain4(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                       const struct core_next *n, uint32_t e, uint32_t f)
+                       const struct core_next *n, uint32_t e, uint32_t f, uint32_t g)
 {
     struct core_next first = {n->site, 0};
-    return core_next_call6(&first, a, b, c, d, e, f);
+    return core_next_call7(&first, a, b, c, d, e, f, g);
 }
 static void *const chains[] = {chain0, chain1, chain2, chain3, chain4};
 
@@ -169,9 +171,9 @@ static uint32_t pass3(uint32_t a, uint32_t b, uint32_t c, const struct core_next
     return core_next_call(n, a, b, c, 0);
 }
 static uint32_t pass4(uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                      const struct core_next *n, uint32_t e, uint32_t f)
+                      const struct core_next *n, uint32_t e, uint32_t f, uint32_t g)
 {
-    return core_next_call6(n, a, b, c, d, e, f);
+    return core_next_call7(n, a, b, c, d, e, f, g);
 }
 static const struct core_hook passes[] = {
     {0, CORE_HOOK_FILTER, 0, pass0}, {0, CORE_HOOK_FILTER, 0, pass1},

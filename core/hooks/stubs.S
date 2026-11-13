@@ -22,6 +22,7 @@
 #define REPLAY(name) 0
 #define STACK(words) ((words) << 4)
 #define COPY(argument, reg) ((reg) << (4 * (argument)))
+#define PUSH(reg) ((reg) << 16)
 
 .set index, 0
 
@@ -37,16 +38,25 @@
 .endif
 .endm
 
-/* Each nibble of `copy` names a register moved into r0, r1, r2 or r3 first, as an
- * assembled mov since the register is an expression. next in r<argc> for up to three
+/* The low four nibbles of `copy` name registers moved into r0, r1, r2 or r3 first,
+ * as assembled movs since the register is an expression; the fifth names a register
+ * pushed after Apple's stack arguments (PUSH). next in r<argc> for up to three
  * arguments; a frame pushes it as the first stack argument for four, below copies of
- * Apple's own stack arguments (one or two), with the pushed registers chosen to keep
- * sp 8-byte aligned at the call. */
+ * Apple's own stack arguments (one or two) and the pushed register, with the saved
+ * registers chosen to keep sp 8-byte aligned at the call. */
 .macro site_stub name, kind, address, word0, word1, args, copy
-.set argc, \args & 15
-.set stack, \args >> 4
+.set argc, (\args) & 15
+.set stack, (\args) >> 4
+.set pushed, ((\copy) >> 16) & 15
+.set pushes, 0
+.if pushed
+.set pushes, 1
+.endif
 .if \kind == WORD && \copy
 .error "\name: WORD site cannot copy"
+.endif
+.if pushed && (\kind == INSERT || argc != 4 || stack != 2 || pushed < 4 || pushed > 11)
+.error "\name: PUSH needs a four-argument call or slot with STACK(2) and a register r4-r11"
 .endif
 .if \kind != WORD
 .text
@@ -79,37 +89,40 @@ core_stub_\name:
     next_in_register argc, core_root_\name
     ldr r12, =core_site_slots + 4 * index
     ldr pc, [r12]
-.elseif stack == 0
-    push {r4, r5, lr}
-    ldr r4, =core_root_\name
-    push {r4}
-    ldr r12, =core_site_slots + 4 * index
-    ldr r12, [r12]
-    blx r12
-    add sp, sp, #4
-    pop {r4, r5, pc}
-.elseif stack == 1
+.else
+/* Below the saved registers go, in order: the pushed register, Apple's stack
+ * arguments, next. Three or four saved registers keep the total a multiple of 8. */
+.set extra, stack + pushes
+.if extra & 1
     push {r4, r5, r6, lr}
-    ldr r4, [sp, #16]
-    ldr r5, =core_root_\name
-    push {r4, r5}
-    ldr r12, =core_site_slots + 4 * index
-    ldr r12, [r12]
-    blx r12
-    add sp, sp, #8
-    pop {r4, r5, r6, pc}
+.set frame, 16
 .else
     push {r4, r5, lr}
-    ldr r4, [sp, #12]
-    ldr r5, [sp, #16]
+.set frame, 12
+.endif
+.if pushed
+    .word 0xe1a0c000 | pushed /* mov r12, r<pushed> */
+    push {r12}
+.endif
+.if stack == 2
+    ldr r4, [sp, #frame + 4 * pushes]
+    ldr r5, [sp, #frame + 4 * pushes + 4]
     push {r4, r5}
+.elseif stack == 1
+    ldr r4, [sp, #frame + 4 * pushes]
+    push {r4}
+.endif
     ldr r4, =core_root_\name
     push {r4}
     ldr r12, =core_site_slots + 4 * index
     ldr r12, [r12]
     blx r12
-    add sp, sp, #12
+    add sp, sp, #4 + 4 * extra
+.if frame == 16
+    pop {r4, r5, r6, pc}
+.else
     pop {r4, r5, pc}
+.endif
 .endif
 .ltorg
 .if \kind == ENTRY
