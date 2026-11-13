@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* The viewer module: a canvas that shows how often this module was loaded,
- * counted in the main module's setting at each load, and the seconds since,
- * from a timer the core stops when the module unloads. */
+ * counted in the main module's setting at each load, the seconds since, from
+ * a timer the core stops when the module unloads, and the part of the canvas
+ * each draw covers. */
 
 #include "rv_api.h"
 #include "rv_libc.h"
@@ -30,8 +31,10 @@ static void draw(const struct rv_context *ctx, const struct rv_gfx *g, int width
     struct rv_rect all = {0, 0, (int16_t)width, (int16_t)height};
     g->fill(&all, g->color(RV_COLOR_BACKGROUND));
     g->text(10, 10, RV_FONT_TITLE, g->color(RV_COLOR_TEXT), "Viewer module");
-    char line[32];
-    rv_format(line, sizeof line, "%lu s since the load", seconds);
+    char line[48];
+    const struct rv_rect *clip = g->clip(); /* the two lines once the timer redraws them */
+    rv_format(line, sizeof line, "%lu s, clip %d,%d %dx%d", seconds, clip->x, clip->y,
+              clip->width, clip->height);
     g->text(10, 40, RV_FONT_TEXT, g->color(RV_COLOR_TEXT), loads);
     g->text(10, 40 + g->line_height(RV_FONT_TEXT), RV_FONT_TEXT, g->color(RV_COLOR_DIM), line);
 }

@@ -9,6 +9,7 @@
  * back and draws. */
 
 #include "rv_api.h"
+#include "rv_canvas.h"
 #include "rv_libc.h"
 #include "rv_menus.h"
 #include "rv_ui.h"
@@ -254,8 +255,10 @@ static int moon_select(const struct rv_context *ctx, uint32_t index)
 /* Canvas: swatches of the colour roles, a line in each font, a box the wheel
  * moves and Select recolours, a bitmap drawn by name and the same bitmap from
  * the extension's own copy (loaded on the first draw, freed by .closed once
- * the canvas closed), what asset_load and asset_read returned, and the last input in
- * the corner. */
+ * the canvas closed), a picture computed into an RGB565 BMap under a
+ * half-dark blended fill and a faded copy of the disc, what asset_load
+ * and asset_read returned, the part of the canvas the draw covers, and the
+ * last input in the corner. */
 static int box_left = 120;
 static uint8_t box_red;
 static const char *last_input = "No input yet";
@@ -317,7 +320,24 @@ static void canvas_draw(const struct rv_context *ctx, const struct rv_gfx *g, in
     if (disc)
         g->bmap(60, y, disc);
 
+    /* A computed picture: red across, green down, in an RGB565 BMap. */
+    enum { PICTURE = 40 };
+    static uint32_t picture[RV_CANVAS_BMAP_BYTES(PICTURE, PICTURE) / 4];
+    uint16_t *pixels = rv_canvas_bmap(picture, PICTURE, PICTURE);
+    for (int row = 0; row < PICTURE; row++)
+        for (int column = 0; column < PICTURE; column++)
+            pixels[row * RV_CANVAS_BMAP_PITCH(PICTURE) + column] =
+                (uint16_t)((column * 31 / (PICTURE - 1)) << 11 | (row * 63 / (PICTURE - 1)) << 5);
+    g->bmap(200, y, picture);
+    struct rv_rect shade = {190, (int16_t)(y + 20), 60, 30}; /* half-dark over the pictures */
+    g->fill(&shade, 0x80000000u);
+
     int line = g->line_height(RV_FONT_TEXT);
+    const struct rv_rect *clip = g->clip();
+    char covers[40];
+    rv_format(covers, sizeof covers, "Clip %d,%d %dx%d", clip->x, clip->y, clip->width,
+              clip->height);
+    g->text(4, y + 52 + 2 * line, RV_FONT_TEXT, g->color(RV_COLOR_DIM), covers);
     g->text(4, y + 52, RV_FONT_TEXT, g->color(RV_COLOR_TEXT), loaded);
     g->text(4, y + 52 + line, RV_FONT_TEXT, g->color(RV_COLOR_TEXT), read_back);
     g->text(4, height - line - 2, RV_FONT_TEXT, g->color(RV_COLOR_DIM), "Wheel moves, Select recolours");

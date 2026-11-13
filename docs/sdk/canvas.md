@@ -1,6 +1,6 @@
 # Canvas kit
 
-`rv_canvas.h` is what an editor canvas draws with, over the `rv_gfx` table a draw callback receives: a palette from the stock colour roles, a plot with its grid, ticks and curves, a row of value cells, and the Select and Menu input that moves through them. `rv.mk` links `rv_canvas.c` into every module; a module carries only what it calls. Settings > Channels, Compressor, Crossfeed and Edit EQ are drawn with it.
+`rv_canvas.h` is what an editor canvas draws with, over the `rv_gfx` table a draw callback receives: a palette from the stock colour roles, a plot with its grid, ticks and curves, a row of value cells, the Select and Menu input that moves through them, and a picture the extension computes itself. `rv.mk` links `rv_canvas.c` into every module; a module carries only what it calls. Settings > Channels, Compressor, Crossfeed and Edit EQ are drawn with it.
 
 ## Palette
 
@@ -65,6 +65,17 @@ static int input(const struct rv_context *ctx, const struct rv_input *input)
     api->ui_invalidate(self);
     return 1;
 }
+```
+
+## Pictures
+
+A canvas that computes its own pixels, such as a scaled cover or a plot it renders itself, keeps them as a BMap, the bitmap format every `rv_gfx` call takes, so the core copies them to the screen with Apple's own routine, converting to the screen's format and clipping. `rv_canvas_bmap(block, width, height)` writes the header of an RGB565 picture into a word-aligned block of `RV_CANVAS_BMAP_BYTES(width, height)` and returns its first pixel; rows are `RV_CANVAS_BMAP_PITCH(width)` pixels apart, padded to a word as the stock bitmaps are. The block is read during the draw only, so one on the stack serves a strip rendered row by row and drawn with `gfx->bmap_part`, and one from `api->alloc` a picture kept while the canvas is open.
+
+```c
+static uint32_t cover[RV_CANVAS_BMAP_BYTES(77, 77) / 4];
+uint16_t *pixels = rv_canvas_bmap(cover, 77, 77);
+/* fill pixels[y * RV_CANVAS_BMAP_PITCH(77) + x] */
+g->bmap(x, y, cover);
 ```
 
 ## Value labels

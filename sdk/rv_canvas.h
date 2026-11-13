@@ -1,12 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* What an editor canvas draws with: a palette from the stock colour roles, a
- * plot with its grid, ticks and curves, a row of value cells, and the Select
- * and Menu input that moves through them. Everything here is pixel work on
- * the rv_gfx table a draw callback receives. */
+ * plot with its grid, ticks and curves, a row of value cells, the Select and
+ * Menu input that moves through them, and a picture the extension computes
+ * itself. Everything here is pixel work on the rv_gfx table a draw callback
+ * receives. */
 
 #ifndef RV_CANVAS_H
 #define RV_CANVAS_H
+#include "osos-2.0.5.h"
 #include "rv_api.h"
 #include "rv_libc.h"
 
@@ -123,5 +125,19 @@ struct rv_editor {
     uint8_t depth, depths;
 };
 RV_MODULE_CALL int rv_editor_input(struct rv_editor *editor, const struct rv_input *input);
+
+/* A picture the extension computes itself, as a BMap for rv_gfx.bmap and
+ * bmap_part: RGB565 rows padded to a word after the BMap header, in a word
+ * aligned block RV_CANVAS_BMAP_BYTES(width, height) long. The core copies the
+ * pixels to the screen on every draw, converting to the screen's format, so
+ * the block is read during the draw only. */
+#define RV_CANVAS_BMAP_PITCH(width) (((width) + 1) & ~1) /* pixels per row */
+#define RV_CANVAS_BMAP_BYTES(width, height)                                                   \
+    (BMap_payload + 2 * RV_CANVAS_BMAP_PITCH(width) * (height))
+
+/* Writes the header of a `width` by `height` picture into `block` and returns
+ * its first pixel; row y starts RV_CANVAS_BMAP_PITCH(width) pixels after row
+ * y - 1. */
+RV_MODULE_CALL uint16_t *rv_canvas_bmap(void *block, int width, int height);
 
 #endif

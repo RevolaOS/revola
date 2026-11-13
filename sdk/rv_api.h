@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 49
+#define RV_API_MINOR 50
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -280,6 +280,7 @@ enum rv_align { RV_ALIGN_LEFT = -1, RV_ALIGN_CENTER, RV_ALIGN_RIGHT };
 struct rv_gfx {
     uint32_t size;
     rv_color (*color)(uint8_t role);
+    /* A rectangle in `color`; an alpha below 0xff blends it over what is there. */
     void (*fill)(const struct rv_rect *rect, rv_color color);
     /* `y` is the top of the text line. */
     void (*text)(int x, int y, uint8_t font, rv_color color, const char *utf8);
@@ -313,6 +314,13 @@ struct rv_gfx {
     /* Each channel of `from` moved toward `to` by weight/255, rounded to
      * nearest; opaque. For the greys and tints between two roles. */
     rv_color (*mix)(rv_color from, rv_color to, uint8_t weight);
+    /* The part of the canvas this draw covers, in canvas coordinates: the
+     * whole canvas, or what ui_invalidate_rect asked for cut to it. Drawing
+     * outside it is clipped away, so a canvas may skip it. */
+    const struct rv_rect *(*clip)(void);
+    /* The top `rows` of a BMap at (x, y) at `alpha`/255 of its opacity, for a
+     * picture that fades; a coverage mask is not blended. */
+    void (*bmap_blend)(int x, int y, const void *bmap, int rows, uint8_t alpha);
 };
 
 /* RV_INPUT_HOLD: the hold switch moved; `delta` is 1 when it locked, 0 when it

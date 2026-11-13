@@ -202,3 +202,20 @@ int rv_editor_input(struct rv_editor *editor, const struct rv_input *input)
         return RV_EDITOR_IGNORED;
     }
 }
+
+uint16_t *rv_canvas_bmap(void *block, int width, int height)
+{
+    uint8_t *b = block;
+    uint32_t stride = 2 * RV_CANVAS_BMAP_PITCH(width);
+    int32_t *bounds = (int32_t *)(b + BMap_bounds);
+    memset(b, 0, BMap_payload);
+    *(uint16_t *)(b + BMap_format) = BMapFormat_RGB565;
+    *(uint16_t *)(b + BMap_stride) = (uint16_t)stride;
+    *(uint16_t *)(b + BMap_depth) = 16;
+    bounds[0] = 0;
+    bounds[1] = 0;
+    bounds[2] = height;
+    bounds[3] = width;
+    *(uint32_t *)(b + BMap_payload_bytes) = stride * (uint32_t)height;
+    return (uint16_t *)(b + BMap_payload);
+}

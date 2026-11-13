@@ -16,8 +16,9 @@
 #include <stddef.h>
 
 static void *context;
-static int32_t top, left;
+static int32_t top, left, width, height;
 static struct core_screen *screen;
+static struct rv_rect clip_rect;
 
 /* Stock colours of the list screens, as the emulator shows them; the highlight
  * is the middle of Apple's gradient. */
@@ -75,7 +76,8 @@ static void fill(const struct rv_rect *r, rv_color c)
 {
     int32_t rect[4] = {top + r->y, left + r->x, top + r->y + r->height, left + r->x + r->width};
     set_color(c);
-    GraphicsContext_SetDrawMode(context, 0);
+    GraphicsContext_SetDrawMode(context, (c >> 24) == 0xff ? GraphicsDrawMode_Copy
+                                                           : GraphicsDrawMode_Blend);
     GraphicsContext_FillRect(context, rect);
 }
 
@@ -114,29 +116,12 @@ static int line_height(uint8_t font)
     return GraphicsContext_GetFontAscent(context) + GraphicsContext_GetFontDescent(context);
 }
 
-/* Copies a BMap to (x, y) through a source context on it. */
-static void draw_bmap(int x, int y, const uint8_t *resource)
+/* Copies the top `rows` of a BMap (all of it when 0) to (x, y) through a
+ * source context on it, at `alpha`/255 of its opacity. */
+static void copy_bmap(int x, int y, const uint8_t *resource, int rows, uint32_t alpha)
 {
     const int32_t *bounds = (const int32_t *)(resource + BMap_bounds);
-    int32_t rect[4] = {top + y, left + x, top + y + bounds[2] - bounds[0],
-                       left + x + bounds[3] - bounds[1]};
-    uint32_t storage[Bitmap_bytes / 4];
-    uint32_t source[GraphicsContext_bytes / 4];
-    Bitmap_Construct(storage);
-    GraphicsContext_InitFromBitmapResource(source, storage, resource);
-    GraphicsContext_CopyRect(context, source, bounds, rect, 0xff, 0);
-    GraphicsContext_Destroy(source);
-    Bitmap_Destroy(storage);
-}
-
-/* The top `rows` of a BMap; a coverage mask draws in the context's colour in
- * text mode, as a bitmap view draws it in its tint. */
-static void bmap_part(int x, int y, const void *resource, int rows, rv_color c)
-{
-    if (!resource || !core_bitmap_whole(resource))
-        return;
-    const int32_t *bounds = (const int32_t *)((const uint8_t *)resource + BMap_bounds);
-    if (rows > bounds[2] - bounds[0])
+    if (!rows || rows > bounds[2] - bounds[0])
         rows = bounds[2] - bounds[0];
     if (rows <= 0)
         return;
@@ -144,16 +129,40 @@ static void bmap_part(int x, int y, const void *resource, int rows, rv_color c)
     int32_t rect[4] = {top + y, left + x, top + y + rows, left + x + bounds[3] - bounds[1]};
     uint32_t storage[Bitmap_bytes / 4];
     uint32_t source[GraphicsContext_bytes / 4];
+    Bitmap_Construct(storage);
+    GraphicsContext_InitFromBitmapResource(source, storage, resource);
+    GraphicsContext_CopyRect(context, source, source_rect, rect, alpha, 0);
+    GraphicsContext_Destroy(source);
+    Bitmap_Destroy(storage);
+}
+
+static void draw_bmap(int x, int y, const uint8_t *resource)
+{
+    copy_bmap(x, y, resource, 0, 0xff);
+}
+
+/* The top `rows` of a BMap; a coverage mask draws in the context's colour in
+ * text mode, as a bitmap view draws it in its tint. */
+static void bmap_part(int x, int y, const void *resource, int rows, rv_color c)
+{
+    if (!resource || !core_bitmap_whole(resource) || rows <= 0)
+        return;
     uint16_t format = *(const uint16_t *)((const uint8_t *)resource + BMap_format);
     if (format == BMapFormat_Mask8 || format == BMapFormat_Mask4) {
         set_color(c);
         GraphicsContext_SetDrawMode(context, GraphicsDrawMode_Text);
     }
-    Bitmap_Construct(storage);
-    GraphicsContext_InitFromBitmapResource(source, storage, resource);
-    GraphicsContext_CopyRect(context, source, source_rect, rect, 0xff, 0);
-    GraphicsContext_Destroy(source);
-    Bitmap_Destroy(storage);
+    copy_bmap(x, y, resource, rows, 0xff);
+}
+
+static void bmap_blend(int x, int y, const void *resource, int rows, uint8_t alpha)
+{
+    if (!resource || !core_bitmap_whole(resource) || rows <= 0)
+        return;
+    uint16_t format = *(const uint16_t *)((const uint8_t *)resource + BMap_format);
+    if (format == BMapFormat_Mask8 || format == BMapFormat_Mask4)
+        return;
+    copy_bmap(x, y, resource, rows, alpha);
 }
 
 static void bmap_tile(int x, int y, int width, const void *resource)
@@ -312,14 +321,41 @@ static rv_color mix(rv_color from, rv_color to, uint8_t weight)
     return out;
 }
 
+/* The context's clip is in surface coordinates: the view's, moved by the
+ * origin. Back in canvas coordinates and cut to the canvas; empty when the
+ * two do not meet. */
+static const struct rv_rect *clip(void)
+{
+    const int32_t *c = (const int32_t *)((const uint8_t *)context + GraphicsContext_clip_top);
+    int32_t dx = RV_FIELD(context, GraphicsContext_origin_x, int32_t) + left;
+    int32_t dy = RV_FIELD(context, GraphicsContext_origin_y, int32_t) + top;
+    int32_t y0 = c[0] - dy, x0 = c[1] - dx, y1 = c[2] - dy, x1 = c[3] - dx;
+    if (x0 < 0)
+        x0 = 0;
+    if (y0 < 0)
+        y0 = 0;
+    if (x1 > width)
+        x1 = width;
+    if (y1 > height)
+        y1 = height;
+    clip_rect.x = (int16_t)x0;
+    clip_rect.y = (int16_t)y0;
+    clip_rect.width = (int16_t)(x1 > x0 ? x1 - x0 : 0);
+    clip_rect.height = (int16_t)(y1 > y0 ? y1 - y0 : 0);
+    return &clip_rect;
+}
+
 const struct rv_gfx core_gfx = {sizeof core_gfx, color,     fill,      text,     measure,
                                  line_height,    bitmap,    bmap,      paragraph, row,
-                                 bmap_part,      bmap_tile, card,      text_in,   mix};
+                                 bmap_part,      bmap_tile, card,      text_in,   mix,
+                                 clip,           bmap_blend};
 
 void core_gfx_begin(void *graphics, const int32_t *bounds, struct core_screen *canvas)
 {
     context = graphics;
     top = bounds[0];
     left = bounds[1];
+    height = bounds[2] - bounds[0];
+    width = bounds[3] - bounds[1];
     screen = canvas;
 }
