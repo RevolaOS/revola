@@ -74,7 +74,7 @@ TODO: audio, writable files and a data folder at `/Revola/Data/<id>/`.
 
 ## With a C library
 
-An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources and supplies `rv_app_libc_write` and `rv_app_libc_exit` from `rv_app_libc.h`. The glue maps `malloc` to the heap, `open` (read only) to the package's files, `write` on the standard streams to `rv_app_libc_write` and `exit` to `rv_app_libc_exit`, which must unwind to the current callback: the host owns the task and its stack. Such an app writes its own link rule with `RV_APP_ARCH_FLAGS`, `RV_APP_CFLAGS`, `RV_APP_LDFLAGS`, `$(RV_APP_STARTUP)` and `$(RV_APP_RUNTIME)`, links `-lgcc` and its libraries, runs `objcopy -O binary` and then `eapp-pack`.
+An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources and supplies `rv_app_libc_write` and `rv_app_libc_exit` from `rv_app_libc.h`. The glue maps `malloc` to the heap, `open` (read only) to the package's files, `write` on the standard streams to `rv_app_libc_write` and `exit` to `rv_app_libc_exit`, which must unwind to the current callback: the host owns the task and its stack. Such an app writes its own link rule with `RV_APP_ARCH_FLAGS`, `RV_APP_CFLAGS`, `RV_APP_LDFLAGS`, `$(RV_APP_STARTUP)` and `$(RV_APP_RUNTIME)`, links `-lgcc` and its libraries, runs `objcopy -O binary` and then `eapp-pack` with `--symbols` naming the SDK's `osos-2.0.5.h`, where the image checks come from.
 
 ## The image and the package
 

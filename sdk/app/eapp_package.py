@@ -4,19 +4,21 @@
 """Pack an eApp image into the package folder Apple's host loads.
 
     eapp-pack --kind game --id hello --name Hello --image build/hello.eapp \\
-        --icon icon.png --out build [FILE ...]
+        --icon icon.png --symbols sdk/osos-2.0.5.h --out build [FILE ...]
 
 writes build/hello/ with Manifest.plist, hello.eapp, Hello.raw.lcd5 (the 55 x 55
 RGB565 icon from the PNG) and every FILE, which the app reads by its name. The
 folder goes to /Revola/Games/hello/ (--kind game) or /Revola/Apps/hello/
 (--kind app). --zip also writes build/hello.zip with the folder under that root.
 
-The module is importable: validate_image, manifest, artwork and write_entry
-serve an app with a packaging script of its own.
+The image checks come from the SDK's symbols header (--symbols). The module is
+importable: validate_image, manifest, artwork and write_entry serve an app with
+a packaging script of its own.
 """
 
 import argparse
 import plistlib
+import re
 import shutil
 import struct
 import sys
@@ -24,26 +26,54 @@ import zipfile
 import zlib
 from pathlib import Path
 
-LOAD_ADDRESS = 0x18000000
-MAX_IMAGE_BYTES = 0x100000
-HEADER = (0x70706165, 0x10001000, 5, 0, 0)
 ROOTS = {"game": "Revola/Games", "app": "Revola/Apps"}
 ICON_SIDE = 55
 ICON_STRIDE = ICON_SIDE * 2 + 2
 VERSION = "0.2.0"
 
 
-def validate_image(image):
+IMAGE_CONSTANTS = (
+    "GameImage_Magic",
+    "GameImage_MaxVersion",
+    "GameImage_MaxEntries",
+    "GameImage_LoadAddress",
+    "GameImage_MaxBytes",
+    "GameImageHeader_entries",
+    "GameImageHeader_bytes",
+)
+
+
+def image_constants(symbols):
+    """What the host checks in an image, from the symbols header `symbols`."""
+    text = Path(symbols).read_text()
+    found = dict(re.findall(r"#define (GameImage\w+) (0x[0-9a-fA-F]+)", text))
+    missing = [name for name in IMAGE_CONSTANTS if name not in found]
+    if missing:
+        raise ValueError(f"{symbols} lacks {', '.join(missing)}")
+    return {name: int(found[name], 16) for name in IMAGE_CONSTANTS}
+
+
+def validate_image(image, symbols):
     """Raise ValueError unless `image` is an eApp image the host accepts."""
-    if not 0x28 <= len(image) <= MAX_IMAGE_BYTES:
+    c = image_constants(symbols)
+    header_bytes = c["GameImageHeader_bytes"]
+    if not header_bytes <= len(image) <= c["GameImage_MaxBytes"]:
         raise ValueError("image exceeds the eApp bounds")
-    magic, version, count, reserved, imports, *entries = struct.unpack_from(
-        "<10I", image
+    magic, version, count, reserved, imports = struct.unpack_from("<5I", image)
+    entries = struct.unpack_from(
+        f"<{c['GameImage_MaxEntries']}I", image, c["GameImageHeader_entries"]
     )
-    if (magic, version, count, reserved, imports) != HEADER:
+    if (magic, version, count, reserved, imports) != (
+        c["GameImage_Magic"],
+        c["GameImage_MaxVersion"],
+        c["GameImage_MaxEntries"],
+        0,
+        0,
+    ):
         raise ValueError("unexpected eapp header")
+    base = c["GameImage_LoadAddress"]
     for entry in entries:
-        if entry % 4 or not LOAD_ADDRESS + 0x28 <= entry < LOAD_ADDRESS + len(image):
+        if entry % 4 or not base + header_bytes <= entry < base + len(image):
             raise ValueError("an entry lies outside the image")
 
 
@@ -161,11 +191,13 @@ def artwork(png):
     return bytes(result)
 
 
-def package(kind, package_id, name, image, icon, heap_kib, files, version=VERSION):
+def package(
+    kind, package_id, name, image, icon, heap_kib, files, symbols, version=VERSION
+):
     """The package's files by name, Manifest.plist included."""
     if kind not in ROOTS:
         raise ValueError("kind must be game or app")
-    validate_image(image)
+    validate_image(image, symbols)
     executable = f"{package_id}.eapp"
     artwork_name = f"{name}.raw.lcd5"
     contents = {executable: image, artwork_name: artwork(icon)}
@@ -186,6 +218,12 @@ def main():
     parser.add_argument("--name", required=True, help="what Extras lists")
     parser.add_argument("--image", type=Path, required=True, help="the .eapp image")
     parser.add_argument("--icon", type=Path, required=True, help="55 x 55 PNG")
+    parser.add_argument(
+        "--symbols",
+        type=Path,
+        required=True,
+        help="the SDK's osos-2.0.5.h, for what the host checks in an image",
+    )
     parser.add_argument("--heap-kib", type=int, default=5120)
     parser.add_argument("--version", default=VERSION, help="the package's Version")
     parser.add_argument("--out", type=Path, default=Path("build"))
@@ -201,6 +239,7 @@ def main():
             args.icon.read_bytes(),
             args.heap_kib,
             args.files,
+            args.symbols,
             args.version,
         )
     except (ValueError, OSError) as error:

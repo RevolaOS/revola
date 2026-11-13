@@ -2,7 +2,7 @@
   "api": "1.54",
   "sha256": {
     "README.md": "dfc5ad19d0d7aea20ba8fadfea7b5c23ae669976919e7697502f322a78e8e7ed",
-    "app/eapp_package.py": "7aa55c1556802a3e96aa6074f0026f5d1db2b2f7c63fb84dfa24ed755281773b",
+    "app/eapp_package.py": "1d04ff43f59e84eae8775f5835a2706abb22289517f70eb0161a96aee2c0f884",
     "app/runtime/directory.c": "b14fcbebc607ad0bcfb404a203cc2c1f7da95926ee4a194cc4c3debd4fc26c7e",
     "app/runtime/display.c": "ebc9b7158a3da07d18d3e201d4b33018fa59c3ff3916aec100db7f91fa9b69df",
     "app/runtime/files.c": "ffa0648c8b7f5c55f5e4d2ad48bd3170af5c850d68ce9ce7048ddc36491cca14",
@@ -19,7 +19,7 @@
     "app/runtime/ui.c": "684e1fd37237744798188840f2e07489d6ea5a1a0279c03f6fd320a7392fa021",
     "app/runtime/wheel.c": "0d62ec8e8793caf11b87961ca7c3039750babbbb9cec778060791d5ab534d6df",
     "app/rv_app.h": "095b563d3342651468ebbe6b09fe970c519484eac7e85dfc4d5cc679a0e697d8",
-    "app/rv_app.mk": "70593a618e119acb242be9670a4c47631c3787d8a03316e3ced2a1e52f22048f",
+    "app/rv_app.mk": "4097319bca49b9c99d9c01d396be63ff3a7193d9a738a5c27a1063abc2f11f3f",
     "app/rv_app_abi.h": "787a7082e8bcc06ce6d8b2127cdd91e0cc939cabf26e841348ffc345a99adfaf",
     "app/rv_app_libc.h": "6720ba95a7d400b2023232919b351d9d00aabfc16b93c7b0d460e90a9f7ba5d1",
     "app/rv_app_ui.h": "7594c1596dda681d7c9dd7d05999ae33f9062689c80455adf0d9166c633c36fe",

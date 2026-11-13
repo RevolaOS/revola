@@ -85,7 +85,8 @@ all: $(OUT)/$(ID)/Manifest.plist
 
 $(OUT)/$(ID)/Manifest.plist: $(OUT)/$(ID).eapp $(ICON) $(FILES)
 	python3 $(SDK)/app/eapp-pack --kind $(KIND) --id $(ID) --name "$(NAME)" \
-	    --image $< --icon $(ICON) --heap-kib $(HEAP_KIB) --out $(OUT) $(FILES)
+	    --image $< --icon $(ICON) --symbols $(SDK)/$(RV_FIRMWARE_LD:.ld=.h) \
+	    --heap-kib $(HEAP_KIB) --out $(OUT) $(FILES)
 
 clean:
 	rm -rf $(OUT)
