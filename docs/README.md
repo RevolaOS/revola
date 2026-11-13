@@ -7,6 +7,7 @@
 | [Installing](guide/install.md) | What you need, the installer steps, what is written to the iPod |
 | [Uninstalling](guide/uninstall.md) | Removing RevolaOS and restoring Apple's bootloader |
 | [Extensions](guide/extensions.md) | Turning extensions on and off, installing one from a file, what Settings > Extensions shows |
+| [Apps and games](guide/apps.md) | Installing an app or game package, where it appears |
 | [Recovery](guide/recovery.md) | The error screen, crash reports, starting without extensions |
 | [Troubleshooting](guide/troubleshooting.md) | The installer does not find the iPod, a stopped installation, startup errors, leftovers after an uninstall |
 
@@ -38,3 +39,4 @@
 | [Audio effects](sdk/audio.md) | The output PCM site and the effect stages |
 | [Canvas kit](sdk/canvas.md) | Palette, plots, value cells and Select/Menu input for an editor canvas |
 | [Media items](sdk/media.md) | Reading the items the context menus hand out and the player's |
+| [Apps and games](sdk/apps.md) | Building an app for Apple's eApp host and packaging it |
