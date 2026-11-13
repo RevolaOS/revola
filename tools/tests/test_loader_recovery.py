@@ -12,7 +12,9 @@ SOURCE = (ROOT / "core/loader/loader.c").read_text()
 
 
 def function(name):
-    match = re.search(r"^(?:static )?[\w *]+\b" + name + r"\([^;]*?\)\n\{", SOURCE, re.M)
+    match = re.search(
+        r"^(?:static )?[\w *]+\b" + name + r"\([^;]*?\)\n\{", SOURCE, re.M
+    )
     start = match.start()
     at = match.end()
     depth = 1
@@ -34,8 +36,10 @@ PREAMBLE = r"""
 #include "rv_api.h"
 #define CORE_FIRMWARE_ID 0x660eb6ff
 """
-DEFINITIONS = SOURCE[SOURCE.index('#define ROOT '):SOURCE.index('static struct block *retiring;')]
-FOUND = SOURCE[SOURCE.index('struct found {'):SOURCE.index('/* The length of `name`')]
+DEFINITIONS = SOURCE[
+    SOURCE.index("#define ROOT ") : SOURCE.index("static struct block *retiring;")
+]
+FOUND = SOURCE[SOURCE.index("struct found {") : SOURCE.index("/* The length of `name`")]
 STUBS = r"""
 struct package { char name[33]; uint32_t data[300]; uint32_t bytes, cursor; };
 static struct package packages[2];
@@ -68,7 +72,9 @@ void core_settings_flush(void) {
  if (fail_flush) return;
  memcpy(persisted, settings, sizeof settings); persisted_count = settings_count;
 }
-static int default_on(uint32_t owner) { (void)owner; return 1; } /* every test package is on */
+static uint32_t unbundled; /* the one test package that is not in bundled.def */
+static int default_on(uint32_t owner) { return owner != unbundled; }
+static uint32_t load_order[4]; static unsigned loads;
 uint32_t core_recovery_owner(void) { return retained_owner; }
 void core_recovery_clear(void) { retained_owner = 0; clears++; }
 int core_file_open(const char *path, int mode, void **out) {
@@ -91,7 +97,7 @@ static void *allocate(struct rv_extension_record *owner, uint32_t bytes) {
 void core_loader_charge(struct rv_extension_record *owner, int32_t bytes) { (void)owner; (void)bytes; }
 void *core_heap_allocate(struct rv_extension_record *owner, uint32_t bytes) { (void)owner; return calloc(1, bytes); }
 static void release(struct rv_extension_record *owner, void *p) { (void)owner; free(p); }
-static int load_module(struct rv_extension_record *r, uint32_t index) { (void)r; (void)index; entered++; return 1; }
+static int load_module(struct rv_extension_record *r, uint32_t index) { (void)index; if (loads < 4) load_order[loads++] = r->owner; entered++; return 1; }
 static uint32_t held_buttons(void) { return 0; }
 static const struct core_hook disk_mode_exit_hook = {0};
 int core_hook_bind(const struct core_hook *h) { (void)h; return 0; }
@@ -116,6 +122,15 @@ static void package(unsigned n, const char *name) {
   .firmware=CORE_FIRMWARE_ID,.manifest_bytes=tables_bytes(h)+h->strings_bytes};
  p->bytes = sizeof *file + file->manifest_bytes;
 }
+/* Appends a content folder name to package 0's strings, without its NUL when `nul` is 0. */
+static void content(const char *name, int nul) {
+ struct package *p = &packages[0]; struct rvx_header *file = (void *)p->data;
+ struct manifest_header *h = (void *)(file + 1); char *strings = (char *)h + tables_bytes(h);
+ memcpy(strings + h->strings_bytes, name, strlen(name) + 1);
+ h->content = (uint16_t)h->strings_bytes; h->content_count = 1;
+ h->strings_bytes += (uint32_t)strlen(name) + (nul ? 1 : 0);
+ file->manifest_bytes = tables_bytes(h) + h->strings_bytes; p->bytes = sizeof *file + file->manifest_bytes;
+}
 static void free_extensions(void) {
  while (core_extensions) { struct rv_extension_record *r = core_extensions; core_extensions = r->next; free(header_of(r)); }
 }
@@ -130,7 +145,9 @@ int main(void) {
  struct rvx_header *file = (void *)packages[0].data;
  struct manifest_header *h = (void *)(file + 1);
  assert(read_manifest("test", (void *)buffer, &failure) && failure == CORE_EXTENSION_OK);
- for (unsigned mode = 0; mode < 7; mode++) {
+ content("Themes", 1);
+ assert(read_manifest("test", (void *)buffer, &failure) && failure == CORE_EXTENSION_OK);
+ for (unsigned mode = 0; mode < 12; mode++) {
   package(0, "test");
   switch (mode) {
    case 0: file->format++; break;
@@ -140,6 +157,11 @@ int main(void) {
    case 4: h->api += 1<<16; break;
    case 5: packages[0].bytes = sizeof *file - 1; break;
    case 6: h->text[0] = h->strings_bytes; break;
+   case 7: h->content_count = 5; break;
+   case 8: h->content_count = 1; h->content = (uint16_t)h->strings_bytes; break;
+   case 9: content("themes", 1); break;
+   case 10: content("Data", 1); break;
+   case 11: content("Themes", 1); h->content_count = 2; break;
   }
   assert(!read_manifest("test", (void *)buffer, &failure));
   assert(failure == (mode < 5 ? CORE_EXTENSION_INCOMPATIBLE : CORE_EXTENSION_UNREADABLE));
@@ -147,11 +169,6 @@ int main(void) {
   struct core_installed *rows; assert(core_loader_installed(&rows) == 1);
   assert(rows[0].failure == failure && !rows[0].owner && !rows[0].name[0]); free(rows);
  }
- package(0, "test");
- memmove((char *)h + sizeof *h - 4, (char *)h + sizeof *h, file->manifest_bytes - sizeof *h);
- file->manifest_bytes -= 4; packages[0].bytes -= 4;
- assert(!read_manifest("test", (void *)buffer, &failure) && failure == CORE_EXTENSION_INCOMPATIBLE);
-
  package_count = 2; package(0, "test"); package(1, "other");
  for (unsigned mode = 0; mode < 3; mode++) {
   persisted_count = settings_count = clears = 0;
@@ -163,6 +180,13 @@ int main(void) {
   boot(); assert(entered == 1 && retained_owner && !clears);
   boot(); assert(entered == 1 && !retained_owner && clears == 1);
  }
+ /* Bundled extensions load first whatever the file names. */
+ package_count = 2; package(0, "a"); package(1, "b");
+ unbundled = core_settings_owner("a"); loads = 0;
+ core_settings_set_int(unbundled, 0, 1); /* the listener turned it on */
+ core_settings_flush();
+ boot(); assert(loads == 2 && load_order[0] == core_settings_owner("b") && load_order[1] == unbundled);
+ unbundled = 0;
  free_extensions();
  puts("PASS: rejected packages remain visible; quarantine survives allocation and flush failures");
 }
@@ -171,21 +195,59 @@ int main(void) {
 
 class LoaderRecoveryTests(unittest.TestCase):
     def test_rejected_packages_and_quarantine(self):
-        functions = "".join(function(name) for name in [
-            "fnv1a", "copy", "length", "same_name", "header_of", "tables_bytes",
-            "strings", "manifest_valid", "open_extension", "read_manifest", "pick",
-            "load_extension",
-        ])
-        source = (PREAMBLE + "\n#include <stdio.h>\n" + DEFINITIONS + FOUND + STUBS
-                  + functions + SCAN + function("core_loader_boot")
-                  + function("core_loader_installed") + TESTS)
+        functions = "".join(
+            function(name)
+            for name in [
+                "fnv1a",
+                "copy",
+                "length",
+                "same_name",
+                "header_of",
+                "tables_bytes",
+                "strings",
+                "content_folder_valid",
+                "manifest_valid",
+                "open_extension",
+                "read_manifest",
+                "pick",
+                "load_extension",
+                "find_file",
+                "load_found",
+            ]
+        )
+        source = (
+            PREAMBLE
+            + "\n#include <stdio.h>\n"
+            + DEFINITIONS
+            + FOUND
+            + STUBS
+            + functions
+            + SCAN
+            + function("core_loader_boot")
+            + function("core_loader_installed")
+            + TESTS
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "test.c").write_text(source)
-            subprocess.run([
-                "cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
-                "-fsanitize=address,undefined", "-I", str(ROOT / "core"),
-                "-I", str(ROOT / "firmware"), "-I", str(ROOT / "sdk"),
-                str(path / "test.c"), "-o", str(path / "test"),
-            ], check=True)
+            subprocess.run(
+                [
+                    "cc",
+                    "-std=c11",
+                    "-Wall",
+                    "-Wextra",
+                    "-Werror",
+                    "-fsanitize=address,undefined",
+                    "-I",
+                    str(ROOT / "core"),
+                    "-I",
+                    str(ROOT / "firmware"),
+                    "-I",
+                    str(ROOT / "sdk"),
+                    str(path / "test.c"),
+                    "-o",
+                    str(path / "test"),
+                ],
+                check=True,
+            )
             subprocess.run([str(path / "test")], check=True)
