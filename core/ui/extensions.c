@@ -9,6 +9,7 @@
  * their screen closes. */
 
 #include "ui/extensions.h"
+#include "settings.h"
 #include "loader/loader.h"
 #include "osos-2.0.5.h"
 #include "ui/format.h"
@@ -78,7 +79,9 @@ static void update_meter(void)
                   meter + sizeof meter, " installed");
 }
 
-/* Row 0 is Usage, then one row per installed extension. */
+static const char *const optimize_labels[] = {"Auto", "Performance", "Memory"};
+
+/* Row 0 is Usage, row 1 Optimize For, then one row per installed extension. */
 static uint32_t list_count(const struct rv_context *ctx)
 {
     (void)ctx;
@@ -90,7 +93,7 @@ static uint32_t list_count(const struct rv_context *ctx)
         listed_read = 1;
     }
     update_meter();
-    return 1 + listed_count;
+    return 2 + listed_count;
 }
 
 static const char *list_row(const struct rv_context *ctx, uint32_t index, const char **detail)
@@ -100,13 +103,19 @@ static const char *list_row(const struct rv_context *ctx, uint32_t index, const 
         *detail = core_usage_active(line, line + sizeof line);
         return "Usage";
     }
-    if (!listed || index > listed_count) {
+    if (index == 1) {
+        int32_t mode = core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_OPTIMIZE,
+                                             CORE_OPTIMIZE_AUTO);
+        *detail = optimize_labels[mode >= 0 && mode < 3 ? mode : 0];
+        return "Optimize For";
+    }
+    if (!listed || index > listed_count + 1) {
         *detail = NULL;
         return "";
     }
     /* The state, and the memory a running extension holds: "On, 6.0 KB" (the
      * system font has no middle dot). */
-    const struct core_installed *e = &listed[index - 1];
+    const struct core_installed *e = &listed[index - 2];
     struct rv_extension_record *record = core_loader_find(e->owner);
     char *out = core_put_text(line, line + sizeof line, state_text(e));
     if (e->failure == CORE_EXTENSION_OK && enabled(record) && record->failure == CORE_EXTENSION_OK)
@@ -119,19 +128,19 @@ static const char *list_row(const struct rv_context *ctx, uint32_t index, const 
 static int list_select(const struct rv_context *ctx, uint32_t index)
 {
     (void)ctx;
-    if (index == 0) {
-        struct core_screen *usage = core_screens_find(NULL, "core.usage");
-        if (usage)
-            core_screens_push(usage, core_screens_caller, NULL);
+    if (index < 2) {
+        struct core_screen *s = core_screens_find(NULL, index ? "core.optimize" : "core.usage");
+        if (s)
+            core_screens_push(s, core_screens_caller, NULL);
         return 0;
     }
-    if (!listed || index > listed_count || page)
+    if (!listed || index > listed_count + 1 || page)
         return 0;
     page = core_heap_allocate(NULL, sizeof *page);
     if (!page)
         return 0;
-    struct core_installed *e = &listed[index - 1];
-    page->index = index - 1;
+    struct core_installed *e = &listed[index - 2];
+    page->index = index - 2;
     page->manifest_bytes = core_loader_manifest(e->file, page->manifest, &e->failure);
     core_put_text(title, title + sizeof title,
                   e->failure == CORE_EXTENSION_OK ? e->name : e->file);
@@ -323,6 +332,10 @@ static const struct rv_screen screens[] = {
      .caption = meter, .bitmap = &extensions_icon},
     {.id = "core.extension", .title = title, .kind = RV_SCREEN_KIND_CANVAS,
      .canvas = {.draw = page_draw, .input = page_input}},
+    /* Whether extensions' optional assets, their Settings icons by default,
+     * are kept in memory: Performance, Memory, or Auto by the disk. */
+    {.id = "core.optimize", .title = "Optimize For", .kind = RV_SCREEN_KIND_CHOICE,
+     .choice = {.key = CORE_KEY_OPTIMIZE, .labels = optimize_labels, .count = 3}},
 };
 
 static const struct rv_menu_entry entry = {
