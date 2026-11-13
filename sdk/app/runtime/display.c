@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Adapted from RepriseOS game-sdk/runtime/display.c by lgreitis. */
 
+#include "osos-2.0.5.h"
 #include "platform.h"
 #include "rv_app_abi.h"
 

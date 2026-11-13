@@ -20,5 +20,7 @@ struct rv_app_wheel rv_app_read_wheel(void)
 
 int rv_app_hold_locked(void)
 {
-    return HoldSwitch_GetLogicalState() > 0;
+    uint8_t locked = 0;
+    uint32_t size = sizeof locked;
+    return GameSettings_GetValue("HoldSwitch", &locked, &size) == 0 && locked != 0;
 }

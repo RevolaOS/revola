@@ -17,8 +17,10 @@ void *rv_app_platform_begin_frame(const struct rv_app_eapp_frame_input *input,
 void rv_app_platform_present(void *surface);
 void rv_app_files_close_all(void);
 void rv_app_directories_close_all(void);
-/* RV_APP_ROOT, the package id and `name` into `path`; -1 when the name leaves
- * the package, "" is accepted only with allow_root. */
-int rv_app_make_path(struct rv_app_path *path, const char *name, int allow_root);
+/* The host's folder `directory_kind` of this package (GameDirectory_Package or
+ * GameDirectory_UserData) and `name` into `path`; -1 when the name leaves the
+ * folder or does not fit, "" is accepted only with allow_root. */
+int rv_app_make_path(struct rv_app_path *path, uint32_t directory_kind, const char *name,
+                     int allow_root);
 
 #endif

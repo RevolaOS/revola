@@ -9,7 +9,8 @@ static int clock_started;
 
 uint32_t rv_app_ticks_ms(void)
 {
-    uint32_t now = Clock_GetMicroseconds();
+    uint32_t now;
+    Clock_ReadMicroseconds(&now);
     if (!clock_started) {
         last_us = now;
         clock_started = 1;
@@ -30,6 +31,6 @@ void rv_app_sleep_ms(uint32_t milliseconds)
     uint32_t start = rv_app_ticks_ms();
 
     do {
-        Scheduler_YieldOrDelay(0);
+        GameSystem_Sleep(0);
     } while (rv_app_ticks_ms() - start < milliseconds);
 }

@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Adapted from RepriseOS game-sdk/tests/files_test.c by lgreitis. */
 
-/* Host stand-ins for the Apple file and directory functions files.c and
- * directory.c call, and the rules they must keep. */
+/* Host stand-ins for the host path service and the Apple file and directory
+ * functions files.c and directory.c call, and the rules they must keep. */
 
+#include "osos-2.0.5.h"
 #include "platform.h"
 #include "rv_app.h"
 #include <assert.h>
@@ -20,6 +21,30 @@ static const char *result_name;
 struct DirectoryIterator;
 struct NativePath;
 struct NativeString;
+
+/* The host's folders of the package "test-game": the package root and its
+ * user data folder, as the stock host lays them out. */
+#define PACKAGE_ROOT "iPod_Control/games_RO/test-game/"
+#define DATA_ROOT "iPod_Control/gamedata_RW/test-game/"
+static unsigned built;
+
+int GameSystem_GetPath(uint32_t directory_kind, char *buffer, int *capacity,
+                       const char *relative)
+{
+    assert(directory_kind == GameDirectory_Package || directory_kind == GameDirectory_UserData);
+    assert(relative && *relative != '/');
+    const char *root = directory_kind == GameDirectory_Package ? PACKAGE_ROOT : DATA_ROOT;
+    unsigned length = strlen(root) + strlen(relative);
+    ++built;
+    if (*capacity < (int)length)
+        return -1;
+    memcpy(buffer, root, strlen(root));
+    memcpy(buffer + strlen(root), relative, strlen(relative));
+    /* The host copies the capacity, not the length: no terminator. */
+    memset(buffer + length, 'X', *capacity - length);
+    *capacity = length;
+    return (int)length;
+}
 
 struct DirectoryIterator *DirectoryIterator_Init(struct DirectoryIterator *iterator,
                                                  const char *path, uint8_t recursive,
@@ -144,10 +169,9 @@ static const char *under_root(const char *root, const char *tail)
     return expected;
 }
 
-int main(int argc, char **argv)
+int main(void)
 {
-    assert(argc == 2 && !strcmp(argv[1], RV_APP_ROOT));
-    const char *root = argv[1];
+    const char *root = PACKAGE_ROOT;
     const char *invalid[] = {NULL,   "/root", "../other", "roms/../../other",
                              "a//b", "roms/", "a/./b",    "a\\b",
                              "a:b"};
@@ -158,11 +182,11 @@ int main(int argc, char **argv)
         assert(!rv_app_data_open(invalid[i], RV_APP_FILE_WRITE));
         assert(rv_app_data_delete(invalid[i]) == -1);
     }
-    assert(!opened && !native_opens && !created && !deleted);
+    assert(!opened && !native_opens && !created && !deleted && !built);
     struct rv_app_directory *dirs[4];
     for (unsigned i = 0; i < 4; ++i)
         assert((dirs[i] = rv_app_directory_open("", 1)));
-    assert(!strcmp(opened_path, under_root(root, "test-game")));
+    assert(!strcmp(opened_path, under_root(root, "")));
     assert(!rv_app_directory_open("", 1));
     struct rv_app_directory_entry entry;
     assert(rv_app_directory_read(dirs[0], &entry) == 1);
@@ -176,12 +200,12 @@ int main(int argc, char **argv)
     assert(closed == 1);
     assert(rv_app_directory_read(dirs[0], &entry) == -1);
     assert((dirs[0] = rv_app_directory_open("./roms", 1)));
-    assert(!strcmp(opened_path, under_root(root, "test-game/roms")));
+    assert(!strcmp(opened_path, under_root(root, "roms")));
     rv_app_directories_close_all();
     assert(opened == closed && !strings);
     assert(!rv_app_file_open(""));
     struct rv_app_file *file = rv_app_file_open("./roms/Example.NES");
-    assert(file && !strcmp(opened_path, under_root(root, "test-game/roms/Example.NES")));
+    assert(file && !strcmp(opened_path, under_root(root, "roms/Example.NES")));
     rv_app_files_close_all();
     assert(!native_opens);
 
@@ -190,13 +214,13 @@ int main(int argc, char **argv)
     assert(!rv_app_data_open("", RV_APP_FILE_READ) && !rv_app_data_open("scores", 3));
     file = rv_app_data_open("scores", RV_APP_FILE_READ);
     assert(file && open_mode == 1 && !created && !deleted);
-    assert(!strcmp(opened_path, RV_APP_DATA_ROOT "test-game/scores"));
+    assert(!strcmp(opened_path, DATA_ROOT "scores"));
     assert(rv_app_file_write(file, "x", 1) == -1);
     rv_app_file_close(file);
     file = rv_app_data_open("saves/game", RV_APP_FILE_WRITE);
     assert(file && open_mode == 2 && created == 1 && deleted == 1);
-    assert(!strcmp(opened_path, RV_APP_DATA_ROOT "test-game/saves/game"));
-    assert(!strcmp(created_path, RV_APP_DATA_ROOT "test-game/saves"));
+    assert(!strcmp(opened_path, DATA_ROOT "saves/game"));
+    assert(!strcmp(created_path, DATA_ROOT "saves"));
     assert(!strcmp(deleted_path, opened_path));
     assert(rv_app_file_write(file, "abc", 3) == 3 && rv_app_file_write(file, "", 0) == 0);
     assert(rv_app_file_write(file, "de", 2) == 2 && written_bytes == 5);
@@ -206,17 +230,18 @@ int main(int argc, char **argv)
     rv_app_file_close(file);
     assert(!native_opens);
     assert(rv_app_data_delete("saves/game") == 0 && deleted == 2);
-    assert(!strcmp(deleted_path, RV_APP_DATA_ROOT "test-game/saves/game"));
+    assert(!strcmp(deleted_path, DATA_ROOT "saves/game"));
     assert(rv_app_data_delete("") == -1 && deleted == 2);
 
     struct rv_app_path path;
     char name[258] = {0};
-    unsigned prefix = strlen(under_root(root, "test-game/"));
+    unsigned prefix = strlen(root);
     memset(name, 'x', 257 - prefix);
-    assert(rv_app_make_path(&path, name, 0) == 0 && strlen(path.text) == 257);
+    assert(rv_app_make_path(&path, GameDirectory_Package, name, 0) == 0 &&
+           strlen(path.text) == 257);
     name[257 - prefix] = 'x';
-    assert(rv_app_make_path(&path, name, 0) == -1);
+    assert(rv_app_make_path(&path, GameDirectory_Package, name, 0) == -1);
     assert(!rv_app_directory_open(name, 1));
-    printf("%s: path boundaries, directory and file lifecycle and the data folder pass\n", root);
+    printf("path boundaries, directory and file lifecycle and the data folder pass\n");
     return 0;
 }

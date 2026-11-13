@@ -41,6 +41,9 @@ static void frame(const struct rv_app_frame *frame)
     rv_app_draw_text(fb, 110, 60, direction & RV_APP_DIRECTION_LEFT ? "LEFT" : "", 0xffff);
     rv_app_draw_text(fb, 140, 60, direction & RV_APP_DIRECTION_RIGHT ? "RIGHT" : "", 0xffff);
 
+    rv_app_draw_text(fb, 20, 80, "HOLD:", 0xffff);
+    rv_app_draw_text(fb, 56, 80, rv_app_hold_locked() ? "ON" : "OFF", 0xffff);
+
     rv_app_draw_text(fb, 20, 220, "MENU: EXIT", 0x8410);
 }
 

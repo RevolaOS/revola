@@ -14,7 +14,7 @@ static struct rv_app_directory directories[4];
 struct rv_app_directory *rv_app_directory_open(const char *name, int recursive)
 {
     struct rv_app_path path;
-    if (rv_app_make_path(&path, name, 1) < 0)
+    if (rv_app_make_path(&path, GameDirectory_Package, name, 1) < 0)
         return NULL;
     for (unsigned i = 0; i < 4; ++i) {
         struct rv_app_directory *directory = &directories[i];

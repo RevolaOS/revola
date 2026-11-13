@@ -63,11 +63,10 @@ def validate_image(image, symbols):
     entries = struct.unpack_from(
         f"<{c['GameImage_MaxEntries']}I", image, c["GameImageHeader_entries"]
     )
-    if (magic, version, count, reserved, imports) != (
+    if (magic, version, count, reserved) != (
         c["GameImage_Magic"],
         c["GameImage_MaxVersion"],
         c["GameImage_MaxEntries"],
-        0,
         0,
     ):
         raise ValueError("unexpected eapp header")
@@ -75,6 +74,42 @@ def validate_image(image, symbols):
     for entry in entries:
         if entry % 4 or not base + header_bytes <= entry < base + len(image):
             raise ValueError("an entry lies outside the image")
+    validate_imports(image, base, imports)
+
+
+IMPORT_RECORD = struct.Struct("<32s4I I I")
+STUB = struct.Struct("<II")
+STUB_MARKER = 0x29061968
+IMPORTS_END = b"$$$$ a^n + b^n = c^n | n>2 $$$$"
+
+
+def validate_imports(image, base, imports):
+    """Raise ValueError unless the import list at `imports` is one the host
+    walks to its end: records of 32-byte name, interface id, count, next and
+    count stubs, each a jump through the word after it, under the marker."""
+    seen = set()
+    while imports:
+        offset = imports - base
+        if imports % 4 or offset in seen or not 0 <= offset <= len(image) - IMPORT_RECORD.size:
+            raise ValueError("an import record lies outside the image")
+        seen.add(offset)
+        name, *_, count, imports = IMPORT_RECORD.unpack_from(image, offset)
+        name = name.rstrip(b"\0")
+        if not name:
+            raise ValueError("an import record has no module name")
+        stubs = offset + IMPORT_RECORD.size
+        end = stubs + count * STUB.size
+        if end + 4 > len(image):
+            raise ValueError(f"the {name.decode()} import stubs exceed the image")
+        for i in range(count):
+            instruction, word = STUB.unpack_from(image, stubs + i * STUB.size)
+            if instruction != 0xE51FF004 or word:
+                raise ValueError(f"the {name.decode()} import stubs are malformed")
+        if struct.unpack_from("<I", image, end)[0] != STUB_MARKER:
+            raise ValueError(f"the {name.decode()} import record lacks its marker")
+        if name == IMPORTS_END:
+            return
+    raise ValueError("the import list does not end")
 
 
 def manifest(

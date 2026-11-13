@@ -4,13 +4,6 @@
 #include "osos-2.0.5.h"
 #include "platform.h"
 
-#ifndef RV_APP_ROOT
-#error "RV_APP_ROOT names the folder the package is installed under"
-#endif
-#ifndef RV_APP_DATA_ROOT
-#error "RV_APP_DATA_ROOT names the folder the package's data lives under"
-#endif
-
 #define FORK_DATA 0x64617461u /* 'data' */
 
 struct rv_app_file {
@@ -22,59 +15,48 @@ struct rv_app_file {
 
 static struct rv_app_file files[12];
 
-/* `root`, the package id and `name` into `path`, with the package's rules. */
-static int make_path(struct rv_app_path *path, const char *root, const char *name,
-                     int allow_root)
+/* 0 when `name` stays inside a folder: no leading slash, no empty, "." or ".."
+ * component, no trailing slash, no backslash or colon. */
+static int name_is_inside(const char *name)
 {
-    path->volume = 0;
-    unsigned i = 0;
-    for (; root[i]; ++i)
-        path->text[i] = root[i];
-
-    const char *id = rv_app_application.package_id;
-    if (!id || !*id || *id == '.')
-        return -1;
-
-    for (; *id; ++id) {
-        if (*id == '/' || *id == '\\' || *id == ':' || i >= sizeof(path->text) - 2)
-            return -1;
-        path->text[i++] = *id;
-    }
-    if (!name)
-        return -1;
-    while (name[0] == '.' && name[1] == '/')
-        name += 2;
-    if (!*name) {
-        path->text[i] = 0;
-        return allow_root ? 0 : -1;
-    }
     if (*name == '/')
         return -1;
-    path->text[i++] = '/';
-
     const char *component = name;
     for (; *name; ++name) {
         if (name == component &&
             (*name == '.' && (name[1] == '/' || name[1] == 0 ||
                               (name[1] == '.' && (name[2] == '/' || name[2] == 0)))))
             return -1;
-        if (*name == '\\' || *name == ':' || i >= sizeof(path->text) - 1)
+        if (*name == '\\' || *name == ':')
             return -1;
         if (*name == '/') {
             if (name == component || !name[1])
                 return -1;
             component = name + 1;
         }
-        path->text[i++] = *name;
     }
-    path->text[i] = 0;
-
     return 0;
 }
 
-int rv_app_make_path(struct rv_app_path *path, const char *name, int allow_root)
+int rv_app_make_path(struct rv_app_path *path, uint32_t directory_kind, const char *name,
+                     int allow_root)
 {
-    return make_path(path, RV_APP_ROOT, name, allow_root);
+    if (!name)
+        return -1;
+    while (name[0] == '.' && name[1] == '/')
+        name += 2;
+    if (!*name && !allow_root)
+        return -1;
+    if (*name && name_is_inside(name) < 0)
+        return -1;
+
+    /* The host copies the capacity, not the length, and does not terminate. */
+    path->volume = 0;
+    int length = sizeof(path->text) - 1;
+    if (GameSystem_GetPath(directory_kind, path->text, &length, name) < 0)
+        return -1;
+    path->text[length] = 0;
+    return 0;
 }
 
 static struct rv_app_file *open_path(struct rv_app_path *path, enum rv_app_file_mode mode)
@@ -103,19 +85,21 @@ static struct rv_app_file *open_path(struct rv_app_path *path, enum rv_app_file_
 struct rv_app_file *rv_app_file_open(const char *name)
 {
     struct rv_app_path path;
-    if (make_path(&path, RV_APP_ROOT, name, 0) < 0)
+    if (rv_app_make_path(&path, GameDirectory_Package, name, 0) < 0)
         return NULL;
     return open_path(&path, RV_APP_FILE_READ);
 }
 
-/* Creates the folder above the file in `path`, which make_path built: the
- * root ends in a slash, so there is one. */
+/* Creates the folders above the file in `path`, which rv_app_make_path built
+ * under the host's data folder, so there is a slash. */
 static void make_parents(struct rv_app_path *path)
 {
     char *slash = NULL;
     for (char *c = path->text; *c; ++c)
         if (*c == '/')
             slash = c;
+    if (!slash)
+        return;
     *slash = 0;
     Directory_CreateWithParents(path->text, 0);
     *slash = '/';
@@ -125,7 +109,7 @@ struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mod
 {
     struct rv_app_path path;
     if ((mode != RV_APP_FILE_READ && mode != RV_APP_FILE_WRITE) ||
-        make_path(&path, RV_APP_DATA_ROOT, name, 0) < 0)
+        rv_app_make_path(&path, GameDirectory_UserData, name, 0) < 0)
         return NULL;
     if (mode == RV_APP_FILE_WRITE) {
         make_parents(&path);
@@ -137,7 +121,7 @@ struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mod
 int rv_app_data_delete(const char *name)
 {
     struct rv_app_path path;
-    if (make_path(&path, RV_APP_DATA_ROOT, name, 0) < 0)
+    if (rv_app_make_path(&path, GameDirectory_UserData, name, 0) < 0)
         return -1;
     return File_DeleteLegacyPath(&path) == 0 ? 0 : -1;
 }

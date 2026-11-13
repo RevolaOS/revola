@@ -87,7 +87,7 @@ int GameSystem_GetPath(uint32_t directory_kind, char *out_path, int *size, const
 int GameSystem_GetGameName(char *out_name, int capacity, int localized);
 uint32_t GameSystem_GetDeviceFamily(void);
 int GameSystem_IsModelCode1(void);
-void GameSystem_GetMicroseconds(uint32_t *out_microseconds);
+void Clock_ReadMicroseconds(uint32_t *out_microseconds);
 int GameDebug_OpenFile(uint32_t directory_kind, const char *relative_path, int read_only, void **out_handle);
 void GameDebug_CloseFile(void *handle);
 int GameDebug_ReadFile(void *handle, void *buffer, uint32_t byte_count, uint32_t *out_count);
@@ -215,8 +215,19 @@ struct GameUser *GameUser_Add(const char *name);
 const char *GameUser_GetName(struct GameUser *user);
 void GameUser_CopyDateA(void *out_date, struct GameUser *user);
 void GameUser_CopyDateB(void *out_date, struct GameUser *user);
-uint32_t GameUser_GetId(struct GameUser *user);
+uint16_t GameUser_GetId(struct GameUser *user);
 void GameUser_SetName(struct GameUser *user, const char *name);
+int32_t GameSettings_ReadMappedString(int32_t preference, void *out_value, uint32_t *size, const void *table);
+int GameBacklight_SetLevel(void *backlight, int percent);
+void GameBacklight_SetDimmed(void *backlight, int dimmed);
+int GameSaveTable_Close(void *table, uint32_t slot);
+struct GameUser *GameUserList_Add(void *users, const char *name);
+int GameAudio_GetCachedSpeed(void *bridge);
+void GameAudio_QueuePreviousTrack(void *bridge);
+uint8_t GameAudio_ReadPlayerFlag93F(void *bridge);
+uint8_t GameAudio_ReadCurrentEntryFlag(void *bridge);
+uint32_t GameAudio_ReadMixerLevel(void);
+uint32_t AudioMixer_GetMusicLevel(void);
 void Bitmap_LoadResource(void *bitmap, const void *resource, uint32_t argument, uint32_t flags);
 void *GraphicsContext_ConstructDefault(void *context);
 void GraphicsContext_FillRect(void *context, const int32_t *rect);
@@ -864,7 +875,7 @@ extern void *MediaArtworkProvider;
 #define ADDR_GameSystem_GetGameName 0x082bdd4c
 #define ADDR_GameSystem_GetDeviceFamily 0x082bdce0
 #define ADDR_GameSystem_IsModelCode1 0x082bdf04
-#define ADDR_GameSystem_GetMicroseconds 0x0807bffc
+#define ADDR_Clock_ReadMicroseconds 0x0807bffc
 #define ADDR_GameDebug_OpenFile 0x082bdaf8
 #define ADDR_GameDebug_CloseFile 0x082bdaa4
 #define ADDR_GameDebug_ReadFile 0x082bdc20
@@ -994,6 +1005,17 @@ extern void *MediaArtworkProvider;
 #define ADDR_GameUser_CopyDateB 0x082c10d8
 #define ADDR_GameUser_GetId 0x082c1108
 #define ADDR_GameUser_SetName 0x082c1128
+#define ADDR_GameSettings_ReadMappedString 0x08073f5c
+#define ADDR_GameBacklight_SetLevel 0x081b1928
+#define ADDR_GameBacklight_SetDimmed 0x081b18ec
+#define ADDR_GameSaveTable_Close 0x0813eee0
+#define ADDR_GameUserList_Add 0x0812bb00
+#define ADDR_GameAudio_GetCachedSpeed 0x0817f7ec
+#define ADDR_GameAudio_QueuePreviousTrack 0x0817f528
+#define ADDR_GameAudio_ReadPlayerFlag93F 0x0817eb70
+#define ADDR_GameAudio_ReadCurrentEntryFlag 0x0817f054
+#define ADDR_GameAudio_ReadMixerLevel 0x0817f09c
+#define ADDR_AudioMixer_GetMusicLevel 0x081a6b78
 #define ADDR_Bitmap_LoadResource 0x08103984
 #define ADDR_GraphicsContext_ConstructDefault 0x0825b008
 #define ADDR_GraphicsContext_FillRect 0x0825ae34
@@ -2017,6 +2039,7 @@ extern void *MediaArtworkProvider;
 #define GameListEntry_user_data_path 0x34
 #define GameListEntry_bytes 0x50
 #define GamesService_list 0x28
+#define GamesService_users 0x54
 #define GamesService_selected_index 0x8c
 #define GamesService_list_built 0x90
 #define GameAPIModule_name 0x0
@@ -2083,6 +2106,10 @@ extern void *MediaArtworkProvider;
 #define GameSetting_read 0xc
 #define GameSetting_argument 0x10
 #define GameSetting_bytes 0x14
+#define GameUserList_entries 0x0
+#define GameUserList_count 0x4
+#define GameUserList_next_id 0x18
+#define GameUserList_dirty 0x1a
 #define BitmapCache_service 0x0
 #define BitmapCache_resource_id 0x4
 #define BitmapCache_loaded 0x8

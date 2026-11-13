@@ -6,11 +6,13 @@
 
 void rv_app_start(void);
 uint32_t rv_app_reserved_entry(void);
+extern const uint8_t rv_app_imports[];
 
 const struct rv_app_eapp_header rv_app_eapp_header __attribute__((section(".eapp"), used)) = {
     .magic = GameImage_Magic,
     .version = GameImage_MaxVersion,
     .entry_count = RV_APP_EAPP_SLOT_COUNT,
+    .imports = (uint32_t)rv_app_imports,
     .entries = {
         [RV_APP_EAPP_SLOT_INIT] = (uint32_t)rv_app_start,
         [RV_APP_EAPP_SLOT_SHUTDOWN] = (uint32_t)rv_app_runtime_shutdown,

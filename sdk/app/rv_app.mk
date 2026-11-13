@@ -22,13 +22,7 @@ KIND ?= game
 HEAP_KIB ?= 5120
 include $(SDK)/rv_firmware.mk
 
-ifeq ($(KIND),game)
-RV_APP_ROOT := /Revola/Games/
-RV_APP_DATA_ROOT := /Revola/Data/Games/
-else ifeq ($(KIND),app)
-RV_APP_ROOT := /Revola/Apps/
-RV_APP_DATA_ROOT := /Revola/Data/Apps/
-else
+ifeq ($(filter game app,$(KIND)),)
 $(error KIND must be game or app)
 endif
 $(if $(ID),,$(error ID names the package folder))
@@ -47,12 +41,11 @@ RV_APP_CFLAGS := -std=c11 -Os $(RV_APP_ARCH_FLAGS) -mlong-calls \
     -I$(SDK)/app -I$(SDK) $(EXTRA_CFLAGS)
 RV_APP_LDFLAGS := -nostdlib -Wl,-T,$(SDK)/app/runtime/rv_app.lds -Wl,--gc-sections \
     -Wl,--just-symbols=$(SDK)/$(RV_FIRMWARE_LD)
-# One runtime per kind: its objects carry the root.
-RV_APP_RUNTIME_DIR := $(OUT)/runtime-$(KIND)
+RV_APP_RUNTIME_DIR := $(OUT)/runtime
 RV_APP_RUNTIME := $(RV_APP_RUNTIME_DIR)/librv_app.a
 RV_APP_STARTUP := $(RV_APP_RUNTIME_DIR)/startup.o
 RV_APP_RUNTIME_OBJECTS := $(addprefix $(RV_APP_RUNTIME_DIR)/,\
-    runtime.o memory.o time.o input.o files.o directory.o display.o text.o ui.o wheel.o)
+    runtime.o imports.o memory.o time.o input.o files.o directory.o display.o text.o ui.o wheel.o)
 
 $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)
 	$(RM) $@
@@ -60,7 +53,17 @@ $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)
 
 $(RV_APP_RUNTIME_DIR)/%.o: $(SDK)/app/runtime/%.c $(SDK)/app/rv_app.mk
 	@mkdir -p $(@D)
-	$(CC) $(RV_APP_CFLAGS) -DRV_APP_ROOT='"$(RV_APP_ROOT)"' -DRV_APP_DATA_ROOT='"$(RV_APP_DATA_ROOT)"' -MMD -MP -c $< -o $@
+	$(CC) $(RV_APP_CFLAGS) -MMD -MP -c $< -o $@
+
+# The interface ids and counts the import list names, in a form the assembler reads.
+$(RV_APP_RUNTIME_DIR)/imports_ids.h: $(SDK)/$(RV_FIRMWARE_LD:.ld=.h) $(SDK)/app/rv_app.mk
+	@mkdir -p $(@D)
+	grep -E '^#define (GameAPI_[A-Za-z]+_(Id[0-3]|Count)|GameAPIModule_NameBytes|GameImport_Tail) ' $< > $@
+
+$(RV_APP_RUNTIME_DIR)/imports.o: $(SDK)/app/runtime/imports.S $(SDK)/app/runtime/imports.def \
+		$(RV_APP_RUNTIME_DIR)/imports_ids.h $(SDK)/app/rv_app.mk
+	@mkdir -p $(@D)
+	$(CC) $(RV_APP_ARCH_FLAGS) -I$(@D) -I$(SDK)/app/runtime -c $< -o $@
 
 $(RV_APP_STARTUP): $(SDK)/app/runtime/startup.S $(SDK)/app/rv_app.mk
 	@mkdir -p $(@D)
