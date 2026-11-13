@@ -395,9 +395,9 @@ static uint32_t template_of(uint8_t kind)
 {
     switch (kind) {
     case RV_SCREEN_KIND_SLIDER:
-        return core_template_slider;
+        return core_template(CORE_TEMPLATE_SLIDER);
     case RV_SCREEN_KIND_CANVAS:
-        return core_template_canvas;
+        return core_template(CORE_TEMPLATE_CANVAS);
     default:
         return 0;
     }

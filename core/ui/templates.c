@@ -1,36 +1,23 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* View templates the core adds to Apple's. Templates are built once, when the UI
- * starts, from every View resource the enumeration yields, so the core builds
- * its own at boot and yields them after Apple's: a text page of paragraph
- * views, a slider with the Brightness bar and value text, a canvas of one core
- * view, an empty one, and the copies of stock pane templates the menu panes
- * take while the enumeration still runs. All screens of a kind share the
- * template's views; a screen rebinds them to its own sources through its VCvs
- * each time it is displayed. */
+/* View templates the core adds to Apple's: a text page of paragraph views, a
+ * slider with the Brightness bar and value text, a canvas of one core view, an
+ * empty one, and the copies of stock pane templates the menu panes take. Each
+ * is built the first time a screen or pane needs it, as UI_InitializeViewTemplates
+ * builds the stock ones at UI start, and stays for the session, so a kind no
+ * screen opens costs nothing. All screens of a kind share the template's views;
+ * a screen rebinds them to its own sources through its VCvs each time it is
+ * displayed. */
 
 #include "ui/templates.h"
 #include "osos-2.0.5.h"
 #include "ui/resources.h"
-#include "hooks/sites.h"
+#include "rv_api.h"
 #include <stddef.h>
 
-uint32_t core_template_text;
-uint32_t core_template_slider;
-uint32_t core_template_canvas;
-uint32_t core_template_empty;
-
 static void *bank;
-static uint32_t empty_source;
-
-/* In the order the enumeration yields them: the four built at boot and the
- * copies the panes take, one per copied pane kind. */
-#define MAX_TEMPLATES 8
 static const void *copy_second; /* views appended to the stock ones by write_copy */
 static int copy_replaced;       /* view replaced by an image view in its box, -1 for none */
-static uint32_t templates[MAX_TEMPLATES];
-static uint32_t template_count;
-static int enumerated; /* Apple built its templates: a later one is never built */
 
 static const void *stock(uint32_t type, uint32_t id, uint32_t *bytes)
 {
@@ -40,6 +27,20 @@ static const void *stock(uint32_t type, uint32_t id, uint32_t *bytes)
 static void set(uint32_t type, uint32_t id, const void *data, uint32_t bytes)
 {
     core_resource_set(type, id, data, bytes);
+}
+
+/* The empty string the text views of the text page and the empty message are
+ * bound to until a screen rebinds them; made for the first template that
+ * needs it. */
+static uint32_t empty_string(void)
+{
+    static uint32_t id;
+    if (!id && (id = core_resource_take(0, 1)) != 0) {
+        uint32_t source[6] = {1, 12, Resource_SORC, Service_String, id, SourceDestination_Title};
+        set(Resource_SORC, id, source, sizeof source);
+        set(Resource_String, id, "", 1);
+    }
+    return id;
 }
 
 /* Writes the View resource of a template whose first id is `id`; 0 when a
@@ -91,15 +92,46 @@ static void slide_like_brightness(uint32_t id)
     ((uint8_t *)block.data)[TemplateResource_has_styles] = 1;
 }
 
-/* Takes `ids` ids, writes the View with `write` (measured first) and stores it
- * with the stock template's TMLT. The bank keeps the only copy: the
- * enumeration yields it and the template builds its child views from it. */
+/* Builds the template of View `id` as UI_InitializeViewTemplates builds each
+ * stock one: a zeroed options block whose edge offsets are the owner's bounds
+ * (its parent's when it has one), the owner as event target when it has one,
+ * and the standard kind. The owner's children are walked in order when a
+ * template is looked up, so one appended now is found. 0 when Apple hands no
+ * template view back. */
+static int construct(uint32_t id)
+{
+    uint8_t *owner = RV_FIELD(UI_GetLayoutManager(), LayoutManager_template_owner, uint8_t *);
+    uint8_t *parent = RV_FIELD(owner, View_parent, uint8_t *);
+    const uint8_t *bounds = (parent ? parent : owner) + View_bounds;
+    uint32_t *options = Heap_AllocateZeroed(ViewOptions_bytes);
+    if (!options)
+        return 0;
+    options[ViewOptions_left_offset / 4] = RV_FIELD(bounds, Rect_left, uint32_t);
+    options[ViewOptions_top_offset / 4] = RV_FIELD(bounds, Rect_top, uint32_t);
+    options[ViewOptions_bottom_offset / 4] = RV_FIELD(bounds, Rect_bottom, uint32_t);
+    options[ViewOptions_right_offset / 4] = RV_FIELD(bounds, Rect_right, uint32_t);
+    int (*has_target)(void *) =
+        RV_FIELD(RV_FIELD(owner, 0, void **), View_has_event_target_method, void *);
+    void *built = UI_CreateTemplateFromResource(RV_FIELD(owner, TemplateOwner_context, void *), owner,
+                                                has_target(owner) ? owner : NULL, options, id, 0);
+    Heap_Free(options);
+    uint8_t *view = built ? Object_GetInterface(built, Interface_Template) : NULL;
+    if (!view)
+        return 0;
+    view[TemplateView_kind] = TemplateKind_Standard;
+    return 1;
+}
+
+/* Takes `ids` ids, writes the View with `write` (measured first), stores it
+ * with the stock template's TMLT and builds the template from them. The bank
+ * keeps the only copy of the View: the template builds its child views from
+ * it. 0 when a stock resource is missing or the heap is full. */
 static uint32_t build(uint32_t stock_template, uint32_t ids, template_writer write)
 {
     uint32_t bytes;
     const void *views = stock(Resource_View, stock_template, &bytes);
     struct core_writer w = {NULL, 0};
-    if (!views || enumerated || template_count == MAX_TEMPLATES || !write(&w, 0, views))
+    if (!views || !write(&w, 0, views))
         return 0;
     uint32_t id = core_resource_take(0, ids);
     if (!id)
@@ -114,22 +146,20 @@ static uint32_t build(uint32_t stock_template, uint32_t ids, template_writer wri
     const void *tmlt = stock(Resource_TMLT, stock_template, &bytes);
     if (tmlt)
         set(Resource_TMLT, id, tmlt, bytes);
-    templates[template_count++] = id;
     return id;
 }
 
 /* Text page: the stock Legal template's second block is a paragraph, its last
  * the bottom margin; each paragraph hangs below the one before. View offsets
  * count from the screen top, so the first paragraph starts below the 20 px title
- * bar with the stock page's 15 px top margin. The views are bound when the
- * template is built, before the Settings model exists, so their boot source is
- * an empty string. */
+ * bar with the stock page's 15 px top margin. */
 #define TEXT_TOP 35
 #define PARAGRAPH_GAP 12
 static int write_text(struct core_writer *w, uint32_t t, const void *views)
 {
     struct core_block paragraph, margin;
-    if (!empty_source || !core_block_at(views, 1, &paragraph) ||
+    uint32_t source = empty_string();
+    if (!source || !core_block_at(views, 1, &paragraph) ||
         !core_block_at(views, core_blocks_count(views) - 1, &margin))
         return 0;
     core_write_word(w, CORE_MAX_PARAGRAPHS + 1);
@@ -139,7 +169,7 @@ static int write_text(struct core_writer *w, uint32_t t, const void *views)
         uint32_t words[10] = {ViewDescriptor_top_offset, previous ? PARAGRAPH_GAP : TEXT_TOP,
                               ViewDescriptor_top_reference_view, previous,
                               ViewDescriptor_top_anchor_mode, previous ? AnchorMode_Bottom : 0,
-                              ViewDescriptor_id, id, TextViewDescriptor_source, empty_source};
+                              ViewDescriptor_id, id, TextViewDescriptor_source, source};
         uint32_t begin = core_write_block_begin(w, paragraph.kind);
         core_write_copy(w, paragraph.data, paragraph.bytes, words, 5);
         core_write_block_end(w, begin);
@@ -158,10 +188,11 @@ static int write_empty(struct core_writer *w, uint32_t t, const void *views)
 {
     uint32_t bytes;
     const void *text = core_block_with_word(views, ViewDescriptor_id, RES_Calendar_Empty_Text, &bytes);
-    if (!text || !empty_source)
+    uint32_t source = empty_string();
+    if (!text || !source)
         return 0;
     core_write_word(w, 1);
-    uint32_t words[] = {ViewDescriptor_id, t + 1, TextViewDescriptor_source, empty_source};
+    uint32_t words[] = {ViewDescriptor_id, t + 1, TextViewDescriptor_source, source};
     uint32_t begin = core_write_block_begin(w, 0);
     core_write_copy(w, text, bytes, words, 2);
     core_write_block_end(w, begin);
@@ -269,46 +300,37 @@ uint32_t core_templates_copy(uint32_t stock_template, uint32_t second_template, 
     if (!views || (second_template && !copy_second))
         return 0;
     ids = 1 + core_blocks_count(views) + (copy_second ? core_blocks_count(copy_second) : 0);
-    return build(stock_template, ids, write_copy);
+    uint32_t id = build(stock_template, ids, write_copy);
+    return id && construct(id) ? id : 0;
 }
 
-/* Apple's template enumeration walks the ROM index only; the core's templates
- * follow it. Called again with the last id handed out, so the next one follows. */
-static uint32_t next_template(uint32_t resource_bank, uint32_t id, uint32_t bytes,
-                              const struct core_next *next)
+/* Templates of the core's screens, each with the stock template it is written
+ * from, the ids it takes and whether it slides in like Brightness. */
+static const struct {
+    uint32_t stock, ids;
+    template_writer write;
+    uint8_t slides;
+} templates[CORE_TEMPLATES] = {
+    [CORE_TEMPLATE_TEXT] = {RES_Settings_Legal_Template, 2 + CORE_MAX_PARAGRAPHS, write_text, 0},
+    [CORE_TEMPLATE_SLIDER] = {RES_Settings_Brightness_Template, 3, write_slider, 1},
+    [CORE_TEMPLATE_CANVAS] = {RES_FullScreenImage_Template, 2, write_canvas, 1},
+    [CORE_TEMPLATE_EMPTY] = {RES_Calendar_Empty_Template, 2, write_empty, 0},
+};
+static uint32_t built[CORE_TEMPLATES]; /* 0 until built */
+
+uint32_t core_template(enum core_template which)
 {
-    enumerated = 1;
-    uint32_t result = core_next_call(next, resource_bank, id, bytes, 0);
-    if (result)
-        return result;
-    uint32_t i = 0;
-    while (i < template_count && templates[i] != *(uint32_t *)id)
-        i++;
-    i = i < template_count ? i + 1 : 0; /* after ours, or the first after Apple's */
-    if (i >= template_count)
-        return 0;
-    *(uint32_t *)id = templates[i];
-    return (uint32_t)stock(Resource_View, templates[i], (uint32_t *)bytes);
+    if (built[which])
+        return built[which];
+    uint32_t id = build(templates[which].stock, templates[which].ids, templates[which].write);
+    if (id && templates[which].slides)
+        slide_like_brightness(id);
+    if (id && construct(id))
+        built[which] = id;
+    return built[which];
 }
-
-static const struct core_hook next_template_hook = {CORE_SITE_ResourceBank_NextTemplate_call,
-                                                    CORE_HOOK_FILTER, 0, next_template};
 
 void core_templates_init(void *resource_bank)
 {
     bank = resource_bank;
-    uint32_t id = core_resource_take(0, 1);
-    if (id) {
-        uint32_t source[6] = {1, 12, Resource_SORC, Service_String, id, SourceDestination_Title};
-        set(Resource_SORC, id, source, sizeof source);
-        set(Resource_String, id, "", 1);
-        empty_source = id;
-    }
-    core_template_text = build(RES_Settings_Legal_Template, 2 + CORE_MAX_PARAGRAPHS, write_text);
-    core_template_slider = build(RES_Settings_Brightness_Template, 3, write_slider);
-    core_template_canvas = build(RES_FullScreenImage_Template, 2, write_canvas);
-    core_template_empty = build(RES_Calendar_Empty_Template, 2, write_empty);
-    slide_like_brightness(core_template_slider);
-    slide_like_brightness(core_template_canvas);
-    core_hook_bind(&next_template_hook);
 }

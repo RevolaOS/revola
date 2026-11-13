@@ -34,11 +34,11 @@ static const void *list_frame(const void *instances)
 int core_list_empty(struct core_screen *s, uint32_t layout, uint32_t *next,
                     uint8_t *scratch, uint32_t bytes)
 {
-    uint32_t size;
+    uint32_t size, template = core_template(CORE_TEMPLATE_EMPTY);
     struct core_block list, prototype;
     const void *layouts = resource(Resource_SLyt, layout, &size);
     const void *original = resource(Resource_SSin, RES_Calendar_Empty_Instances, &size);
-    if (!core_template_empty || !layouts || !original ||
+    if (!template || !layouts || !original ||
         !core_block_at(layouts, 0, &list) || !core_block_at(original, 1, &prototype))
         return 0;
     uint32_t instances_id = core_word_at(list.data, 0);
@@ -57,7 +57,7 @@ int core_list_empty(struct core_screen *s, uint32_t layout, uint32_t *next,
     core_set_source(s->id + 3, s->id + 3, SourceDestination_Title);
     struct core_writer w = {scratch, 0};
     core_write_word(&w, 1);
-    uint32_t view = core_write_block_begin(&w, core_template_empty + 1);
+    uint32_t view = core_write_block_begin(&w, template + 1);
     core_write_word(&w, 1 + edges);
     uint32_t option = core_write_block_begin(&w, Resource_SORC);
     core_write_word(&w, s->id + 3);
@@ -86,7 +86,7 @@ int core_list_empty(struct core_screen *s, uint32_t layout, uint32_t *next,
         core_write_block_end(&w, begin);
     }
     uint32_t words[] = {SsinInstance_view_bindings, binding,
-                        SsinInstance_template, core_template_empty};
+                        SsinInstance_template, template};
     uint32_t begin = core_write_block_begin(&w, prototype.kind);
     core_write_copy(&w, prototype.data, prototype.bytes, words, 2);
     core_write_block_end(&w, begin);

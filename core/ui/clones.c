@@ -256,19 +256,19 @@ void core_clone_read_events(void *layout, const void *stream_bytes, uint32_t byt
  * one source per paragraph, bound to the text template's views by the layout. */
 int core_clone_text(struct core_screen *s)
 {
-    uint32_t next = s->id + 3, rows = CORE_SCREEN_ROWS(s);
-    if (!core_template_text) /* a VCvs block naming a view that does not exist panics */
+    uint32_t next = s->id + 3, rows = CORE_SCREEN_ROWS(s), template = core_template(CORE_TEMPLATE_TEXT);
+    if (!template) /* a VCvs block naming a view that does not exist panics */
         return 0;
     uint8_t *scratch = Heap_AllocateZeroed(CORE_CLONE_SCRATCH_BYTES);
     if (!scratch)
         return 0;
-    struct view_sources paragraphs = {core_template_text + 1, rows, s->ids - 8};
+    struct view_sources paragraphs = {template + 1, rows, s->ids - 8};
     core_set_source(s->id + 2, s->id + 2, 1);
     for (uint32_t i = 0; i < paragraphs.count; i++)
         core_set_source(rows + i, rows + i, 1);
     uint32_t none = 0; /* the Legal controller handles Menu itself: no layout events */
     struct layout_clone c = {RES_Settings_Legal_Layout, s->id + 1, RES_StatusBarWhite_Text,
-                             s->id + 2, 0, RES_Settings_Legal_Template, core_template_text,
+                             s->id + 2, 0, RES_Settings_Legal_Template, template,
                              &paragraphs, 0};
     int built = core_clone_layout(&c, &next, scratch, CORE_CLONE_SCRATCH_BYTES) && next <= rows;
     if (built) {
@@ -313,14 +313,14 @@ static int clone_brightness(struct core_screen *s, uint32_t template, const stru
 /* The stock layout's events: Select pops, as on the Brightness page. */
 int core_clone_slider(struct core_screen *s)
 {
-    uint32_t rows = CORE_SCREEN_ROWS(s), bytes;
+    uint32_t rows = CORE_SCREEN_ROWS(s), bytes, template = core_template(CORE_TEMPLATE_SLIDER);
     const void *events = stock(Resource_SEVT, RES_Settings_Brightness_Screen_Default, &bytes);
-    struct view_sources views = {core_template_slider + 1, rows, 2};
+    struct view_sources views = {template + 1, rows, 2};
     if (!events)
         return 0;
     core_set_source(rows, rows, 1);
     core_set_source(rows + 1, rows + 1, 1);
-    return clone_brightness(s, core_template_slider, &views, events, bytes);
+    return clone_brightness(s, template, &views, events, bytes);
 }
 
 /* Ids of a stock screen: id screen, +1 layout, +2 title, +3.. layout clones. The
@@ -362,7 +362,7 @@ int core_clone_stock(struct core_screen *s)
 int core_clone_canvas(struct core_screen *s)
 {
     uint32_t none = 0;
-    return clone_brightness(s, core_template_canvas, NULL, &none, 4);
+    return clone_brightness(s, core_template(CORE_TEMPLATE_CANVAS), NULL, &none, 4);
 }
 
 void core_clones_init(void *resource_bank)
