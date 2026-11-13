@@ -841,6 +841,8 @@ static int valid_screen(const struct rv_screen *s)
         return s->canvas.draw != NULL;
     case RV_SCREEN_KIND_DYNAMIC_LIST:
         return s->dynamic.count && s->dynamic.row && s->dynamic.detail <= RV_DETAIL_BELOW_SUBMENU;
+    case RV_SCREEN_KIND_STOCK:
+        return s->stock.screen == RV_STOCK_SCREEN_GAMES;
     default:
         return 0;
     }

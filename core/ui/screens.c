@@ -379,6 +379,9 @@ static int build(struct core_screen *s, int split, uint32_t screen)
     case RV_SCREEN_KIND_CANVAS:
         built = core_clone_canvas(s);
         break;
+    case RV_SCREEN_KIND_STOCK:
+        built = core_clone_stock(s);
+        break;
     default:
         break;
     }

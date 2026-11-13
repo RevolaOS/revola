@@ -59,6 +59,7 @@ void core_clone_layout_events(struct core_writer *w);
 int core_clone_text(struct core_screen *screen);
 int core_clone_slider(struct core_screen *screen);
 int core_clone_canvas(struct core_screen *screen);
+int core_clone_stock(struct core_screen *screen);
 /* Reads an event stream into a loaded layout's event map. */
 void core_clone_read_events(void *layout, const void *stream, uint32_t bytes);
 void core_clones_init(void *bank);

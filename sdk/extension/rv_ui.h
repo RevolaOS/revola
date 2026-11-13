@@ -54,6 +54,9 @@
 #define RV_SCREEN_SLIDER(id_, title_, key_, labels_, ...)                                       \
     {.id = (id_), .title = (title_), .kind = RV_SCREEN_KIND_SLIDER,                             \
      .choice = {(key_), 0, (labels_), RV_COUNT(labels_)} __VA_OPT__(, ) __VA_ARGS__}
+#define RV_SCREEN_STOCK(id_, title_, screen_, ...)                                              \
+    {.id = (id_), .title = (title_), .kind = RV_SCREEN_KIND_STOCK,                              \
+     .stock = {(screen_)} __VA_OPT__(, ) __VA_ARGS__}
 #define RV_SCREEN_CANVAS(id_, title_, draw_, input_, ...)                                       \
     {.id = (id_), .title = (title_), .kind = RV_SCREEN_KIND_CANVAS,                             \
      .canvas = {(draw_), (input_)} __VA_OPT__(, ) __VA_ARGS__}

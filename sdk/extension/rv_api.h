@@ -193,6 +193,13 @@ enum rv_screen_kind {
     RV_SCREEN_KIND_DYNAMIC_LIST, /* rows from callbacks, for data known only at run time */
     RV_SCREEN_KIND_MULTI_CHOICE, /* a checkmark per label; bit n of the int setting `choice.key`
                                is label n (at most 32), Select flips it */
+    RV_SCREEN_KIND_STOCK,        /* one of Apple's screens, `stock.screen`, under the
+                               extension's title; Apple's controller and bindings */
+};
+
+/* The stock screens an extension may show under a title of its own. */
+enum rv_stock_screen {
+    RV_STOCK_SCREEN_GAMES = 1, /* the Games list, over the games service's list */
 };
 
 /* How a list screen (list, choice, multi-choice, dynamic list) is laid out.
@@ -408,6 +415,9 @@ struct rv_screen {
             enum rv_row_status (*status)(const struct rv_context *ctx, uint32_t index);
             const char *empty; /* centered text while count is zero, NULL for none */
         } dynamic;
+        struct {
+            uint8_t screen; /* rv_stock_screen */
+        } stock;
     };
     /* A list in the split layout shows these in the preview pane beside the
      * title: a line of text and an icon on the system's box; NULL shows

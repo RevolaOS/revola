@@ -26,6 +26,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | `RV_SCREEN_DYNAMIC_LIST(id, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
 | `RV_SCREEN_CANVAS(id, title, draw, input)` | the extension draws and reads wheel and key input |
 | `RV_SCREEN_CONTEXT(rows)` | a long-press menu on a list or dynamic list |
+| `RV_SCREEN_STOCK(id, title, screen)` | one of Apple's screens under the extension's title, with Apple's controller and bindings: `RV_STOCK_SCREEN_GAMES`, the Games list; what it lists is the games service's one list |
 
 Screen ids are local to the extension. `api->ui_push(self, id, arg)` opens one from any code on the UI task; `ui_pop` closes the extension's own top screen. Labels and paragraphs are read from the module while a screen is open, never copied. An unloaded extension's screens and records are freed.
 
@@ -82,6 +83,7 @@ Screens and entries are limited by the heap and by the extension's 4,096 resourc
 |---|---|
 | list | 19 + 2 per row |
 | choice, multi-choice or dynamic list | 21 |
+| stock screen | 8 |
 | context menu | 5 + 1 per context row |
 | text page | 8 + 1 per paragraph |
 | slider | 10 |

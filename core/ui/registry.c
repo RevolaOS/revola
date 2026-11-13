@@ -191,8 +191,10 @@ struct core_screen *core_screens_find_setting(struct rv_extension_record *owner,
 {
     EACH_SCREEN(s) {
         const struct rv_screen *d = s->declaration;
-        if (d && s->owner == owner && d->kind != RV_SCREEN_KIND_LIST && d->kind != RV_SCREEN_KIND_TEXT &&
-            d->kind != RV_SCREEN_KIND_CANVAS && d->kind != RV_SCREEN_KIND_DYNAMIC_LIST && d->choice.key == key)
+        if (d && s->owner == owner &&
+            (d->kind == RV_SCREEN_KIND_CHOICE || d->kind == RV_SCREEN_KIND_MULTI_CHOICE ||
+             d->kind == RV_SCREEN_KIND_SLIDER) &&
+            d->choice.key == key)
             return s;
     }
     return NULL;
