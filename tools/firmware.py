@@ -30,9 +30,17 @@ def build_id(profile=None):
     return int(profile["inputs"]["osos.bin"]["sha256"][:8], 16)
 
 
-MENUS = {"MainMenu": "MAIN", "MusicMenu": "MUSIC", "ExtrasMenu": "EXTRAS", "SettingsMenu": "SETTINGS"}
+MENUS = {
+    "MainMenu": "MAIN",
+    "MusicMenu": "MUSIC",
+    "ExtrasMenu": "EXTRAS",
+    "SettingsMenu": "SETTINGS",
+    "VideosMenu": "VIDEOS",
+}
 ROW_PATTERN = re.compile(
-    r"^#define RES_(MainMenu|MusicMenu|ExtrasMenu|SettingsMenu)_(\w+)_Item (0x[0-9a-fA-F]+)", re.M
+    r"^#define RES_(MainMenu|MusicMenu|ExtrasMenu|SettingsMenu|VideosMenu)_(\w+)_Item"
+    r" (0x[0-9a-fA-F]+)",
+    re.M,
 )
 
 
@@ -44,8 +52,9 @@ def menu_row_name(menu, row):
 
 
 def menus_header(symbols_header):
-    """rv_menus.h for the SDK: the stock rows of the Main, Music, Extras and Settings
-    menus, which extensions anchor rows on and move, named by menu and row."""
+    """rv_menus.h for the SDK: the stock rows of the Main, Music, Extras, Settings
+    and Videos menus, which extensions anchor rows on and move, named by menu and
+    row."""
     rows = ROW_PATTERN.findall(symbols_header)
     if not rows:
         raise ValueError("symbols header has no menu rows")
@@ -53,8 +62,8 @@ def menus_header(symbols_header):
     width = max(len(name) for name, _ in names)
     lines = [
         "/* SPDX-License-Identifier: GPL-3.0-only */",
-        "/* Generated from the symbols header: the stock rows of the Main, Music, Extras",
-        " * and Settings menus, by menu and row. */",
+        "/* Generated from the symbols header: the stock rows of the Main, Music, Extras,",
+        " * Settings and Videos menus, by menu and row. */",
         "#pragma once",
         "",
     ]

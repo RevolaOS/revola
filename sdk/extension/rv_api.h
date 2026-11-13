@@ -425,8 +425,9 @@ struct rv_screen {
     uint32_t context_count;
 };
 
-/* The menus an entry can add a row to. The context menus are the ones a long
- * press of Select opens on Now Playing or on a row of a media list: songs
+/* The menus an entry can add a row to: Main, Music, Extras, Settings and
+ * Videos, and the context menus, the ones a long press of Select opens on Now
+ * Playing or on a row of a media list: songs
  * (song, playlist and Genius lists), albums, artists, podcast and iTunes U
  * episodes, audiobooks, movies, TV episodes and video playlist entries. Movies
  * and TV episodes have no stock context menu; the core opens one for the
@@ -437,6 +438,7 @@ enum rv_menu {
     RV_MENU_MUSIC,
     RV_MENU_EXTRAS,
     RV_MENU_SETTINGS,
+    RV_MENU_VIDEOS,
     RV_MENU_NOW_PLAYING_CONTEXT,
     RV_MENU_SONG_CONTEXT,
     RV_MENU_ALBUM_CONTEXT,

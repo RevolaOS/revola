@@ -66,9 +66,10 @@ SITE(SettingsMusicMenu_SecondaryAction_slot, SITE_SettingsMusicMenu_SecondaryAct
 SITE(Settings_Action_slot, SITE_Settings_Action_slot, VTABLE, ADDR_Settings_HandleAction,
      ADDR_Settings_HandleAction, 0, 1, 3, 0)
 
-/* Action dispatch of the Main, Music, Extras, Now Playing, Artists and Albums
- * controllers: (controller, action, argument); 0 when unhandled, so handlers chain.
- * Main, Music and Now Playing each have two controller classes with the slot. */
+/* Action dispatch of the Main, Music, Videos, Extras, Now Playing, Artists and
+ * Albums controllers: (controller, action, argument); 0 when unhandled, so
+ * handlers chain. Main, Music, Videos and Now Playing each have two controller
+ * classes with the slot. */
 SITE(Main_Action_slot, SITE_Main_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchCommonAction,
      ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
 SITE(Music_Action_slot, SITE_Music_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchCommonAction,
@@ -77,6 +78,10 @@ SITE(Main_SecondaryAction_slot, SITE_Main_SecondaryAction_slot, VTABLE,
      ADDR_MainMediaMenu_DispatchCommonAction, ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
 SITE(Music_SecondaryAction_slot, SITE_Music_SecondaryAction_slot, VTABLE,
      ADDR_MainMediaMenu_DispatchCommonAction, ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Videos_Action_slot, SITE_Videos_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchAction,
+     ADDR_MainMediaMenu_DispatchAction, 0, 1, 3, 0)
+SITE(Videos_SecondaryAction_slot, SITE_Videos_SecondaryAction_slot, VTABLE,
+     ADDR_MainMediaMenu_DispatchAction, ADDR_MainMediaMenu_DispatchAction, 0, 1, 3, 0)
 SITE(NowPlaying_SecondaryAction_slot, SITE_NowPlaying_SecondaryAction_slot, VTABLE,
      ADDR_NowPlaying_DispatchAction, ADDR_NowPlaying_DispatchAction, 0, 1, 3, 0)
 SITE(Extras_Action_slot, SITE_Extras_Action_slot, VTABLE, ADDR_ExtrasMenu_DispatchAction,
