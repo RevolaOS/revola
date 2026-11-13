@@ -7,7 +7,7 @@
  * BUNDLED(id)
  */
 BUNDLED("chapter-marks")
-BUNDLED("chapters")
+BUNDLED("chapter-menu")
 BUNDLED("clicker-modes")
 BUNDLED("equalizer")
 BUNDLED("fast-seek")
