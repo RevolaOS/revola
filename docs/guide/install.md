@@ -31,6 +31,7 @@ Backups and the assembled firmware are kept in the installer's application data 
 | `/Revola/Firmware/loader.bin` | The companion loader |
 | `/Revola/Extensions/*.rvx` | The extensions of the package |
 | `/Revola/Settings/` | Settings of the core and the extensions |
+| `/Revola/Themes/*.rvt` | The themes of the package and any you copy there, read by the Appearance extension |
 | Boot flash | The RevolaOS bootloader; Apple's bootloader is kept and used when Menu is held |
 
 ## Choosing a system at startup

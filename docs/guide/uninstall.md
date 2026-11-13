@@ -16,7 +16,7 @@ If a file cannot be deleted, the installer says so and restores Apple's bootload
 | Path | |
 |---|---|
 | `/Revola/Firmware/` | firmware and loader |
-| `/Revola/` | extensions, settings, data and crash reports |
+| `/Revola/` | extensions, themes, settings, data and crash reports |
 | Boot flash | the RevolaOS bootloader, replaced by Apple's |
 
 The files go first because the RevolaOS bootloader stops when they are missing.

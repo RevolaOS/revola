@@ -28,7 +28,7 @@ An extension must be built for the installed version of RevolaOS. The ones from 
 | Failed | the load failed for another reason |
 | Unreadable | the file is truncated or damaged; copy it again |
 | Duplicate | another file with the same extension id is loaded; remove one |
-| Conflict | wants a hook that an enabled extension holds exclusively; the site is named |
+| Conflict | wants a hook, or a content folder such as `/Revola/Themes/`, that an enabled extension holds exclusively; the holder is named |
 | Site mismatch | the firmware code it expected is not there |
 | No memory | the heap was full, or the extension declared more screens than the resource budget allows |
 
