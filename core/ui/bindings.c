@@ -79,7 +79,7 @@ static uint32_t layout_events(uint32_t layout, const struct core_next *next)
     uint8_t *screen = *(uint8_t **)((uint8_t *)layout + Layout_screen);
     uint32_t screen_id = screen ? core_word_at(screen, LayoutScreen_id) : 0;
     uint32_t layout_id = core_word_at((void *)layout, Layout_id);
-    core_panes_layout_events((void *)layout, layout_id, screen_id, screen);
+    core_panes_layout_events((void *)layout, layout_id);
     struct core_writer measure = {NULL, 0};
     write_bindings(&measure, screen_id, layout_id);
     if (measure.at <= 4)

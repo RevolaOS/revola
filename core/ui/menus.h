@@ -32,9 +32,9 @@ void core_menus_setting_changed(struct rv_extension_record *owner, uint16_t key)
 void core_menus_settings_reset(void);
 /* The live entry of the row with this item id and *owner its extension, or NULL. */
 const struct rv_menu_entry *core_menus_entry(uint32_t item, struct rv_extension_record **owner);
-/* 1 when `id` is a row's pane handler id; shows that row in its menu's pane
- * unless `argument` is the support query. */
-int core_menus_pane(uint32_t id, uint32_t argument);
+/* 1 when `id` is a row's pane handler id; shows that row in the pane of its
+ * menu, which `controller` runs, unless `argument` is the support query. */
+int core_menus_pane(uint32_t id, uint32_t argument, void *controller);
 /* 1 when `id` is the item or source id of a row, live, stale or parked. */
 int core_menus_owns(uint32_t id);
 

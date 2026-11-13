@@ -150,7 +150,7 @@ uint32_t core_screens_action(void *controller, const char *name, uint32_t argume
     uint32_t item = parse_handler(name), found;
     if (!item)
         return 0;
-    if (core_menus_pane(item, argument))
+    if (core_menus_pane(item, argument, controller))
         return 1;
     struct core_screen *s = core_screens_of_id(item);
     if (s && core_panes_list_action(s, item, argument))

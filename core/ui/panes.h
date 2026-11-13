@@ -20,19 +20,14 @@ uint32_t core_panes_write(struct core_writer *w, uint32_t title, uint32_t line, 
 /* Stores a pane VLyt under `id` with the TEVT of `stock_pane`, which loading
  * the layout's events requires. */
 void core_panes_store(uint32_t id, const void *data, uint32_t bytes, uint32_t stock_pane);
-/* Builds the shared pane layouts of a menu's rows once: the kind its rows get
- * without a picture and the kinds in `pictures`, a bit per pane kind as the
- * manifest flags hold them (CORE_MANIFEST_PANES); 0 when it cannot or the menu
- * has no pane. */
-int core_panes_prepare(uint8_t root, uint32_t pictures);
-/* The row with this item id is highlighted: makes it the current row of the
- * pane its picture asks for and points the menu's pane name at that layout. */
-void core_panes_show(uint8_t root, uint32_t item);
-/* Apple loaded the events of the layout with this id, of screen `screen_id`'s
- * definition `definition`: a shared pane layout reads its stock row layout's
- * events, and the definition is the one the menu's panes must be known to. */
-void core_panes_layout_events(void *layout, uint32_t layout_id, uint32_t screen_id,
-                              const void *definition);
+/* The row with this item id is highlighted on the menu `controller` shows:
+ * builds the pane layout its picture asks for if the menu has none yet, adds
+ * it to the controller, makes the row the pane's current one and points the
+ * menu's pane name at the layout. */
+void core_panes_show(uint8_t root, uint32_t item, void *controller);
+/* Apple loaded the events of the layout with this id: a shared pane layout
+ * reads its stock row layout's events. */
+void core_panes_layout_events(void *layout, uint32_t layout_id);
 /* Asks the pane on screen for its icon and caption again: what they show changed. */
 void core_panes_refresh(void);
 /* The same for the panes showing a row of `owner`; api->pane_refresh. */

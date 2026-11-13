@@ -196,8 +196,6 @@ int core_menus_register(struct rv_extension_record *owner, const struct rv_menu_
             core_resource_set(Resource_String, item + 1, e->row.label, n + 1);
             continue;
         }
-        core_panes_prepare(root, owner ? CORE_MANIFEST_PANES(core_loader_manifest_flags(owner->manifest))
-                                       : 0);
         /* The item id is the title property, the source id the value's. */
         if (e->row.kind == RV_ROW_KIND_SETTING || e->row.kind == RV_ROW_KIND_INFO)
             core_set_source2(item + 1, item, item + 1, SourceDestination_InlineValue);
@@ -354,12 +352,12 @@ const struct rv_menu_entry *core_menus_entry(uint32_t item, struct rv_extension_
     return NULL;
 }
 
-int core_menus_pane(uint32_t id, uint32_t argument)
+int core_menus_pane(uint32_t id, uint32_t argument, void *controller)
 {
     EACH_ROW(r)
         if (r->entry && core_panes_layout_name(r->root) && r->item + 2 == id) {
             if (argument != ActionSupportQuery)
-                core_panes_show(r->root, r->item);
+                core_panes_show(r->root, r->item, controller);
             return 1;
         }
     return 0;

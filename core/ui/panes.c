@@ -10,8 +10,10 @@
  * pane views are bound to properties answered from the row (label, caption,
  * bitmap). The kind follows the picture's size, as Apple's panes do (Games on
  * Main shows the Extras pane): a 78 x 121 mask is a Settings icon, the other
- * sizes are the pictures of the kinds below. A menu's layouts are built when
- * its first row registers, so a menu without extension rows costs nothing. */
+ * sizes are the pictures of the kinds below. A menu's layout of a kind is
+ * built on the first highlight of a row whose picture asks for it and added to
+ * the menu's running controller, so a menu nobody highlights an extension row
+ * on costs nothing. */
 
 #include "ui/panes.h"
 #include "osos-2.0.5.h"
@@ -23,17 +25,17 @@
 #include "ui/resources.h"
 #include "ui/screens.h"
 #include "ui/templates.h"
-#include "hooks/sites.h"
+#include "rv_api.h"
 #include <stddef.h>
 
-/* The pane kinds, in the order of the manifest's pane flags, each with the
- * picture its pane shows, the stock template that shows it and what each of
- * the template's views shows, in the View resource's order (the icon pane's in
- * the order core_panes_write binds its VLyt). A kind every row
- * of a menu uses (icon, square) binds the stock template itself through the
- * row layout's VLyt or VCvs; a kind whose stock rows each have a template of
- * their own gets a copy of one of them (with a second template's views after
- * it when the stock pane is two instances), so the stock views stay untouched. */
+/* The pane kinds, each with the picture its pane shows, the stock template
+ * that shows it and what each of the template's views shows, in the View
+ * resource's order (the icon pane's in the order core_panes_write binds its
+ * VLyt). A kind every row of a menu uses (icon, square) binds the stock
+ * template itself through the row layout's VLyt or VCvs; a kind whose stock
+ * rows each have a template of their own gets a copy of one of them (with a
+ * second template's views after it when the stock pane is two instances), so
+ * the stock views stay untouched. */
 enum {
     PANE_ICON,       /* a 78 x 121 mask on the Settings box, the label above */
     PANE_SQUARE,     /* 119 x 119, the caption under it */
@@ -77,14 +79,17 @@ static const struct kind {
 static uint32_t copies[PANE_KINDS]; /* the template copies made so far */
 
 /* A menu with a pane: the stock row layout its shared layouts clone, the screen
- * whose SLst lists them, the pane instance's template in that layout, the kind
- * a row without a picture gets and the layout name the rows' bindings switch
- * to. The icon pane is rebound through a VLyt of its four views, the others
- * through the pane instance's VCvs, binding the template's views from its
- * first image view on. */
+ * whose SLst lists it, the pane instance's template in that layout, the kind
+ * a row without a picture gets, the layout name the rows' bindings switch to
+ * and the offset at which the menu's controller class embeds its screen
+ * definition. The icon
+ * pane is rebound through a VLyt of its four views, the others through the
+ * pane instance's VCvs, binding the template's views from its first image
+ * view on. */
 struct menu {
     uint8_t root;
     uint8_t kind;
+    uint16_t definition_offset;
     uint32_t stock;
     uint32_t screen;
     uint32_t template;
@@ -92,16 +97,19 @@ struct menu {
 };
 
 static const struct menu menus[] = {
-    {RV_MENU_SETTINGS, PANE_ICON, RES_SettingsMenus_Legal_Layout, RES_SettingsMenu_Main_Screen,
-     RES_SettingsPreview_Template, "RvSettingsPane"},
-    {RV_MENU_MAIN, PANE_SQUARE, RES_MainMenus_Main_Radio_Layout, RES_MainMenus_Main_Screen,
-     RES_MainMenuPreview_Radio_Template, "RvMainPane"},
-    {RV_MENU_MUSIC, PANE_SQUARE, RES_MusicMenu_Songs_Layout, RES_MainMenus_Music_Screen,
-     RES_MediaMenuPreview_Template, "RvMusicPane"},
-    {RV_MENU_VIDEOS, PANE_SQUARE, RES_VideosMenu_Movies_Layout, RES_VideosMenu_Screen,
-     RES_MediaMenuPreview_Template, "RvVideosPane"},
-    {RV_MENU_EXTRAS, PANE_WIDE, RES_ExtrasMenu_Games_Layout, RES_ExtrasMenu_Screen,
-     RES_ExtrasPreview_Games_Template, "RvExtrasPane"},
+    {RV_MENU_SETTINGS, PANE_ICON, SettingsMenuListController_screen_definition,
+     RES_SettingsMenus_Legal_Layout, RES_SettingsMenu_Main_Screen, RES_SettingsPreview_Template,
+     "RvSettingsPane"},
+    {RV_MENU_MAIN, PANE_SQUARE, MainMediaMenuController_screen_definition,
+     RES_MainMenus_Main_Radio_Layout, RES_MainMenus_Main_Screen, RES_MainMenuPreview_Radio_Template,
+     "RvMainPane"},
+    {RV_MENU_MUSIC, PANE_SQUARE, MainMediaMenuController_screen_definition, RES_MusicMenu_Songs_Layout,
+     RES_MainMenus_Music_Screen, RES_MediaMenuPreview_Template, "RvMusicPane"},
+    {RV_MENU_VIDEOS, PANE_SQUARE, MainMediaMenuController_screen_definition,
+     RES_VideosMenu_Movies_Layout, RES_VideosMenu_Screen, RES_MediaMenuPreview_Template,
+     "RvVideosPane"},
+    {RV_MENU_EXTRAS, PANE_WIDE, ExtrasMenuController_screen_definition, RES_ExtrasMenu_Games_Layout,
+     RES_ExtrasMenu_Screen, RES_ExtrasPreview_Games_Template, "RvExtrasPane"},
 };
 #define MENUS (sizeof menus / sizeof menus[0])
 
@@ -111,17 +119,12 @@ struct pane {
     uint8_t menu, kind;
     uint32_t layout;  /* the layout's ids follow it */
     uint32_t current; /* item id of the row the pane shows */
-    /* The menu screen's definition when the layout was built: a controller made
-     * from it does not know the layout, so it is not switched to while that
-     * definition is the last one seen. A later definition at the same address
-     * keeps the pane waiting for the push after it. */
-    const void *built_under;
+    /* The stock row layout's SLst entry with the clone's id: every Layout
+     * built for the clone keeps a pointer to it. */
+    uint32_t record[ScreenLayoutEntry_bytes / 4];
 };
 static struct pane *panes;
-/* The screen definition whose layouts last loaded their events, per menu, and
- * the layout the menu's pane name points at. */
-static const void *definitions[MENUS];
-static uint32_t pointed[MENUS];
+static uint32_t pointed[MENUS]; /* the layout each menu's pane name points at */
 
 /* Ids after a layout: three for its SSin, its pane VLyt or VCvs and a status
  * bar VCvs, then a source per pane view, in the kind's view order. */
@@ -304,10 +307,21 @@ static int picture_pane(uint32_t kind, uint32_t id, struct layout_clone *c,
     return views->view != 0;
 }
 
+/* The screen definition of the menu's controller on screen, NULL when
+ * `controller` runs another screen. */
+static uint8_t *definition_of(const struct menu *m, void *controller)
+{
+    uint8_t *definition = (uint8_t *)controller + m->definition_offset;
+    return core_word_at(definition, ScreenDefinition_screen) == m->screen ? definition : NULL;
+}
+
 /* A shared layout: the menu's stock row layout with its pane rebound for the
- * kind, listed in the menu screen's SLst (read on every push). Its events are
- * the stock layout's, read when Apple loads them, so it stores none of its own. */
-static int build(const struct menu *m, uint32_t kind)
+ * kind, listed in the menu screen's SLst. Apple reads the SLst on every push
+ * and, after every layout change, builds the screen's definition from it
+ * again to look the shown layout up, so a layout only a controller knows is
+ * not enough. Its events are the stock layout's, read when Apple loads them,
+ * so it stores none of its own. NULL when it cannot be built. */
+static struct pane *build(const struct menu *m, uint32_t kind, void *controller)
 {
     uint32_t slst_bytes, entry_bytes, none = 0;
     /* A kind on another menu's row layout carries this menu's title in its
@@ -316,14 +330,16 @@ static int build(const struct menu *m, uint32_t kind)
     uint32_t title = kinds[kind].layout ? title_source(m->stock) : 0;
     const void *slst = stock(Resource_SLst, m->screen, &slst_bytes);
     const uint8_t *entry = slst ? core_block_with_word(slst, 0, m->stock, &entry_bytes) : NULL;
+    if (!entry || entry_bytes < ScreenLayoutEntry_bytes || (kinds[kind].layout && !title))
+        return NULL;
     uint32_t scratch_bytes = slst_bytes + 16 > 1024 ? slst_bytes + 16 : 1024;
-    struct pane *p = entry && (title || !kinds[kind].layout) ? Heap_AllocateZeroed(sizeof *p) : NULL;
+    struct pane *p = Heap_AllocateZeroed(sizeof *p);
     uint32_t id = p ? core_resource_take(0, IDS) : 0;
     uint8_t *scratch = id ? Heap_AllocateZeroed(scratch_bytes) : NULL;
     if (!scratch) {
         if (p)
             Heap_Free(p);
-        return 0;
+        return NULL;
     }
     uint32_t next = id + 1;
     struct core_writer w = {scratch, 0};
@@ -337,27 +353,72 @@ static int build(const struct menu *m, uint32_t kind)
     struct view_sources views;
     int built = kind == PANE_ICON ? icon_pane(m, id, &c, &w) : picture_pane(kind, id, &c, &views);
     built = built && core_clone_layout(&c, &next, scratch, scratch_bytes) && next <= id + 4;
-    if (built) {
-        core_resource_set(Resource_SEVT, id, &none, sizeof none);
-        /* The stock SLst with one more block, a copy of the stock row layout's. */
-        w.at = 0;
-        core_write_word(&w, core_blocks_count(slst) + 1);
-        core_write_bytes(&w, (const uint8_t *)slst + 4, slst_bytes - 4);
-        uint32_t begin = core_write_block_begin(&w, 0);
-        uint32_t words[2] = {0, id};
-        core_write_copy(&w, entry, entry_bytes, words, 1);
-        core_write_block_end(&w, begin);
-        core_resource_set(Resource_SLst, m->screen, scratch, w.at);
-        p->menu = (uint8_t)(m - menus);
-        p->kind = (uint8_t)kind;
-        p->layout = id;
-        p->built_under = definitions[m - menus];
-        p->next = panes;
-        panes = p;
-    } else
+    if (!built) {
+        Heap_Free(scratch);
         Heap_Free(p);
+        return NULL;
+    }
+    core_resource_set(Resource_SEVT, id, &none, sizeof none);
+    for (uint32_t i = 0; i < sizeof p->record / 4; i++)
+        p->record[i] = core_word_at(entry, 4 * i);
+    p->record[ScreenLayoutEntry_layout / 4] = id;
+    /* The stock SLst with one more block: the clone's record. */
+    w.at = 0;
+    core_write_word(&w, core_blocks_count(slst) + 1);
+    core_write_bytes(&w, (const uint8_t *)slst + 4, slst_bytes - 4);
+    uint32_t begin = core_write_block_begin(&w, 0);
+    core_write_bytes(&w, p->record, sizeof p->record);
+    core_write_block_end(&w, begin);
+    core_resource_set(Resource_SLst, m->screen, scratch, w.at);
     Heap_Free(scratch);
-    return built;
+    /* Storing the SLst freed its previous copy, where every Layout the
+     * controller on screen built at push keeps its record. The new copy keeps
+     * the blocks at their offsets, so the records move to it. */
+    const uint8_t *fresh = stock(Resource_SLst, m->screen, &slst_bytes);
+    uint8_t *definition = definition_of(m, controller);
+    struct core_block block;
+    for (uint32_t i = 0; fresh && definition && core_block_at(fresh, i, &block); i++) {
+        uint32_t layout_id = core_word_at(block.data, ScreenLayoutEntry_layout);
+        void **slot = UIntPointerMap_GetOrInsert(definition + ScreenDefinition_layout_cache, &layout_id);
+        if (*slot)
+            RV_FIELD(*slot, Layout_screen_list_record, const void *) = block.data;
+    }
+    p->menu = (uint8_t)(m - menus);
+    p->kind = (uint8_t)kind;
+    p->layout = id;
+    p->next = panes;
+    panes = p;
+    return p;
+}
+
+/* The menu's layout of a kind, built on first use. */
+static struct pane *pane_for(const struct menu *m, uint32_t kind, void *controller)
+{
+    struct pane *p = pane_of(m, kind);
+    return p ? p : build(m, kind, controller);
+}
+
+/* Adds the layout to the menu's running controller the way UI_LoadScreenLayouts
+ * adds a screen's own at push: the controller's definition keeps a Layout per
+ * id, freed with the controller, and navigator.SwitchLayout looks the id up
+ * there. The lookup inserts an empty entry, which is filled here. 1 when the
+ * controller knows the layout. */
+static int attach(const struct pane *p, void *controller)
+{
+    uint8_t *definition = definition_of(&menus[p->menu], controller);
+    if (!definition)
+        return 0;
+    void **slot = UIntPointerMap_GetOrInsert(definition + ScreenDefinition_layout_cache, &p->layout);
+    if (*slot)
+        return 1;
+    uint8_t *layout = Runtime_OperatorNew(Layout_bytes);
+    if (!layout)
+        return 0;
+    layout = UI_ConstructLayout(layout, p->layout, (uint8_t)p->record[ScreenLayoutEntry_kind / 4],
+                                p->record);
+    RV_FIELD(layout, Layout_screen, void *) = definition;
+    *slot = layout;
+    return 1;
 }
 
 const char *core_panes_layout_name(uint8_t root)
@@ -366,26 +427,9 @@ const char *core_panes_layout_name(uint8_t root)
     return m ? m->name : NULL;
 }
 
-int core_panes_prepare(uint8_t root, uint32_t pictures)
-{
-    const struct menu *m = menu_of(root);
-    if (!m)
-        return 0;
-    int ready = pane_of(m, m->kind) || build(m, m->kind);
-    /* Settings shows icons only, the other menus every picture kind. */
-    for (uint32_t kind = PANE_ICON + 1; ready && m->kind != PANE_ICON && kind < PANE_KINDS; kind++)
-        if (pictures >> kind & 1 && !pane_of(m, kind))
-            build(m, kind);
-    return ready;
-}
-
-void core_panes_layout_events(void *layout, uint32_t layout_id, uint32_t screen_id,
-                              const void *definition)
+void core_panes_layout_events(void *layout, uint32_t layout_id)
 {
     uint32_t bytes;
-    for (uint32_t i = 0; i < MENUS; i++)
-        if (menus[i].screen == screen_id)
-            definitions[i] = definition;
     for (struct pane *p = panes; p; p = p->next) {
         const void *events =
             p->layout == layout_id ? stock(Resource_SEVT, menus[p->menu].stock, &bytes) : NULL;
@@ -447,7 +491,7 @@ static int kind_of(const void *bmap)
     return -1;
 }
 
-void core_panes_show(uint8_t root, uint32_t item)
+void core_panes_show(uint8_t root, uint32_t item, void *controller)
 {
     const struct menu *m = menu_of(root);
     struct rv_extension_record *owner;
@@ -456,17 +500,17 @@ void core_panes_show(uint8_t root, uint32_t item)
         return;
     const void *picture = core_bitmap_picture(owner, icon_of(e, owner));
     int kind = picture ? kind_of(picture) : -1;
-    struct pane *p = kind >= 0 ? pane_of(m, (uint32_t)kind) : NULL;
+    struct pane *p = kind >= 0 ? pane_for(m, (uint32_t)kind, controller) : NULL;
     if (!p)
-        p = pane_of(m, m->kind);
+        p = pane_for(m, m->kind, controller);
     if (p)
         p->current = item;
     /* The binding's navigator.SwitchLayout runs after this handler and looks
-     * the menu's pane name up then. A layout the screen's controller does not
-     * know would abort the switch, so the stock row's layout stands in until
-     * the screen is pushed again. */
-    int known = p && definitions[p->menu] != p->built_under;
-    uint32_t layout = known ? p->layout : m->stock, name[CppString_bytes / 4], allocator = 0, length = 0;
+     * the menu's pane name up then. A layout the controller does not know
+     * would abort the switch, so the stock row's layout stands in when the
+     * pane could not be built or added. */
+    uint32_t layout = p && attach(p, controller) ? p->layout : m->stock;
+    uint32_t name[CppString_bytes / 4], allocator = 0, length = 0;
     if (pointed[m - menus] != layout) {
         while (m->name[length])
             length++;
