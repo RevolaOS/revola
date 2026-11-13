@@ -7,9 +7,10 @@
  * extension with the site recorded for Settings > Extensions. A disabled
  * extension is never read past its manifest and keeps no record: zero bytes.
  *
- * Resident assets are read with the main module into one block and stay there
- * as stored until it unloads. Other assets are found by streaming the rest of
- * the catalog when asked for.
+ * Preloaded assets are read with the main module into one block and stay there
+ * as stored until it unloads; a kept module is loaded after main and stays
+ * loaded (kept()). Other assets are found by streaming the rest of the catalog
+ * when asked for; other modules load as their trigger says.
  *
  * Every block the loader hands out carries an 8-byte header naming its owner, so
  * the record's live and peak counters are exact. Images and hook arrays are not
@@ -54,11 +55,10 @@
 #define MAX_ENTRIES 0xffff
 #define MAX_PAYLOAD (16u << 20) /* keeps sums of payload sizes far from overflow */
 
-/* The highest preload class read into RAM with the main module, from Optimize
- * For: Auto preloads the optional assets on a hard disk, where a read costs a
+/* The highest preload class kept with the main module, from Optimize: Auto
+ * keeps the optional modules and assets on a hard disk, where a read costs a
  * spin-up, and leaves them on flash. */
 static uint8_t preload_limit = RVX_PRELOAD_ALWAYS;
-static int preload_refresh_pending;
 
 static uint8_t chosen_preload_limit(void)
 {
@@ -88,6 +88,8 @@ struct manifest_module {
     uint8_t trigger; /* 0 always, 1 screen, 2 manual */
     uint8_t screen_count;
     uint16_t screens; /* first of screen_count consecutive strings */
+    uint8_t preload;  /* RVX_PRELOAD_: kept loaded with main; main carries always */
+    uint8_t reserved; /* 0 */
 };
 
 /* A raw hook site; kind is a core_site_kind. */
@@ -107,7 +109,7 @@ struct core_module {
     const struct rv_descriptor *descriptor; /* NULL for a module that returned none */
     struct core_hook *hooks;                /* core-owned copies of its descriptor's hooks */
     uint8_t loaded : 1;
-    uint8_t unload_pending : 1;  /* module_unload asked while a screen was open */
+    uint8_t held : 1;            /* module_load since the last module_unload */
     uint8_t unload_notified : 1; /* its unload callback ran ahead of the unload */
     uint8_t idle;                /* ticks without an open screen */
     uint8_t screens_open;        /* its screens on the navigation stack */
@@ -342,11 +344,12 @@ static enum core_extension_failure manifest_valid(const uint8_t *buffer, uint32_
         if (sites[i].name >= header->strings_bytes)
             return CORE_EXTENSION_UNREADABLE;
     const struct manifest_module *modules = (const struct manifest_module *)(sites + header->site_count);
-    if (modules[0].trigger != TRIGGER_ALWAYS)
+    if (modules[0].trigger != TRIGGER_ALWAYS || modules[0].preload != RVX_PRELOAD_ALWAYS)
         return CORE_EXTENSION_UNREADABLE;
     for (uint32_t i = 0; i < header->module_count; i++)
         if (modules[i].name >= header->strings_bytes ||
-            modules[i].screens >= header->strings_bytes || modules[i].trigger > TRIGGER_MANUAL)
+            modules[i].screens >= header->strings_bytes || modules[i].trigger > TRIGGER_MANUAL ||
+            modules[i].preload > RVX_PRELOAD_NEVER || modules[i].reserved)
             return CORE_EXTENSION_UNREADABLE;
     if (!buffer[table + header->text[CORE_MANIFEST_ID]])
         return CORE_EXTENSION_UNREADABLE;
@@ -575,6 +578,8 @@ static void reload_preloaded(struct rv_extension_record *record)
     if (old)
         retire(old);
 }
+
+static int preload_refresh_pending;
 
 void core_loader_preload_refresh(void)
 {
@@ -1068,6 +1073,7 @@ static void api_free(rv_extension_handle self, void *block)
 
 static int load_module(struct rv_extension_record *record, uint32_t index);
 static void unload_module(struct rv_extension_record *record, uint32_t index);
+static int kept(const struct rv_extension_record *record, uint32_t index);
 
 static int api_module_load(rv_extension_handle self, uint32_t module)
 {
@@ -1075,10 +1081,10 @@ static int api_module_load(rv_extension_handle self, uint32_t module)
     if (!record || module == 0 || module >= record->module_count ||
         module_record(record, module)->trigger != TRIGGER_MANUAL)
         return RV_BAD_ARGUMENT;
-    record->modules[module].unload_pending = 0;
-    if (record->modules[module].loaded)
-        return RV_OK;
-    return load_module(record, module) ? RV_OK : RV_NOT_FOUND;
+    if (!record->modules[module].loaded && !load_module(record, module))
+        return RV_NOT_FOUND;
+    record->modules[module].held = 1;
+    return RV_OK;
 }
 
 static int api_asset_set_provider(rv_extension_handle self,
@@ -1103,12 +1109,11 @@ static void api_module_unload(rv_extension_handle self, uint32_t module)
     if (!record || !module || module >= record->module_count ||
         module_record(record, module)->trigger != TRIGGER_MANUAL)
         return;
-    if (record->modules[module].screens_open)
-        record->modules[module].unload_pending = 1; /* the grace tick unloads it */
-    else
-        unload_module(record, module);
+    record->modules[module].held = 0;
+    if (record->modules[module].loaded && !record->modules[module].screens_open &&
+        !kept(record, module))
+        unload_module(record, module); /* else the grace tick, once nothing keeps it */
 }
-
 
 static int api_ui_push(rv_extension_handle self, const char *screen, void *arg)
 {
@@ -1589,12 +1594,39 @@ static int load_module_now(struct rv_extension_record *record, uint32_t index)
     return 1;
 }
 
+/* The record's failure and conflict site are main's standing, what Settings >
+ * Extensions shows; another module's load leaves them, its caller sees the
+ * result. */
 static int load_module(struct rv_extension_record *record, uint32_t index)
 {
+    uint8_t failure = record->failure;
+    uint8_t conflict_site = record->conflict_site;
     core_trace(RV_TRACE_LOAD_BEGIN, record->owner);
     int loaded = load_module_now(record, index);
     core_trace(RV_TRACE_LOAD_END, record->owner);
+    if (index) {
+        record->failure = failure;
+        record->conflict_site = conflict_site;
+    }
     return loaded;
+}
+
+/* A module after main whose class Optimize keeps is loaded after main and stays
+ * loaded while the extension is; its trigger then only says who may ask for it. */
+static int kept(const struct rv_extension_record *record, uint32_t index)
+{
+    return index && module_record(record, index)->preload <= preload_limit;
+}
+
+/* Loads the kept modules that are not loaded; one that does not fit stays on
+ * disk and loads on request. */
+static void keep_modules(struct rv_extension_record *record)
+{
+    if (!record->modules[0].loaded)
+        return;
+    for (uint32_t i = 1; i < record->module_count; i++)
+        if (kept(record, i) && !record->modules[i].loaded)
+            load_module(record, i);
 }
 
 /* The module's unload callback, once; the extension's other modules are still
@@ -1656,7 +1688,7 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     retire(module->image);
     module->image = NULL;
     module->loaded = 0;
-    module->unload_pending = 0;
+    module->held = 0;
 }
 
 /* Extensions */
@@ -1704,6 +1736,7 @@ static struct rv_extension_record *load_extension(const char *file)
     record->next = core_extensions;
     core_extensions = record;
     load_module(record, 0); /* a failure stays on the record for the screen */
+    keep_modules(record);
     return record;
 }
 
@@ -1952,29 +1985,34 @@ void core_loader_tick(void)
     retiring = NULL;
     core_resource_tick();
 
+    if (preload_refresh_pending) {
+        preload_refresh_pending = 0;
+        preload_limit = chosen_preload_limit();
+        for (struct rv_extension_record *r = core_extensions; r; r = r->next)
+            if (r->modules[0].loaded && !r->pending_unload) {
+                reload_preloaded(r);
+                keep_modules(r);
+            }
+        core_panes_refresh();
+    }
     for (struct rv_extension_record *r = core_extensions, *next; r; r = next) {
         next = r->next;
         if (r->pending_unload) {
             unload_extension(r);
             continue;
         }
+        /* A module stays while something keeps it: its class, a screen of it on
+         * the stack, or the extension's module_load; its idle count starts
+         * when that ends. */
         for (uint32_t i = 1; i < r->module_count; i++) {
             struct core_module *module = &r->modules[i];
-            if (!module->loaded || module->screens_open)
+            if (!module->loaded)
                 continue;
-            if (module->unload_pending)
-                unload_module(r, i);
-            else if (module_record(r, i)->trigger == TRIGGER_SCREEN && ++module->idle >= IDLE_TICKS)
+            if (module->screens_open || module->held || kept(r, i))
+                module->idle = 0;
+            else if (module_record(r, i)->trigger != TRIGGER_SCREEN || ++module->idle >= IDLE_TICKS)
                 unload_module(r, i);
         }
-    }
-    if (preload_refresh_pending) {
-        preload_refresh_pending = 0;
-        preload_limit = chosen_preload_limit();
-        for (struct rv_extension_record *r = core_extensions; r; r = r->next)
-            if (r->modules[0].loaded && !r->pending_unload)
-                reload_preloaded(r);
-        core_panes_refresh();
     }
 }
 

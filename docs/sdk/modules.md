@@ -19,10 +19,14 @@ A module is one ELF, linked at 0 with `rvx.lds` and relocated by the loader into
 | `trigger` in the manifest | Loaded | Unloaded |
 |---|---|---|
 | `always` | while the extension is enabled; only the first module, `main` | when the extension is disabled |
-| `screen` | when a push looks up one of the ids in its `screens` list | ten seconds after the last of its screens was popped |
-| `manual` | `api->module_load` | `api->module_unload` |
+| `screen` | when a push looks up one of the ids in its `screens` list | ten seconds after the last of its screens was popped, unless its `preload` class keeps it |
+| `manual` | `api->module_load` | `api->module_unload`, or when Optimize stops keeping it and the extension does not hold it |
 
-A screen module keeps the code of a rarely used page off the heap until it opens. The core binds the hooks and registers the screens of a non-main module when it loads and drops them when it unloads.
+A screen module keeps the code of a rarely used page off the heap until it opens, unless Optimize keeps it (below). The core binds the hooks and registers the screens of a non-main module when it loads and drops them when it unloads.
+
+`preload` on a module after `main` (`always`, `optional`, the default, or `never`) says whether the core keeps it loaded: `always`, and `optional` when Settings > Extensions > Optimize prefers performance. A kept module is loaded with `main` and stays loaded while the extension is loaded, so a screen push or `module_load` finds it there and reads nothing from the disk. The trigger says who may ask for the module, not when it goes. A kept module that does not fit in memory stays on disk and loads on request.
+
+For a kept module, `module_load` returns RV_OK at once and runs nothing again; `module_unload` releases the module, and it unloads once no screen of it is open and Optimize does not keep it. A kept module the extension never loaded unloads when Optimize stops keeping it. A module's entry runs once per load, and its statics keep their values across `module_load` calls while the core keeps it; a module that needs a known state per use resets it itself. `module_service` returns the table whenever the module is loaded, so a kept module's table is there before `module_load`; call `module_load` anyway, it is what loads the module when the core does not keep it.
 
 ## Services
 

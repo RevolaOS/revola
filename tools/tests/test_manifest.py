@@ -60,15 +60,18 @@ class ManifestTests(unittest.TestCase):
             )
             for i in range(count)
         ]
-        name, trigger, screens, first = modules[1]
+        name, trigger, screens, first, preload, reserved = modules[1]
         self.assertEqual(
-            (strings(data, table, name), trigger, screens), ("editor", 1, 2)
+            (strings(data, table, name), trigger, screens, preload, reserved),
+            ("editor", 1, 2, 1, 0),
         )
         self.assertEqual(strings(data, table, first), "editor")
         after = first + len("editor") + 1
         self.assertEqual(strings(data, table, after), "x")
         self.assertEqual(modules[0][1:3], (0, 0))
         self.assertEqual(modules[2][1:3], (2, 0))
+        # main carries always, the others optional unless the manifest says
+        self.assertEqual([m[4] for m in modules], [0, 1, 1])
 
     def test_note(self):
         data = manifest.compile_manifest({**DOCUMENT, "note": "Adapted from X"})
@@ -211,6 +214,13 @@ class ManifestTests(unittest.TestCase):
             "screens without trigger": {
                 "module": [main, {"name": "b", "trigger": "manual", "screens": ["s"]}]
             },
+            "preload on main": {"module": [{**main, "preload": "always"}]},
+            "preload unknown on a screen module": {
+                "module": [
+                    main,
+                    {"name": "b", "trigger": "screen", "screens": ["s"], "preload": "soon"},
+                ]
+            },
             "screen trigger without screens": {
                 "module": [main, {"name": "b", "trigger": "screen"}]
             },
@@ -248,6 +258,7 @@ class ManifestTests(unittest.TestCase):
                 },
                 {"name": "table", "file": "table.bin", "preload": "always"},
                 {"name": "song", "file": "a.mp3", "compress": False},
+                {"name": "notes", "file": "notes.bin"},
             ],
         }
         self.assertEqual(
@@ -274,9 +285,33 @@ class ManifestTests(unittest.TestCase):
                     "compress": False,
                     "menu": False,
                 },
+                {
+                    "name": "notes",
+                    "file": "notes.bin",
+                    "preload": "optional",
+                    "compress": True,
+                    "menu": False,
+                },
             ],
         )
         self.assertEqual(manifest.assets(DOCUMENT), [])
+
+    def test_module_preload_classes(self):
+        main = DOCUMENT["module"][0]
+        modules = [
+            main,
+            {"name": "s", "trigger": "screen", "screens": ["s"]},
+            {"name": "t", "trigger": "screen", "screens": ["t"], "preload": "never"},
+            {"name": "u", "trigger": "screen", "screens": ["u"], "preload": "always"},
+            {"name": "m", "trigger": "manual"},
+            {"name": "n", "trigger": "manual", "preload": "never"},
+        ]
+        data = manifest.compile_manifest({**DOCUMENT, "module": modules})
+        classes = [
+            manifest.MODULE.unpack_from(data, manifest.HEADER.size + i * manifest.MODULE.size)[4]
+            for i in range(len(modules))
+        ]
+        self.assertEqual(classes, [0, 1, 2, 0, 1, 2])
 
     def test_rejects_invalid_assets(self):
         good = {"name": "icon", "file": "icon.png"}

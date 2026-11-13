@@ -60,8 +60,9 @@ struct rv_extension_record {
 /* Reads the store state and loads every enabled extension. Runs once the disk
  * is readable, after the settings store loaded. */
 void core_loader_boot(void);
-/* The Optimize For setting or the asset provider changed: the next grace tick
- * reads every loaded extension's preloaded block again. */
+/* The Optimize setting or the asset provider changed: at the next grace tick
+ * every loaded extension's preloaded block is read again and its kept modules
+ * loaded; a module no longer kept unloads unless a screen or module_load holds it. */
 void core_loader_preload_refresh(void);
 /* Settings > Extensions: writes the enabled flag; loads now or unloads at the
  * next grace tick. `file` is the name on disk without .rvx. */

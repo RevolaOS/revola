@@ -30,4 +30,4 @@ Reset All Settings empties the store.
 |---|---|---|
 | 0 | every extension | enabled; unset means on for the ids in `loader/bundled.def`, off otherwise |
 | 0xffff | every extension | which of its Main and Music rows are shown |
-| `CORE_KEY_*` | core | memory rules, crashed extension, Optimize For, see `core/settings.h` |
+| `CORE_KEY_*` | core | memory rules, crashed extension, Optimize, see `core/settings.h` |

@@ -8,7 +8,7 @@ A text page: the version with its build id, the project address, the RevolaOS an
 
 ## Extensions
 
-A list with Usage and Optimize For followed by the installed extensions. The pane says how many are installed. The list is read when opened and released when closed. Each extension's second line shows its state and, while it runs, its memory use; selecting one opens its description and Enabled control. Usage opens Memory Usage. Optimize For is a core-owned choice screen (Auto, Performance, Memory) over `CORE_KEY_OPTIMIZE`, the preload limit of the loader (`docs/core/loader.md`); its row shows the chosen label.
+A list with Usage and Optimize followed by the installed extensions. The pane says how many are installed. The list is read when opened and released when closed. Each extension's second line shows its state and, while it runs, its memory use; selecting one opens its description and Enabled control. Usage opens Memory Usage. Optimize is a core-owned choice screen (Auto, Performance, Memory) over `CORE_KEY_OPTIMIZE`, the preload limit of the loader (`docs/core/loader.md`); its row shows the chosen label.
 
 | State | Cause | Enabled control |
 |---|---|---|

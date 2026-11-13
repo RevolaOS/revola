@@ -54,9 +54,7 @@ class RvxTests(unittest.TestCase):
             asset("icon", b"\x11" * 64, preload="optional", kind=rvx.KIND_BITMAP),
             asset("song", bytes(range(256)), compress=False),
         ]
-        packed, _ = rvx.pack_extension(
-            compiled, two_modules(), assets, 0x10002, 0x660EB6FF
-        )
+        packed, _ = rvx.pack_extension(compiled, two_modules(), assets, 0x10002, 0x660EB6FF)
         header, entries = rvx.unpack(packed)
         self.assertEqual(
             header,
@@ -81,7 +79,8 @@ class RvxTests(unittest.TestCase):
         )
         self.assertEqual([e["preload"] for e in entries], [0, 0, 1, 2, 2])
         main, dsp, icon, table, song = entries
-        # main, then the preloadable icon, then dsp, then the on-disk assets
+        # main, the preloadable icon, dsp (kept by its manifest class), the on-disk assets
+        self.assertEqual(rvx.manifest_module_classes(compiled), [0, 1])
         self.assertEqual(main["offset"], first)
         self.assertEqual(icon["offset"], first + main["stored"])
         self.assertEqual(dsp["offset"], icon["offset"] + ((icon["stored"] + 3) & ~3))
@@ -112,13 +111,34 @@ class RvxTests(unittest.TestCase):
         main = rvx.module_image(
             SYMBOLS, bytes([1]) + bytes(range(1, 0x48)), [0x44, 0x4C]
         )
-        after, _ = rvx.pack_extension(
-            compiled, [("main", main), two_modules()[1]], [], 0, 0
-        )
+        after, _ = rvx.pack_extension(compiled, [("main", main), two_modules()[1]], [], 0, 0)
         old, new = rvx.unpack(before)[0], rvx.unpack(after)[0]
         self.assertEqual(len(before), len(after))
         self.assertNotEqual(old.pop("body_hash"), new.pop("body_hash"))
         self.assertEqual(old, new)
+
+    def test_kept_modules_follow_the_preloadable_assets(self):
+        document = {
+            **DOCUMENT,
+            "module": [
+                *DOCUMENT["module"],
+                {"name": "rare", "trigger": "manual", "preload": "never"},
+                {"name": "core", "trigger": "manual", "preload": "always"},
+            ],
+        }
+        compiled = manifest.compile_manifest(document)
+        rare = rvx.module_image({**SYMBOLS, "__bss_end": 0x50}, bytes(0x50), [])
+        modules = [*two_modules(), ("rare", rare), ("core", rare)]
+        assets = [asset("icon", b"\x11" * 64, preload="optional"), asset("table", bytes(9))]
+        packed, _ = rvx.pack_extension(compiled, modules, assets, 0, 0)
+        entries = rvx.unpack(packed)[1]
+        self.assertEqual(rvx.manifest_module_classes(compiled), [0, 1, 2, 0])
+        self.assertEqual([e["preload"] for e in entries], [0, 0, 0, 0, 1, 2])
+        by_offset = sorted(entries, key=lambda e: e["offset"])
+        self.assertEqual(
+            [e["name"] for e in by_offset],
+            [rvx.fnv1a(n.encode()) for n in ("main", "icon", "dsp", "core", "rare", "table")],
+        )
 
     def test_module_count_must_match_the_manifest(self):
         compiled = manifest.compile_manifest(DOCUMENT)
@@ -151,7 +171,11 @@ class RvxTests(unittest.TestCase):
     def test_unpack_refuses_what_the_core_refuses(self):
         compiled = manifest.compile_manifest(DOCUMENT)
         packed, _ = rvx.pack_extension(
-            compiled, two_modules(), [asset("icon", b"\x22" * 40, preload="always")], 0, 0
+            compiled,
+            two_modules(),
+            [asset("icon", b"\x22" * 40, preload="always"), asset("more", b"\x33" * 8)],
+            0,
+            0,
         )
         catalog = rvx.HEADER.size + ((len(compiled) + 3) & ~3)
         icon = catalog + 2 * 20
@@ -166,6 +190,12 @@ class RvxTests(unittest.TestCase):
             struct.pack_into("<I", data, index * 4, value)
             return bytes(data)
 
+        def preload_classes(classes):
+            data = bytearray(packed)
+            for index, value in classes.items():
+                data[catalog + index * 20 + 6] = value
+            return bytes(data)
+
         cases = {
             "format 0": header_field(1, 0),
             "fewer entries than modules": header_field(5, 1),
@@ -177,6 +207,10 @@ class RvxTests(unittest.TestCase):
                 bytearray(packed[: icon + 4]) + b"\0" + packed[icon + 5 :]
             ),
             "module size differs": entry_field(0, 12, 0x6C + 4),
+            "main with a preload class": preload_classes({0: 1}),
+            "module with a preload class": preload_classes({1: 2}),
+            "asset class 3": preload_classes({2: 3}),
+            "assets out of order": preload_classes({2: 1, 3: 0}),
         }
         for name, data in cases.items():
             with self.subTest(name), self.assertRaises(ValueError):

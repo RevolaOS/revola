@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 48
+#define RV_API_MINOR 49
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -565,8 +565,10 @@ struct rv_api {
     void *(*alloc)(rv_extension_handle self, uint32_t bytes);
     void (*free)(rv_extension_handle self, void *block);
 
-    /* Manual-trigger modules by their index in the manifest. module_unload
-     * waits until none of the module's screens is open. */
+    /* Manual-trigger modules by their index in the manifest. module_load
+     * returns RV_OK at once for a loaded module; module_unload releases it,
+     * and it unloads once no screen of it is open and its preload class under
+     * Settings > Extensions > Optimize does not keep it (docs/sdk/modules.md). */
     int (*module_load)(rv_extension_handle self, uint32_t module);
     void (*module_unload)(rv_extension_handle self, uint32_t module);
 

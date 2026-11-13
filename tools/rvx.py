@@ -312,6 +312,16 @@ def manifest_modules(compiled):
     return struct.unpack_from("<I", compiled, 16)[0]
 
 
+def manifest_module_classes(compiled):
+    """The preload class of each module of a compiled manifest, in its order."""
+    count, sites = struct.unpack_from("<II", compiled, 16)
+    table = manifest.HEADER.size + sites * manifest.SITE.size
+    return [
+        manifest.MODULE.unpack_from(compiled, table + i * manifest.MODULE.size)[4]
+        for i in range(count)
+    ]
+
+
 def pack_extension(compiled, modules, assets, api, firmware):
     """The .rvx bytes and its entries in catalog order. `modules` are
     (name, payload) pairs in manifest order; `assets` are dictionaries with
@@ -356,12 +366,15 @@ def pack_extension(compiled, modules, assets, api, firmware):
             )
     count = len(modules)
     preloaded = sum(a["preload"] != "never" for a in assets)
-    # Payloads in load order: main, the assets that may be preloaded, other
-    # modules, the rest.
+    # Payloads in load order: main, the assets that may be preloaded with it,
+    # the modules that may be kept with it, the other modules, the other assets.
+    classes = manifest_module_classes(compiled)
+    kept = [i for i in range(1, count) if classes[i] != PRELOAD_NEVER]
     order = [
         0,
         *range(count, count + preloaded),
-        *range(1, count),
+        *kept,
+        *(i for i in range(1, count) if i not in kept),
         *range(count + preloaded, len(entries)),
     ]
     offset = HEADER.size + len(padded(compiled)) + len(entries) * ENTRY.size
@@ -500,12 +513,14 @@ def pack(prefix, out, toml, elves, api, firmware):
         assets.append({**asset, "kind": kind, "data": data})
     packed, entries = pack_extension(compiled, modules, assets, api, firmware)
     checked_entries = unpack(packed)[1]
+    classes = manifest_module_classes(compiled)
     out.write_bytes(packed)
-    for entry, checked in zip(entries, checked_entries):
+    for index, (entry, checked) in enumerate(zip(entries, checked_entries)):
         if checked["kind"] == KIND_MODULE:
             detail = (
-                f"text {checked['text']}, data {checked['data']}, bss {checked['bss']}, "
-                f"{checked['relocations']} relocations"
+                f"text {checked['text']}, data {checked['data']}, "
+                f"bss {checked['bss']}, {checked['relocations']} relocations, "
+                f"preload {PRELOAD[classes[index]]}"
             )
         else:
             codec = "lz" if checked["codec"] == LZ else "raw"

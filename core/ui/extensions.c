@@ -81,7 +81,7 @@ static void update_meter(void)
 
 static const char *const optimize_labels[] = {"Auto", "Performance", "Memory"};
 
-/* Row 0 is Usage, row 1 Optimize For, then one row per installed extension. */
+/* Row 0 is Usage, row 1 Optimize, then one row per installed extension. */
 static uint32_t list_count(const struct rv_context *ctx)
 {
     (void)ctx;
@@ -107,7 +107,7 @@ static const char *list_row(const struct rv_context *ctx, uint32_t index, const 
         int32_t mode = core_settings_get_int(CORE_SETTINGS_OWNER_CORE, CORE_KEY_OPTIMIZE,
                                              CORE_OPTIMIZE_AUTO);
         *detail = optimize_labels[mode >= 0 && mode < 3 ? mode : 0];
-        return "Optimize For";
+        return "Optimize";
     }
     if (!listed || index > listed_count + 1) {
         *detail = NULL;
@@ -332,9 +332,9 @@ static const struct rv_screen screens[] = {
      .caption = meter, .bitmap = &extensions_icon},
     {.id = "core.extension", .title = title, .kind = RV_SCREEN_KIND_CANVAS,
      .canvas = {.draw = page_draw, .input = page_input}},
-    /* Whether extensions' optional assets, their Settings icons by default,
-     * are kept in memory: Performance, Memory, or Auto by the disk. */
-    {.id = "core.optimize", .title = "Optimize For", .kind = RV_SCREEN_KIND_CHOICE,
+    /* Whether extensions' optional modules and assets, the default class, are
+     * kept in memory: Performance, Memory, or Auto by the disk. */
+    {.id = "core.optimize", .title = "Optimize", .kind = RV_SCREEN_KIND_CHOICE,
      .choice = {.key = CORE_KEY_OPTIMIZE, .labels = optimize_labels, .count = 3}},
 };
 

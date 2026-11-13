@@ -11,7 +11,7 @@ An extension is one file, `/Revola/Extensions/<id>.rvx`. Installing, sharing and
 | Header | format, core API major, firmware build id; the loader refuses any mismatch |
 | Manifest | id, name, description, version, author, license, API, stability, note, content folders, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
 | Catalog | one entry per module and asset: module i is entry i, then the assets by preload class, `always` first, `never` last |
-| Payloads | module images with their relocation tables, then the assets |
+| Payloads | the main module image with its relocation table, the assets that may be preloaded, the modules that may be kept, the other modules, the other assets |
 
 A module image is read into one block of the Apple heap, text, data and bss in a row. The relocation table is consumed through the stack in chunks, so a loaded module costs text + data + bss plus an 8-byte owner header. Every block the loader or `api->alloc` hands out carries that header, which is what makes the live and peak figures exact.
 
@@ -28,8 +28,10 @@ The FAT file name is only used to build paths. Identity is the manifest id, and 
 | Module trigger | Loads | Unloads |
 |---|---|---|
 | `always` (the main module) | while the extension is enabled | when it is disabled |
-| `manual` | `api->module_load` | `api->module_unload` |
-| `screen` | when a push looks up one of the screen ids its manifest entry lists (`core_loader_screen`) | ten ticks after the last of its screens was popped |
+| `manual` | `api->module_load` | `api->module_unload`, or when Optimize stops keeping it and the extension does not hold it |
+| `screen` | when a push looks up one of the screen ids its manifest entry lists (`core_loader_screen`) | ten ticks after the last of its screens was popped, unless its `preload` class keeps it |
+
+A module after main whose `preload` class Optimize keeps (`always`, or `optional` under Performance; see Assets below) is loaded right after main and kept while the extension is loaded: the grace tick does not age it, and `module_unload` only releases the extension's hold. The class is in the manifest's module record, beside the trigger; the catalog entry of a module carries `always`.
 
 Every module may return a descriptor. The core binds and registers a non-main module's hooks and screens when it loads and drops them when it unloads, keeping its screen records stale so the next load reuses their ids. Screen lookups and open counts are per extension. A descriptor's `service` pointer is handed to the extension's other modules by `module_service` while the module is loaded.
 
@@ -45,15 +47,15 @@ When USB disk mode ends (site `DiskModeExit_PopToMainScreen_call`, before the ma
 
 Assets are named bytes in the file: bitmaps, converted from PNG by `tools/bitmap.py`, and data. Bitmaps are always lz-compressed (`core/loader/lz.c`, 4 KB window). Data is compressed unless the manifest says `compress = false`; anything lz cannot shrink is stored raw.
 
-An asset's `preload` class says when it is read into RAM:
+The `preload` class of an asset, and of every module after main, says what is kept with main:
 
 | `preload` | Where it lives |
 |---|---|
-| `always` | read into one block with the main module, as stored, so using it needs no disk access |
-| `optional` | the same when the core prefers speed over memory, else on disk; the default for menu bitmaps |
-| `never` | found by streaming the catalog through the stack when asked for |
+| `always` | an asset is read into one block with the main module, as stored, so using it needs no disk access; a module is loaded with main and kept |
+| `optional` | the same when Optimize prefers speed over memory, else on disk; the default |
+| `never` | an asset is found by streaming the catalog through the stack when asked for; a module loads as its trigger says; the default for `compress = false` data |
 
-Settings > Extensions > Optimize For decides the `optional` class (`CORE_KEY_OPTIMIZE`): Performance preloads it, Memory leaves it on disk, Auto picks Performance on a hard disk, where every read costs a spin-up, and Memory on flash. Changing it, or an asset provider binding or releasing, reads every loaded extension's preloaded block again at the next grace tick, from the file as it is; a file that is gone or changed leaves its assets on disk. A bitmap the provider replaces is preloaded in the provider's stored form instead (`CORE_PRELOADED_PROVIDED`), counted to the owner, so a themed icon costs no disk read either; `asset_load` and `asset_read` still read the extension's own bytes from the file for it. A preloaded block that does not fit leaves the assets on disk; the extension still loads.
+Settings > Extensions > Optimize decides the `optional` class (`CORE_KEY_OPTIMIZE`): Performance preloads it, so an extension whose modules and assets are all `always` or `optional` never makes the disk spin up after boot; Memory leaves it on disk and keeps RAM use at its minimum; Auto picks Performance on a hard disk, where every read costs a spin-up, and Memory on flash. Changing it, or an asset provider binding or releasing, reads every loaded extension's preloaded block again at the next grace tick, from the file as it is, and loads the modules now kept; a file that is gone or changed leaves its assets on disk, and a kept module that fails to load stays on disk and loads on request. A bitmap the provider replaces is preloaded in the provider's stored form instead (`CORE_PRELOADED_PROVIDED`), counted to the owner, so a themed icon costs no disk read either; `asset_load` and `asset_read` still read the extension's own bytes from the file for it. A preloaded block that does not fit leaves the assets on disk; the extension still loads.
 
 Not yet done: Auto does not weigh heap pressure from the library (worth adding once a preloaded set measures in the hundreds of KB; the first-party icons are about 12 KB together), and an extension loaded before the provider binds at boot has its icons read twice.
 

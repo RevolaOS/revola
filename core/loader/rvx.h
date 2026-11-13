@@ -12,7 +12,8 @@
  *             (module i is entry i), then the assets by preload class, always
  *             first, never last
  *   payloads  word-aligned, at the catalog's offsets: main module, the assets
- *             that may be preloaded, other modules, the assets read on request
+ *             that may be preloaded, the modules that may be kept, the other
+ *             modules, the assets read on request
  *
  * A module payload is struct rvx_module, text and data, then reloc_count 32-bit
  * image offsets of words that get the load address added. BSS follows data in
@@ -20,7 +21,8 @@
  *
  * A preloaded asset is read into RAM with the main module and stays there as
  * stored. The others are read when the extension asks for them. Which of the
- * optional ones are preloaded is the core's choice. */
+ * optional ones are preloaded is the core's choice. A module's class is in the
+ * manifest, not here. */
 #define RVX_MAGIC 0x30585652 /* RVX0 */
 #define RVX_FORMAT 1
 
@@ -36,8 +38,9 @@ struct rvx_header {
 
 enum { RVX_MODULE, RVX_DATA, RVX_BITMAP };
 
-/* When an asset is read into RAM: always, when the core prefers speed over
- * memory, or never. Modules carry always. */
+/* When an asset is read into RAM with the main module, or a module after main
+ * is kept loaded: always, when Optimize prefers speed over memory, or never.
+ * Catalog entries of modules carry always. */
 enum { RVX_PRELOAD_ALWAYS, RVX_PRELOAD_OPTIONAL, RVX_PRELOAD_NEVER };
 
 /* lz: groups of a flag byte and up to 8 items, bit 0 first. A clear bit is a

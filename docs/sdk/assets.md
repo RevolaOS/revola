@@ -6,9 +6,9 @@
 |---|---|
 | `name` | how the extension refers to it, `[a-z0-9_-]{1,31}` |
 | `file` | the source file |
-| `preload` | when the asset is read into RAM, as stored, with the main module: `always`, for what a hook needs without disk access, such as a small table; `optional` (the default for `menu = true`), when the core prefers speed over memory; `never` (the default otherwise), read when asked for |
+| `preload` | when the asset is read into RAM, as stored, with the main module: `always`, for what a hook needs without disk access, such as a small table; `optional` (the default), when Settings > Extensions > Optimize prefers speed over memory; `never` (the default with `compress = false`), read from the file when asked for, for what is large or rarely used |
 | `menu = true` | a menu bitmap, such as an entry's `.bitmap` in the Settings pane: like the stock icons, a 78 x 121 coverage mask the system draws in its own colour, taken from the PNG's alpha, or its gray level when it is opaque grayscale |
-| `compress = false` | data only: stored raw, so `asset_read` can seek in it; bitmaps are always compressed |
+| `compress = false` | data only: stored raw, so `asset_read` can seek in it, and `preload` must be `never`; bitmaps are always compressed |
 
 | Call | |
 |---|---|

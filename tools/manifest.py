@@ -26,6 +26,9 @@ manifest.toml:
     name = "editor"
     trigger = "screen"           # loaded while one of its screens is on the stack
     screens = ["editor"]         # ids of the extension's screens
+    preload = "optional"         # kept loaded with main: always, optional (the default,
+                                 # when Optimize allows) or never (loads as the trigger
+                                 # says); not for main
 
     [[site]]                     # a raw hook site, bound as RV_RAW_SITE(0)
     name = "coverflow_clear"     # a label for the site
@@ -38,9 +41,9 @@ manifest.toml:
     name = "eq-icon"             # [a-z0-9_-]{1,31}
     file = "assets/eq.png"       # .png becomes a bitmap, anything else is data
     menu = true                  # a menu bitmap: 78 x 121 coverage, drawn in the system colour
-    preload = "optional"         # read into RAM as stored with the main module: always,
-                                 # optional (when Optimize For allows; the default for menu
-                                 # bitmaps) or never (the default otherwise)
+    preload = "optional"         # read into RAM as stored with the main module:
+                                 # always, optional (the default, when Optimize allows)
+                                 # or never (the default with compress = false)
 
     [[asset]]
     name = "song"
@@ -62,7 +65,8 @@ STABILITY = {"alpha": 1, "beta": 2, "stable": 3}  # flags bits 0-1
 # Magic, version, api, flags, module and site counts and string bytes; the offsets
 # of the six texts, the note and the first content folder; the folder count.
 HEADER = struct.Struct("<7I8HI")
-MODULE = struct.Struct("<HBBH")
+# Name, trigger, screen count and first screen, preload class, a reserved 0.
+MODULE = struct.Struct("<HBBHBB")
 SITE = struct.Struct("<IIBBH")
 SITE_KINDS = {"call": 0, "vtable": 1, "word": 4}  # enum core_site_kind
 MAX_SITES = 8
@@ -109,7 +113,7 @@ MANIFEST_KEYS = {
     "site",
     "asset",
 }
-MODULE_KEYS = {"name", "trigger", "screens"}
+MODULE_KEYS = {"name", "trigger", "screens", "preload"}
 SITE_KEYS = {"name", "address", "kind", "expected", "argc"}
 
 
@@ -215,6 +219,11 @@ def compile_manifest(document):
             raise ValueError(f"module {name}: screens go with the screen trigger")
         if trigger == "always" and module is not modules[0]:
             raise ValueError(f"module {name}: only main loads always")
+        if trigger == "always" and "preload" in module:
+            raise ValueError(f"module {name}: main carries no preload")
+        preload = "always" if trigger == "always" else module.get("preload", "optional")
+        if preload not in PRELOAD:
+            raise ValueError(f"module {name}: preload is one of {', '.join(PRELOAD)}")
         name_offset = strings.add(name)
         screens_offset = strings.add(screens[0]) if screens else 0
         for screen in screens[1:]:
@@ -225,6 +234,8 @@ def compile_manifest(document):
                 TRIGGERS[trigger],
                 len(screens),
                 screens_offset,
+                PRELOAD.index(preload),
+                0,
             )
         )
     sites = document.get("site", [])
@@ -303,17 +314,18 @@ def assets(document):
         if asset.get("menu") and not bitmap:
             raise ValueError(f"asset {name}: a menu bitmap is a .png")
         menu = asset.get("menu", False)
-        preload = asset.get("preload", "optional" if menu else "never")
+        compress = asset.get("compress", True)
+        preload = asset.get("preload", "optional" if compress else "never")
         if preload not in PRELOAD:
             raise ValueError(f"asset {name}: preload is one of {', '.join(PRELOAD)}")
-        if preload != "never" and not asset.get("compress", True):
+        if preload != "never" and not compress:
             raise ValueError(f"asset {name}: an uncompressed asset is never preloaded")
         checked.append(
             {
                 "name": name,
                 "file": asset["file"],
                 "preload": preload,
-                "compress": asset.get("compress", True),
+                "compress": compress,
                 "menu": menu,
             }
         )
