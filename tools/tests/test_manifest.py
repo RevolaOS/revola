@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """The compiled manifest layout and the rules manifest.toml must follow."""
 
+import re
 import struct
 import unittest
+from pathlib import Path
 
 import manifest
 
@@ -30,12 +32,12 @@ def strings(data, start, offset):
 class ManifestTests(unittest.TestCase):
     def test_header_modules_and_strings(self):
         data = manifest.compile_manifest(DOCUMENT)
-        magic, version, api, flags, count, sites, bytes_, *texts, reserved = (
+        magic, version, api, flags, count, sites, bytes_, *texts, content, folders = (
             manifest.HEADER.unpack_from(data)
         )
         self.assertEqual(
             (magic, version, api, flags, count, sites),
-            (0x464D5652, 2, 0x10002, 0, 3, 0),
+            (0x464D5652, 3, 0x10002, 0, 3, 0),
         )
         table = manifest.HEADER.size + count * manifest.MODULE.size
         self.assertEqual(len(data), table + bytes_)
@@ -51,7 +53,7 @@ class ManifestTests(unittest.TestCase):
                 "",
             ],
         )
-        self.assertEqual(reserved, 0)
+        self.assertEqual((content, folders), (0, 0))
         modules = [
             manifest.MODULE.unpack_from(
                 data, manifest.HEADER.size + i * manifest.MODULE.size
@@ -75,6 +77,51 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(strings(data, table, header[13]), "Adapted from X")
         with self.assertRaises(ValueError):
             manifest.compile_manifest({**DOCUMENT, "note": 1})
+
+    def test_content_folders(self):
+        def folders(document):
+            data = manifest.compile_manifest(document)
+            header = manifest.HEADER.unpack_from(data)
+            table = manifest.HEADER.size + header[4] * manifest.MODULE.size
+            names = []
+            offset = header[14]
+            for _ in range(header[15]):
+                names.append(strings(data, table, offset))
+                offset += len(names[-1]) + 1
+            return names
+
+        self.assertEqual(folders({**DOCUMENT, "content": "Themes"}), ["Themes"])
+        self.assertEqual(
+            folders({**DOCUMENT, "content": ["Games", "Apps"]}), ["Games", "Apps"]
+        )
+        cases = {
+            "lower case": "themes",
+            "slash": "Themes/Dark",
+            "too long": "Themesthemesthemes",
+            "too short": "A",
+            "capital inside": "ThemeS",
+            "reserved": "Data",
+            "number": 7,
+            "repeated": ["Themes", "Themes"],
+            "too many": ["A1", "B1", "C1", "D1", "E1"],
+        }
+        for name, content in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.compile_manifest({**DOCUMENT, "content": content})
+
+    def test_reserved_id(self):
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest({**DOCUMENT, "id": "revola"})
+
+    def test_reserved_folders_match_loader(self):
+        source = (
+            Path(__file__).resolve().parents[2] / "core/loader/loader.c"
+        ).read_text()
+        start = source.index("core_folders[] = {")
+        body = source[start : source.index("};", start)]
+        self.assertEqual(
+            set(re.findall(r'"([A-Za-z]+)"', body)), manifest.CONTENT_RESERVED
+        )
 
     def test_stability_flag(self):
         def flags(document):

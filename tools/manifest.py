@@ -14,6 +14,9 @@ manifest.toml:
     api = "1.0"                  # minimum core API major.minor
     stability = "beta"           # optional: alpha, beta or stable, the author's word
     note = "Adapted from X"      # optional: one line under the version, shown to listeners
+    content = "Themes"           # optional: a folder under /Revola/ the extension reads, or a
+                                 # list of them; [A-Z][a-z0-9]{1,15}. One owner per folder: a
+                                 # second enabled extension naming it does not load
 
     [[module]]                   # the first module is main, trigger always
     name = "main"
@@ -52,9 +55,11 @@ import re
 import struct
 
 MAGIC = 0x464D5652  # RVMF
-VERSION = 2
+VERSION = 3
 STABILITY = {"alpha": 1, "beta": 2, "stable": 3}  # flags bits 0-1
-HEADER = struct.Struct("<7I8H")  # text offsets, the note's, a reserved half-word
+# Magic, version, api, flags, module and site counts and string bytes; the offsets
+# of the six texts, the note and the first content folder; the folder count.
+HEADER = struct.Struct("<7I8HI")
 MODULE = struct.Struct("<HBBH")
 SITE = struct.Struct("<IIBBH")
 SITE_KINDS = {"call": 0, "vtable": 1, "word": 4}  # enum core_site_kind
@@ -64,9 +69,16 @@ NATIVE_HEAP_BASE = 0x08B3B1B0  # OSOS 2.0.5; raw sites lie below it
 TRIGGERS = {"always": 0, "screen": 1, "manual": 2}
 TEXT_FIELDS = ("id", "name", "description", "version", "author", "license")
 ID_PATTERN = re.compile(r"[a-z][a-z0-9_-]{0,31}")
+# The core's own id, which owns its bitmap assets; no extension may take it.
+CORE_ID = "revola"
+RESERVED_IDS = {CORE_ID}
 MODULE_PATTERN = re.compile(r"[a-z0-9_-]+")
 ASSET_PATTERN = re.compile(r"[a-z0-9_-]{1,31}")
 ASSET_KEYS = {"name", "file", "resident", "compress", "menu"}
+CONTENT_PATTERN = re.compile(r"[A-Z][a-z0-9]{1,15}")
+# The core's folders; the pattern fixes the case, so an exact match covers FAT's.
+CONTENT_RESERVED = {"Extensions", "Data", "Settings", "Firmware", "Crashes"}
+MAX_CONTENT = 4
 LICENSES = {
     "GPL-3.0-only",
     "GPL-3.0-or-later",
@@ -84,7 +96,16 @@ LICENSES = {
 }
 MAX_MODULES = 15  # main and at most 14 more
 MAX_BYTES = 1024  # CORE_MANIFEST_MAX
-MANIFEST_KEYS = {*TEXT_FIELDS, "note", "api", "stability", "module", "site", "asset"}
+MANIFEST_KEYS = {
+    *TEXT_FIELDS,
+    "note",
+    "api",
+    "stability",
+    "content",
+    "module",
+    "site",
+    "asset",
+}
 MODULE_KEYS = {"name", "trigger", "screens"}
 SITE_KEYS = {"name", "address", "kind", "expected", "argc"}
 
@@ -152,7 +173,7 @@ def compile_manifest(document):
             raise ValueError(f"missing {field}")
     if not isinstance(document.get("note", ""), str):
         raise ValueError("note is a string")
-    if not ID_PATTERN.fullmatch(document["id"]):
+    if not ID_PATTERN.fullmatch(document["id"]) or document["id"] in RESERVED_IDS:
         raise ValueError(f"bad id {document['id']!r}")
     if document["license"] not in LICENSES:
         raise ValueError(f"license {document['license']!r} is not GPL-3.0 compatible")
@@ -165,6 +186,10 @@ def compile_manifest(document):
     strings = Strings()
     texts = [strings.add(document[field]) for field in TEXT_FIELDS]
     texts.append(strings.add(document.get("note", "")))
+    content = content_folders(document)
+    content_offset = strings.add(content[0]) if content else 0
+    for folder in content[1:]:
+        strings.add(folder)
     records = []
     for module in modules:
         name = module.get("name", "")
@@ -214,7 +239,8 @@ def compile_manifest(document):
         len(site_records),
         len(strings.data),
         *texts,
-        0,
+        content_offset,
+        len(content),
     )
     compiled = header + b"".join(site_records) + b"".join(records) + bytes(strings.data)
     if len(compiled) > MAX_BYTES:
@@ -222,6 +248,23 @@ def compile_manifest(document):
             f"the compiled manifest is {len(compiled)} bytes, the core reads {MAX_BYTES}"
         )
     return compiled
+
+
+def content_folders(document):
+    """The content folders as a list, checked; empty without a content field."""
+    content = document.get("content", [])
+    if isinstance(content, str):
+        content = [content]
+    if not isinstance(content, list) or not all(isinstance(c, str) for c in content):
+        raise ValueError("content is a folder name or a list of them")
+    if len(content) > MAX_CONTENT or len(set(content)) != len(content):
+        raise ValueError(f"content lists at most {MAX_CONTENT} distinct folders")
+    for folder in content:
+        if not CONTENT_PATTERN.fullmatch(folder):
+            raise ValueError(f"bad content folder {folder!r}")
+        if folder in CONTENT_RESERVED:
+            raise ValueError(f"content folder {folder!r} belongs to the core")
+    return content
 
 
 def stability_bits(document):

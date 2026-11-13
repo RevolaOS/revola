@@ -12,6 +12,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import assets
 import sdklock
 import setup
 import sites
@@ -138,15 +139,22 @@ def stage_sdk(config, directory):
     for name in SDK_FILES:
         shutil.copyfile(ROOT / "sdk" / name, directory / name)
     shutil.copytree(ROOT / "docs/sdk", directory / "docs")
-    for name in ("osos-2.0.5.h", "osos-2.0.5.ld"):
+    for name in (f"{firmware.NAME}.h", f"{firmware.NAME}.ld"):
         shutil.copyfile(firmware.DIRECTORY / name, directory / name)
+    # The command rv.mk runs.
     shutil.copyfile(ROOT / "tools/rvx.py", directory / "rvx-pack")
-    for name in ("manifest.py", "bitmap.py"):
+    for name in ("manifest.py", "bitmap.py", "rvx.py", "assets.py"):
         shutil.copyfile(ROOT / "tools" / name, directory / name)
+    (directory / "assets.json").write_text(
+        "".join(
+            json.dumps(record, sort_keys=True) + "\n"
+            for record in assets.core_catalog(ROOT / "core/assets")
+        )
+    )
     names = sites.names(ROOT / "core", firmware.DIRECTORY, config.prefix)
     (directory / "rv_sites.h").write_text(sites.header(names))
     (directory / "rv_menus.h").write_text(
-        firmware.menus_header((firmware.DIRECTORY / "osos-2.0.5.h").read_text())
+        firmware.menus_header((firmware.DIRECTORY / f"{firmware.NAME}.h").read_text())
     )
     build_id = firmware.build_id()
     (directory / "rv_firmware.h").write_text(
@@ -159,7 +167,7 @@ def stage_sdk(config, directory):
         "# SPDX-License-Identifier: GPL-3.0-only\n"
         f"RV_API := {sdklock.api_version()}\n"
         f"RV_FIRMWARE_ID := {build_id:#010x}\n"
-        "RV_FIRMWARE_LD := osos-2.0.5.ld\n"
+        f"RV_FIRMWARE_LD := {firmware.NAME}.ld\n"
     )
     return directory
 

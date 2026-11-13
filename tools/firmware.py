@@ -8,6 +8,8 @@ from pathlib import Path
 
 DIRECTORY = Path(__file__).resolve().parents[1] / "firmware"
 PROFILE = DIRECTORY / "apple.json"
+# The OSOS build the symbols header, linker script and theme catalog are named after.
+NAME = "osos-2.0.5"
 
 
 def load():

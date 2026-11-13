@@ -57,7 +57,7 @@ WINDOW = 4096
 MIN_MATCH = 3
 CHAIN = 48  # earlier positions tried per match search
 MANIFEST_MAGIC = 0x464D5652  # RVMF
-MANIFEST_VERSION = 2
+MANIFEST_VERSION = 3
 SYMBOLS = ("__data_start", "__data_end", "__bss_end", "rv_module_entry")
 RELOCATION_SECTIONS = {
     ".rel.text",
