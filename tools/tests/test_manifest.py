@@ -244,9 +244,9 @@ class ManifestTests(unittest.TestCase):
                 {
                     "name": "eq-icon",
                     "file": "assets/eq.png",
-                    "resident": True,
                     "menu": True,
                 },
+                {"name": "table", "file": "table.bin", "preload": "always"},
                 {"name": "song", "file": "a.mp3", "compress": False},
             ],
         }
@@ -256,14 +256,21 @@ class ManifestTests(unittest.TestCase):
                 {
                     "name": "eq-icon",
                     "file": "assets/eq.png",
-                    "resident": True,
+                    "preload": "optional",
                     "compress": True,
                     "menu": True,
                 },
                 {
+                    "name": "table",
+                    "file": "table.bin",
+                    "preload": "always",
+                    "compress": True,
+                    "menu": False,
+                },
+                {
                     "name": "song",
                     "file": "a.mp3",
-                    "resident": False,
+                    "preload": "never",
                     "compress": False,
                     "menu": False,
                 },
@@ -278,7 +285,11 @@ class ManifestTests(unittest.TestCase):
             "long name": [{**good, "name": "x" * 32}],
             "repeated": [good, good],
             "no file": [{"name": "icon"}],
-            "resident not a flag": [{**good, "resident": 1}],
+            "preload not a class": [{**good, "preload": True}],
+            "preload unknown": [{**good, "preload": "sometimes"}],
+            "preloaded uncompressed": [
+                {"name": "song", "file": "a.mp3", "compress": False, "preload": "always"}
+            ],
             "unknown key": [{**good, "kind": "bitmap"}],
             "uncompressed bitmap": [{**good, "compress": False}],
             "menu data": [{"name": "song", "file": "a.mp3", "menu": True}],

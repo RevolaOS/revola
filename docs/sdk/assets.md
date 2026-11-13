@@ -6,7 +6,7 @@
 |---|---|
 | `name` | how the extension refers to it, `[a-z0-9_-]{1,31}` |
 | `file` | the source file |
-| `resident = true` | in RAM, as stored, while the extension is loaded, so using it needs no disk access; for what a screen needs at once, such as icons and small tables |
+| `preload` | when the asset is read into RAM, as stored, with the main module: `always`, for what a hook needs without disk access, such as a small table; `optional` (the default for `menu = true`), when the core prefers speed over memory; `never` (the default otherwise), read when asked for |
 | `menu = true` | a menu bitmap, such as an entry's `.bitmap` in the Settings pane: like the stock icons, a 78 x 121 coverage mask the system draws in its own colour, taken from the PNG's alpha, or its gray level when it is opaque grayscale |
 | `compress = false` | data only: stored raw, so `asset_read` can seek in it; bitmaps are always compressed |
 
@@ -14,7 +14,7 @@
 |---|---|
 | `api->asset_load(self, name, &bytes)` | a decoded copy, freed with `api->free` |
 | `api->asset_read(self, name, offset, out, bytes)` | part of an asset stored with `compress = false` |
-| `api->asset_open(self, name, &file)` | such an asset, when not resident, as a file handle for `file_read`, `file_seek` and `file_close`, offsets from its start; for streaming through a large one |
+| `api->asset_open(self, name, &file)` | such an asset, with `preload = "never"`, as a file handle for `file_read`, `file_seek` and `file_close`, offsets from its start; for streaming through a large one |
 | `RV_BITMAP("name")` | a bitmap for `gfx->bitmap` and entry `.bitmap` fields |
 
 The core decodes only the menu bitmap shown and keeps a canvas's bitmaps decoded while the canvas is open, so `gfx->bitmap` costs a decode on the first draw only. Everything decoded is counted against the extension.

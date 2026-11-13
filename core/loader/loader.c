@@ -35,7 +35,6 @@
 #include "ui/gfx.h"
 #include "settings.h"
 #include "hooks/sites.h"
-#include "storage.h"
 #include "ui/bitmaps.h"
 #include "ui/format.h"
 #include <stddef.h>
@@ -53,11 +52,8 @@
 #define MAX_ENTRIES 0xffff
 #define MAX_PAYLOAD (16u << 20) /* keeps sums of payload sizes far from overflow */
 
-/* Experiment, off: on flash, leave resident assets on disk like the others, to
- * measure whether reading them on request is fast enough there. */
-#ifndef CORE_FLASH_ASSETS_ON_DISK
-#define CORE_FLASH_ASSETS_ON_DISK 0
-#endif
+/* The highest preload class read into RAM with the main module. */
+static uint8_t preload_limit = RVX_PRELOAD_ALWAYS;
 
 struct manifest_header {
     uint32_t magic;
@@ -399,13 +395,16 @@ static uint32_t catalog_offset(const struct rv_extension_record *record)
 }
 
 /* Checks an entry before anything trusts it; offsets past the end of the file
- * show up as short reads. */
+ * show up as short reads. `previous` is the preload class of the entry before
+ * it, 0 for a module: the assets are sorted by class. */
 static int entry_valid(const struct rv_extension_record *record, const struct rvx_entry *e,
-                       uint32_t index)
+                       uint32_t index, uint8_t previous)
 {
     uint32_t payloads = catalog_offset(record) + record->entry_count * sizeof *e;
-    int kind = index < record->module_count ? e->kind == RVX_MODULE && e->codec == RVX_RAW
-                                            : e->kind == RVX_DATA || e->kind == RVX_BITMAP;
+    int kind = index < record->module_count
+                   ? e->kind == RVX_MODULE && e->codec == RVX_RAW && e->preload == RVX_PRELOAD_ALWAYS
+                   : (e->kind == RVX_DATA || e->kind == RVX_BITMAP) &&
+                         e->preload <= RVX_PRELOAD_NEVER && e->preload >= previous;
     return kind && e->codec <= RVX_LZ && (e->codec == RVX_LZ || e->stored == e->bytes) &&
            e->offset % 4 == 0 && e->offset >= payloads && e->stored <= MAX_PAYLOAD &&
            e->bytes <= MAX_PAYLOAD;
@@ -416,6 +415,7 @@ struct catalog {
     void *handle;
     const struct rv_extension_record *record;
     uint32_t index, end, have, at;
+    uint8_t previous; /* the preload class of the last entry read */
     struct rvx_entry chunk[CATALOG_CHUNK];
 };
 
@@ -427,6 +427,7 @@ static int catalog_start(struct catalog *c, const struct rv_extension_record *re
     c->index = first;
     c->end = end;
     c->have = c->at = 0;
+    c->previous = RVX_PRELOAD_ALWAYS;
     return core_file_seek(handle, catalog_offset(record) + first * sizeof c->chunk[0]);
 }
 
@@ -444,8 +445,9 @@ static const struct rvx_entry *catalog_next(struct catalog *c)
         c->at = 0;
     }
     const struct rvx_entry *e = &c->chunk[c->at];
-    if (!entry_valid(c->record, e, c->index))
+    if (!entry_valid(c->record, e, c->index, c->previous))
         return NULL;
+    c->previous = e->preload;
     c->at++;
     c->index++;
     return e;
@@ -462,66 +464,68 @@ static int read_entry(void *handle, const struct rv_extension_record *record, ui
     return e != NULL;
 }
 
-static void drop_resident(struct rv_extension_record *record)
+static void drop_preloaded(struct rv_extension_record *record)
 {
-    if (record->resident)
-        retire(record->resident);
-    record->resident = NULL;
-    record->resident_count = 0;
+    if (record->preloaded)
+        retire(record->preloaded);
+    record->preloaded = NULL;
+    record->preloaded_count = 0;
 }
 
-/* Reads the resident entries, then their payloads in file order, into one block:
- * the entries with offsets rebased onto it, then the payloads word-aligned. */
-static int load_resident(struct rv_extension_record *record, void *handle, uint32_t count)
+/* Reads the asset entries up to the preload limit, then their payloads in file
+ * order, into one block: the entries with offsets rebased onto it, then the
+ * payloads word-aligned. A block that does not fit or cannot be read leaves the
+ * assets on disk; the load itself is fine. */
+static int load_preloaded(struct rv_extension_record *record, void *handle)
 {
-    if (CORE_FLASH_ASSETS_ON_DISK && core_storage_is_flash(ATA_Identify))
-        count = 0;
-    if (!count)
-        return 1;
-    uint32_t first = record->module_count, bytes = count * sizeof(struct rvx_entry);
+    uint32_t first = record->module_count, count = 0, bytes = 0;
     struct catalog c;
     const struct rvx_entry *e;
-    if (!catalog_start(&c, record, handle, first, first + count))
+    if (!catalog_start(&c, record, handle, first, record->entry_count))
         return 0;
-    while ((e = catalog_next(&c)))
+    while ((e = catalog_next(&c)) && e->preload <= preload_limit) {
         bytes += (e->stored + 3) & ~3u;
-    if (c.index != c.end)
-        return 0;
-    struct rvx_entry *block = allocate(record, bytes);
-    if (!block) {
-        record->failure = CORE_EXTENSION_NO_MEMORY;
-        return 0;
+        count++;
     }
+    if (!e && c.index != c.end)
+        return 0;
+    if (!count)
+        return 1;
+    bytes += count * sizeof(struct rvx_entry);
+    struct rvx_entry *block = allocate(record, bytes);
+    if (!block)
+        return 1;
     uint32_t at = count * sizeof *block;
     int ok = core_file_seek(handle, catalog_offset(record) + first * sizeof *block) &&
              read_all(handle, block, count * sizeof *block);
     for (uint32_t i = 0; ok && i < count; i++) {
         struct rvx_entry *r = &block[i];
-        ok = entry_valid(record, r, first + i) && r->stored <= bytes - at &&
-             core_file_seek(handle, r->offset) && read_all(handle, (uint8_t *)block + at, r->stored);
+        ok = entry_valid(record, r, first + i, i ? block[i - 1].preload : RVX_PRELOAD_ALWAYS) &&
+             r->stored <= bytes - at && core_file_seek(handle, r->offset) &&
+             read_all(handle, (uint8_t *)block + at, r->stored);
         r->offset = at;
         at += (r->stored + 3) & ~3u;
     }
     if (!ok) {
         release(record, block);
-        return 0;
+        return 1;
     }
-    record->resident = block;
-    record->resident_count = count;
+    record->preloaded = block;
+    record->preloaded_count = count;
     return 1;
 }
 
-static const struct rvx_entry *resident_entry(const struct rv_extension_record *record,
-                                              uint32_t name)
+static const struct rvx_entry *preloaded_entry(const struct rv_extension_record *record,
+                                               uint32_t name)
 {
-    for (uint32_t i = 0; i < record->resident_count; i++)
-        if (record->resident[i].name == name)
-            return &record->resident[i];
+    for (uint32_t i = 0; i < record->preloaded_count; i++)
+        if (record->preloaded[i].name == name)
+            return &record->preloaded[i];
     return NULL;
 }
 
-/* Opens the file and finds asset `name` among the entries not held in RAM; the
- * handle stays open on success. */
+/* Opens the file and finds asset `name` in its catalog; the handle stays open
+ * on success. */
 static int find_on_disk(const struct rv_extension_record *record, uint32_t name, void **handle,
                         struct rvx_entry *out)
 {
@@ -531,8 +535,7 @@ static int find_on_disk(const struct rv_extension_record *record, uint32_t name,
     if (!open_extension(record->file, handle, &file, NULL))
         return 0;
     if (file.manifest_bytes == record->manifest_bytes && file.entry_count == record->entry_count &&
-        catalog_start(&c, record, *handle, record->module_count + record->resident_count,
-                      record->entry_count))
+        catalog_start(&c, record, *handle, record->module_count, record->entry_count))
         while ((e = catalog_next(&c)))
             if (e->name == name) {
                 *out = *e;
@@ -542,21 +545,21 @@ static int find_on_disk(const struct rv_extension_record *record, uint32_t name,
     return 0;
 }
 
-const void *core_loader_resident(const struct rv_extension_record *record, uint32_t name,
-                                 const struct rvx_entry **entry)
+const void *core_loader_preloaded(const struct rv_extension_record *record, uint32_t name,
+                                  const struct rvx_entry **entry)
 {
-    const struct rvx_entry *e = resident_entry(record, name);
+    const struct rvx_entry *e = preloaded_entry(record, name);
     if (!e)
         return NULL;
     *entry = e;
-    return (const uint8_t *)record->resident + e->offset;
+    return (const uint8_t *)record->preloaded + e->offset;
 }
 
 static void *load_asset(struct rv_extension_record *record, uint32_t name, uint32_t *bytes,
                         uint8_t *kind)
 {
     const struct rvx_entry *r;
-    const uint8_t *memory = core_loader_resident(record, name, &r);
+    const uint8_t *memory = core_loader_preloaded(record, name, &r);
     struct rvx_entry entry;
     struct core_lz_input in;
     void *handle = NULL;
@@ -1110,7 +1113,7 @@ static int api_asset_read(rv_extension_handle self, const char *name, uint32_t o
     *got = 0;
     uint32_t hash = fnv1a(name);
     const struct rvx_entry *r;
-    const uint8_t *memory = core_loader_resident(record, hash, &r);
+    const uint8_t *memory = core_loader_preloaded(record, hash, &r);
     struct rvx_entry entry;
     void *handle = NULL;
     if (memory)
@@ -1270,14 +1273,11 @@ static int api_asset_open(rv_extension_handle self, const char *name, struct rv_
     if (!record || !name)
         return RV_BAD_ARGUMENT;
     struct rvx_entry entry;
-    const struct rvx_entry *resident;
     void *handle;
     uint32_t hash = fnv1a(name);
-    if (core_loader_resident(record, hash, &resident))
-        return RV_BAD_ARGUMENT;
     if (!find_on_disk(record, hash, &handle, &entry))
         return RV_NOT_FOUND;
-    int result = entry.codec == RVX_RAW
+    int result = entry.codec == RVX_RAW && entry.preload == RVX_PRELOAD_NEVER
                      ? core_data_adopt(record, handle, entry.offset, entry.bytes, file)
                      : RV_BAD_ARGUMENT;
     if (result != RV_OK)
@@ -1395,7 +1395,7 @@ static const struct rv_descriptor *enter(struct rv_extension_record *record, voi
     return descriptor;
 }
 
-/* Reads, relocates and enters one module; the main module brings the resident
+/* Reads, relocates and enters one module; the main module brings the preloaded
  * assets. The relocation table is consumed in chunks through the stack, so a
  * module costs text + data + bss and no more. */
 static int load_module_now(struct rv_extension_record *record, uint32_t index)
@@ -1420,7 +1420,6 @@ static int load_module_now(struct rv_extension_record *record, uint32_t index)
              file.manifest_bytes == record->manifest_bytes &&
              file.entry_count == record->entry_count && file.entry_count <= MAX_ENTRIES &&
              file.entry_count >= record->module_count &&
-             file.resident_count <= file.entry_count - record->module_count &&
              read_entry(handle, record, index, &entry) &&
              core_file_seek(handle, entry.offset) && read_all(handle, &header, sizeof header) &&
              (header.text_bytes | header.data_bytes) % 4 == 0 &&
@@ -1451,7 +1450,7 @@ static int load_module_now(struct rv_extension_record *record, uint32_t index)
         }
     }
     if (ok && index == 0)
-        ok = load_resident(record, handle, file.resident_count);
+        ok = load_preloaded(record, handle);
     core_file_close(handle);
     if (!ok) {
         if (image)
@@ -1460,7 +1459,7 @@ static int load_module_now(struct rv_extension_record *record, uint32_t index)
     }
     if (index == 0 && (!claim_raw_sites(record) || !claim_content(record))) {
         release(record, image);
-        drop_resident(record);
+        drop_preloaded(record);
         return 0;
     }
     core_cache_sync(image, image + code_bytes);
@@ -1576,7 +1575,7 @@ static void unload_module(struct rv_extension_record *record, uint32_t index)
     if (index == 0) {
         release_raw_sites(record);
         core_bitmaps_release(record);
-        drop_resident(record);
+        drop_preloaded(record);
     }
     retire(module->image);
     module->image = NULL;

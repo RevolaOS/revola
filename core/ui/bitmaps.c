@@ -10,7 +10,7 @@
  *
  * Canvas bitmaps: decoded on first draw and kept while their canvas is open,
  * so redraws decode nothing; freed when it closes. One stored raw in the
- * resident block is lent from there while no provider has a say. Canvases copy
+ * preloaded block is lent from there while no provider has a say. Canvases copy
  * pixels while drawing, so these blocks are freed at once.
  *
  * An asset provider, one extension's say over every bitmap asset, is asked
@@ -205,7 +205,7 @@ const void *core_bitmap_canvas(struct core_screen *screen, const struct rv_bitma
         return NULL;
     uint32_t name = core_settings_owner(bitmap->asset);
     const struct rvx_entry *entry;
-    const uint8_t *memory = provider ? NULL : core_loader_resident(owner, name, &entry);
+    const uint8_t *memory = provider ? NULL : core_loader_preloaded(owner, name, &entry);
     if (memory && entry->codec == RVX_RAW && entry->kind == RVX_BITMAP)
         return whole_bmap(memory, entry->bytes) ? memory : NULL;
     uint32_t i = 0;

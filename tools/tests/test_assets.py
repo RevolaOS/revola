@@ -41,7 +41,7 @@ menu = true
 [[asset]]
 name = "art"
 file = "art.png"
-resident = true
+preload = "always"
 """
 ICON = bitmap.encode_mask(78, 121, bytes([0, 0, 0, 255]) * (78 * 121))
 ART = bitmap.encode_bmap(2, 2, bytes([255, 0, 0, 255, 0, 255, 0, 255]) * 2)
@@ -58,7 +58,7 @@ def package(directory, names=("icon", "art")):
             "name": name,
             "kind": rvx.KIND_BITMAP,
             "data": ICON if name == "icon" else ART,
-            "resident": name == "art",
+            "preload": "always" if name == "art" else "optional",
             "compress": True,
         }
         for name in names
@@ -94,7 +94,7 @@ class AssetCatalogTests(unittest.TestCase):
                     "depth": 8,
                     "palette_colors": 2,
                     "bytes": len(ART),
-                    "resident": True,
+                    "preload": "always",
                 },
                 {
                     "id": "fixture",
@@ -107,7 +107,7 @@ class AssetCatalogTests(unittest.TestCase):
                     "depth": 8,
                     "palette_colors": 0,
                     "bytes": 28 + 80 * 121,
-                    "resident": False,
+                    "preload": "optional",
                 },
             ],
         )

@@ -10,10 +10,10 @@ An extension is one file, `/Revola/Extensions/<id>.rvx`. Installing, sharing and
 |---|---|
 | Header | format, core API major, firmware build id; the loader refuses any mismatch |
 | Manifest | id, name, description, version, author, license, API, stability, note, content folders, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
-| Catalog | one entry per module and asset: module i is entry i, resident assets follow, then the rest |
+| Catalog | one entry per module and asset: module i is entry i, then the assets by preload class, `always` first, `never` last |
 | Payloads | module images with their relocation tables, then the assets |
 
-A module image is read into one block of the Apple heap, text, data and bss in a row. The relocation table is consumed through the stack in chunks, so a loaded module costs text + data + bss plus an 8-byte owner header. Every block the loader or `api->alloc` hands out carries that header, which is what makes the resident and peak figures exact.
+A module image is read into one block of the Apple heap, text, data and bss in a row. The relocation table is consumed through the stack in chunks, so a loaded module costs text + data + bss plus an 8-byte owner header. Every block the loader or `api->alloc` hands out carries that header, which is what makes the live and peak figures exact.
 
 ## Boot scan
 
@@ -45,9 +45,14 @@ When USB disk mode ends (site `DiskModeExit_PopToMainScreen_call`, before the ma
 
 Assets are named bytes in the file: bitmaps, converted from PNG by `tools/bitmap.py`, and data. Bitmaps are always lz-compressed (`core/loader/lz.c`, 4 KB window). Data is compressed unless the manifest says `compress = false`; anything lz cannot shrink is stored raw.
 
-| Asset | Where it lives |
+An asset's `preload` class says when it is read into RAM:
+
+| `preload` | Where it lives |
 |---|---|
-| resident | read into one block with the main module, as stored, so using it needs no disk access |
-| other | found by streaming the catalog through the stack when asked for |
+| `always` | read into one block with the main module, as stored, so using it needs no disk access |
+| `optional` | the same when the core prefers speed over memory, else on disk; the default for menu bitmaps |
+| `never` | found by streaming the catalog through the stack when asked for |
+
+A preloaded block that does not fit leaves the assets on disk; the extension still loads.
 
 `api->asset_load` decodes a copy; `api->asset_read` reads part of a raw one. Bitmaps are decoded in `core/ui/bitmaps.c`. A menu bitmap (the stock Settings pane icon format, a 78 x 121 coverage mask) decodes into one block that lives until Apple asks for the next one, because Apple keeps drawing the last pane bitmap. Canvas bitmaps decode into blocks held while their canvas is open. Every block is counted to its extension.

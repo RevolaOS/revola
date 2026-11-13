@@ -30,12 +30,12 @@ DOCUMENT = {
 THEMES = Path(__file__).resolve().parents[4] / "iPod/osos-themes"
 
 
-def asset(name, data, resident=False, compress=True, kind=rvx.KIND_DATA):
+def asset(name, data, preload="never", compress=True, kind=rvx.KIND_DATA):
     return {
         "name": name,
         "kind": kind,
         "data": data,
-        "resident": resident,
+        "preload": preload,
         "compress": compress,
     }
 
@@ -51,7 +51,7 @@ class RvxTests(unittest.TestCase):
         compiled = manifest.compile_manifest(DOCUMENT)
         assets = [
             asset("table", bytes(range(7))),
-            asset("icon", b"\x11" * 64, resident=True, kind=rvx.KIND_BITMAP),
+            asset("icon", b"\x11" * 64, preload="optional", kind=rvx.KIND_BITMAP),
             asset("song", bytes(range(256)), compress=False),
         ]
         packed, _ = rvx.pack_extension(
@@ -67,7 +67,6 @@ class RvxTests(unittest.TestCase):
                 "firmware": 0x660EB6FF,
                 "manifest": len(compiled),
                 "entries": 5,
-                "resident": 1,
                 "body_hash": rvx.fnv1a(packed[rvx.HEADER.size :]),
             },
         )
@@ -80,11 +79,9 @@ class RvxTests(unittest.TestCase):
             [e["name"] for e in entries],
             [rvx.fnv1a(n.encode()) for n in ("main", "dsp", "icon", "table", "song")],
         )
-        self.assertEqual(
-            [e["resident"] for e in entries], [False, False, True, False, False]
-        )
+        self.assertEqual([e["preload"] for e in entries], [0, 0, 1, 2, 2])
         main, dsp, icon, table, song = entries
-        # main, then the resident icon, then dsp, then the on-disk assets
+        # main, then the preloadable icon, then dsp, then the on-disk assets
         self.assertEqual(main["offset"], first)
         self.assertEqual(icon["offset"], first + main["stored"])
         self.assertEqual(dsp["offset"], icon["offset"] + ((icon["stored"] + 3) & ~3))
@@ -154,7 +151,7 @@ class RvxTests(unittest.TestCase):
     def test_unpack_refuses_what_the_core_refuses(self):
         compiled = manifest.compile_manifest(DOCUMENT)
         packed, _ = rvx.pack_extension(
-            compiled, two_modules(), [asset("icon", b"\x22" * 40, resident=True)], 0, 0
+            compiled, two_modules(), [asset("icon", b"\x22" * 40, preload="always")], 0, 0
         )
         catalog = rvx.HEADER.size + ((len(compiled) + 3) & ~3)
         icon = catalog + 2 * 20
@@ -171,7 +168,6 @@ class RvxTests(unittest.TestCase):
 
         cases = {
             "format 0": header_field(1, 0),
-            "residents past the catalog": header_field(6, 2),
             "fewer entries than modules": header_field(5, 1),
             "catalog past the end": header_field(5, 4000),
             "truncated payload": packed[:-4],

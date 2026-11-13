@@ -44,10 +44,11 @@ struct rv_extension_record {
     uint32_t hooks_bound;
     struct rv_screen *setting_screens; /* screens the declared settings open, or NULL */
     struct core_module *modules;
-    /* While the main module is loaded: resident_count catalog entries with
-     * offsets into this block, then their payloads as stored; NULL for none. */
-    struct rvx_entry *resident;
-    uint32_t resident_count;
+    /* While the main module is loaded: preloaded_count catalog entries, the
+     * preloaded assets, with offsets into this block, then their payloads as
+     * stored; NULL for none. */
+    struct rvx_entry *preloaded;
+    uint32_t preloaded_count;
     uint32_t entry_count; /* catalog entries in the file */
     uint32_t body_hash; /* the header's, read when the main module loaded */
 };
@@ -77,7 +78,7 @@ const struct rv_descriptor *core_loader_descriptor(const struct rv_extension_rec
 void core_loader_setting_changed(struct rv_extension_record *record, uint16_t key);
 /* Tells every loaded extension the store was emptied by Reset All Settings. */
 void core_loader_settings_reset(void);
-/* Resident bytes of every loaded extension together. */
+/* Live bytes of every loaded extension together. */
 uint32_t core_loader_total_bytes(void);
 
 /* One installed extension as Settings > Extensions lists it. */
@@ -119,9 +120,9 @@ int core_loader_shares_content(const struct rv_extension_record *a,
                                const struct rv_extension_record *b);
 uint32_t core_loader_manifest_flags(const uint8_t *manifest);
 
-/* The resident asset `name` (FNV-1a) of `record`: its payload as stored in RAM
+/* The preloaded asset `name` (FNV-1a) of `record`: its payload as stored in RAM
  * and *entry its catalog entry, or NULL. */
-const void *core_loader_resident(const struct rv_extension_record *record, uint32_t name,
+const void *core_loader_preloaded(const struct rv_extension_record *record, uint32_t name,
                                  const struct rvx_entry **entry);
 /* The asset `name` decoded into a block counted to `record`, *bytes its size and
  * *kind its RVX_ kind; NULL when missing, damaged or out of memory. Free it with

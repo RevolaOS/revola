@@ -37,8 +37,10 @@ manifest.toml:
     [[asset]]
     name = "eq-icon"             # [a-z0-9_-]{1,31}
     file = "assets/eq.png"       # .png becomes a bitmap, anything else is data
-    resident = true              # in RAM, compressed, while the extension is loaded
     menu = true                  # a menu bitmap: 78 x 121 coverage, drawn in the system colour
+    preload = "optional"         # read into RAM as stored with the main module: always,
+                                 # optional (when Optimize For allows; the default for menu
+                                 # bitmaps) or never (the default otherwise)
 
     [[asset]]
     name = "song"
@@ -74,7 +76,8 @@ CORE_ID = "revola"
 RESERVED_IDS = {CORE_ID}
 MODULE_PATTERN = re.compile(r"[a-z0-9_-]+")
 ASSET_PATTERN = re.compile(r"[a-z0-9_-]{1,31}")
-ASSET_KEYS = {"name", "file", "resident", "compress", "menu"}
+ASSET_KEYS = {"name", "file", "preload", "compress", "menu"}
+PRELOAD = ("always", "optional", "never")
 CONTENT_PATTERN = re.compile(r"[A-Z][a-z0-9]{1,15}")
 # The core's folders; the pattern fixes the case, so an exact match covers FAT's.
 CONTENT_RESERVED = {"Extensions", "Data", "Settings", "Firmware", "Crashes"}
@@ -291,7 +294,7 @@ def assets(document):
             )
         if not isinstance(asset.get("file"), str) or not asset["file"]:
             raise ValueError(f"asset {name}: file is a path")
-        for key in ("resident", "compress", "menu"):
+        for key in ("compress", "menu"):
             if not isinstance(asset.get(key, False), bool):
                 raise ValueError(f"asset {name}: {key} is true or false")
         bitmap = asset["file"].lower().endswith(".png")
@@ -299,13 +302,19 @@ def assets(document):
             raise ValueError(f"asset {name}: bitmaps are always compressed")
         if asset.get("menu") and not bitmap:
             raise ValueError(f"asset {name}: a menu bitmap is a .png")
+        menu = asset.get("menu", False)
+        preload = asset.get("preload", "optional" if menu else "never")
+        if preload not in PRELOAD:
+            raise ValueError(f"asset {name}: preload is one of {', '.join(PRELOAD)}")
+        if preload != "never" and not asset.get("compress", True):
+            raise ValueError(f"asset {name}: an uncompressed asset is never preloaded")
         checked.append(
             {
                 "name": name,
                 "file": asset["file"],
-                "resident": asset.get("resident", False),
+                "preload": preload,
                 "compress": asset.get("compress", True),
-                "menu": asset.get("menu", False),
+                "menu": menu,
             }
         )
     return checked

@@ -26,7 +26,7 @@ import manifest
 
 MAGIC = 0x30585652  # RVX0
 FORMAT = 1
-HEADER = struct.Struct("<8I")
+HEADER = struct.Struct("<7I")
 ENTRY = struct.Struct("<IBBBBIII")
 MODULE = struct.Struct("<5I")
 HEADER_FIELDS = (
@@ -36,14 +36,13 @@ HEADER_FIELDS = (
     "firmware",
     "manifest",
     "entries",
-    "resident",
     "body_hash",
 )
 ENTRY_FIELDS = (
     "name",
     "kind",
     "codec",
-    "flags",
+    "preload",
     "reserved",
     "offset",
     "stored",
@@ -52,6 +51,8 @@ ENTRY_FIELDS = (
 MODULE_FIELDS = ("text", "data", "bss", "relocations", "entry")
 KIND_MODULE, KIND_DATA, KIND_BITMAP = 0, 1, 2
 KINDS = ("module", "data", "bitmap")
+PRELOAD_ALWAYS, PRELOAD_OPTIONAL, PRELOAD_NEVER = 0, 1, 2
+PRELOAD = ("always", "optional", "never")
 RAW, LZ = 0, 1
 WINDOW = 4096
 MIN_MATCH = 3
@@ -314,7 +315,7 @@ def manifest_modules(compiled):
 def pack_extension(compiled, modules, assets, api, firmware):
     """The .rvx bytes and its entries in catalog order. `modules` are
     (name, payload) pairs in manifest order; `assets` are dictionaries with
-    name, kind, data, resident and compress."""
+    name, kind, data, preload (a PRELOAD name) and compress."""
     if len(modules) != manifest_modules(compiled):
         raise ValueError(
             f"the manifest lists {manifest_modules(compiled)} modules, got {len(modules)}"
@@ -326,10 +327,11 @@ def pack_extension(compiled, modules, assets, api, firmware):
             "codec": RAW,
             "stored": payload,
             "bytes": len(payload),
+            "preload": PRELOAD_ALWAYS,
         }
         for name, payload in modules
     ]
-    for asset in sorted(assets, key=lambda a: not a["resident"]):
+    for asset in sorted(assets, key=lambda a: PRELOAD.index(a["preload"])):
         data, codec = asset["data"], RAW
         if asset["compress"]:
             packed = lz_encode(data)
@@ -342,7 +344,7 @@ def pack_extension(compiled, modules, assets, api, firmware):
                 "codec": codec,
                 "stored": data,
                 "bytes": len(asset["data"]),
-                "resident": asset["resident"],
+                "preload": PRELOAD.index(asset["preload"]),
             }
         )
     seen = {}
@@ -352,13 +354,15 @@ def pack_extension(compiled, modules, assets, api, firmware):
             raise ValueError(
                 f"{entry['name']!r} and {other['name']!r} have the same catalog name"
             )
-    count, resident = len(modules), sum(a["resident"] for a in assets)
-    # Payloads in load order: main, resident assets, other modules, the rest.
+    count = len(modules)
+    preloaded = sum(a["preload"] != "never" for a in assets)
+    # Payloads in load order: main, the assets that may be preloaded, other
+    # modules, the rest.
     order = [
         0,
-        *range(count, count + resident),
+        *range(count, count + preloaded),
         *range(1, count),
-        *range(count + resident, len(entries)),
+        *range(count + preloaded, len(entries)),
     ]
     offset = HEADER.size + len(padded(compiled)) + len(entries) * ENTRY.size
     for index in order:
@@ -369,7 +373,7 @@ def pack_extension(compiled, modules, assets, api, firmware):
             fnv1a(e["name"].encode()),
             e["kind"],
             e["codec"],
-            0,
+            e["preload"],
             0,
             e["offset"],
             len(e["stored"]),
@@ -386,7 +390,6 @@ def pack_extension(compiled, modules, assets, api, firmware):
         firmware,
         len(compiled),
         len(entries),
-        resident,
         fnv1a(body),
     )
     return header + body, entries
@@ -404,8 +407,8 @@ def unpack(data):
     count = manifest_modules(compiled)
     at = HEADER.size + ((header["manifest"] + 3) & ~3)
     end = at + header["entries"] * ENTRY.size
-    if header["entries"] < count or header["resident"] > header["entries"] - count:
-        raise ValueError("catalog does not hold the manifest's modules and residents")
+    if header["entries"] < count:
+        raise ValueError("catalog does not hold the manifest's modules")
     if end > len(data):
         raise ValueError("catalog past the end of the file")
     entries = []
@@ -442,7 +445,13 @@ def unpack(data):
             ):
                 raise ValueError(f"module {index} size differs from its header")
             entry.update(module)
-        entry["resident"] = count <= index < count + header["resident"]
+        if index < count:
+            if entry["preload"]:
+                raise ValueError(f"module {index} has a preload class")
+        elif entry["preload"] > PRELOAD_NEVER or (
+            index > count and entry["preload"] < entries[-1]["preload"]
+        ):
+            raise ValueError(f"entry {index} has a preload class out of order")
         entries.append(entry)
     return header, entries
 
@@ -500,8 +509,7 @@ def pack(prefix, out, toml, elves, api, firmware):
             )
         else:
             codec = "lz" if checked["codec"] == LZ else "raw"
-            where = "resident" if checked["resident"] else "on disk"
-            detail = f"{KINDS[checked['kind']]}, {where}, {checked['stored']} bytes stored ({codec}), {checked['bytes']} decoded"
+            detail = f"{KINDS[checked['kind']]}, preload {PRELOAD[checked['preload']]}, {checked['stored']} bytes stored ({codec}), {checked['bytes']} decoded"
         print(f"{out.name} {entry['name']}: {detail}")
 
 

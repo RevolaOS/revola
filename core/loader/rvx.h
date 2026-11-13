@@ -9,17 +9,18 @@
  *   header    struct rvx_header
  *   manifest  manifest_bytes, padded to a word; read for every installed file
  *   catalog   entry_count struct rvx_entry: the manifest's modules in its order
- *             (module i is entry i), then resident_count resident assets, then
- *             the assets read on request
- *   payloads  word-aligned, at the catalog's offsets: main module, resident
- *             assets, other modules, assets read on request
+ *             (module i is entry i), then the assets by preload class, always
+ *             first, never last
+ *   payloads  word-aligned, at the catalog's offsets: main module, the assets
+ *             that may be preloaded, other modules, the assets read on request
  *
  * A module payload is struct rvx_module, text and data, then reloc_count 32-bit
  * image offsets of words that get the load address added. BSS follows data in
  * RAM. Modules are stored raw.
  *
- * A resident asset is read into RAM with the main module and stays there as
- * stored. The others are read when the extension asks for them. */
+ * A preloaded asset is read into RAM with the main module and stays there as
+ * stored. The others are read when the extension asks for them. Which of the
+ * optional ones are preloaded is the core's choice. */
 #define RVX_MAGIC 0x30585652 /* RVX0 */
 #define RVX_FORMAT 1
 
@@ -30,11 +31,14 @@ struct rvx_header {
     uint32_t firmware; /* RV_FIRMWARE_ID of the OSOS build the symbols came from */
     uint32_t manifest_bytes;
     uint32_t entry_count;
-    uint32_t resident_count;
     uint32_t body_hash; /* FNV-1a of every byte after the header: manifest, catalog, payloads */
 };
 
 enum { RVX_MODULE, RVX_DATA, RVX_BITMAP };
+
+/* When an asset is read into RAM: always, when the core prefers speed over
+ * memory, or never. Modules carry always. */
+enum { RVX_PRELOAD_ALWAYS, RVX_PRELOAD_OPTIONAL, RVX_PRELOAD_NEVER };
 
 /* lz: groups of a flag byte and up to 8 items, bit 0 first. A clear bit is a
  * literal byte. A set bit is a match of two bytes, LLLLDDDD DDDDDDDD: it copies
@@ -47,8 +51,8 @@ struct rvx_entry {
     uint32_t name; /* FNV-1a of the module or asset name */
     uint8_t kind;
     uint8_t codec;
-    uint8_t flags; /* 0 */
-    uint8_t reserved;
+    uint8_t preload;  /* RVX_PRELOAD_, non-decreasing over the assets */
+    uint8_t reserved; /* 0 */
     uint32_t offset; /* file offset of the payload */
     uint32_t stored; /* payload bytes in the file */
     uint32_t bytes;  /* payload bytes once decoded */
@@ -62,6 +66,6 @@ struct rvx_module {
     uint32_t entry; /* image offset, bit 0 set for Thumb */
 };
 
-_Static_assert(sizeof(struct rvx_header) == 32, "rvx header layout");
+_Static_assert(sizeof(struct rvx_header) == 28, "rvx header layout");
 _Static_assert(sizeof(struct rvx_entry) == 20, "rvx entry layout");
 _Static_assert(sizeof(struct rvx_module) == 20, "rvx module layout");

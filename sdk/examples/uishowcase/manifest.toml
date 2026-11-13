@@ -14,13 +14,11 @@ trigger = "always"
 [[asset]]                 # the Settings pane icon: a menu bitmap, like the stock ones
 name = "pane"
 file = "assets/pane.png"
-resident = true
 menu = true
 
 [[asset]]                 # a colour bitmap the canvas draws
 name = "disc"
 file = "assets/disc.png"
-resident = true
 
 [[asset]]                 # read with asset_load
 name = "note"

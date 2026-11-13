@@ -14,10 +14,10 @@ import manifest
 import rvx
 
 
-def record(identifier, asset, bmap, menu, resident):
+def record(identifier, asset, bmap, menu, preload):
     """The catalog record of the BMap `bmap`: id, asset, menu, format, width,
     height, stride, depth, palette_colors (0 without a palette), bytes (header
-    included), resident."""
+    included), preload."""
     fmt, _, stride, depth, top, left, bottom, right, _ = bitmap.HEADER.unpack_from(bmap)
     palette_colors = 0
     if fmt == bitmap.INDEXED8:
@@ -33,7 +33,7 @@ def record(identifier, asset, bmap, menu, resident):
         "depth": depth,
         "palette_colors": palette_colors,
         "bytes": len(bmap),
-        "resident": resident,
+        "preload": preload,
     }
 
 
@@ -60,7 +60,7 @@ def catalog(toml_path, rvx_path):
                 name,
                 bmap,
                 declared[name]["menu"],
-                declared[name]["resident"],
+                declared[name]["preload"],
             )
         )
     return records
@@ -74,7 +74,7 @@ def core_catalog(assets_dir):
             png.stem,
             bitmap.png_to_bmap(png.read_bytes(), True),
             True,
-            False,
+            "never",
         )
         for png in sorted(Path(assets_dir).glob("*.png"))
     ]
