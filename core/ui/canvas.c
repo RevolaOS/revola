@@ -17,10 +17,14 @@
 #include <stddef.h>
 
 #define PREFIX_WORDS (CxxVtable_prefix_bytes / 4)
-/* Steps per wheel motion as Apple's menu lists count them. */
-#define WHEEL_THRESHOLD 5
+/* Wheel motion per step, as the stock menu lists count it: their MenuView
+ * overrides the accumulator's threshold with 4 for an ordinary row height,
+ * and the 5 the constructor passes is never used. It raises the multiplier
+ * ceiling the same way. */
+#define WHEEL_THRESHOLD 4
 #define WHEEL_ACCELERATE 1
 #define WHEEL_INTERVAL 350
+#define WHEEL_MAX_MULTIPLIER 32
 
 static void *view_vtable[(CxxVtable_prefix_bytes + View_vtable_bytes) / 4];
 /* The template is built once per template owner, so there is more than one
@@ -158,11 +162,18 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
     const struct rv_screen *d = s->declaration;
     struct rv_input in = {0, 0, 0};
     if (kind == InputEvent_Wheel) {
+        uint32_t speed = WheelEvent_GetSpeed(event);
         WheelEvent_DecodeMotion(event);
         int steps = WheelAccumulator_ConsumeMotion(
-            wheel, RV_FIELD(event, InputEvent_wheel_delta, int32_t), WheelEvent_GetSpeed(event));
+            wheel, RV_FIELD(event, InputEvent_wheel_delta, int32_t), speed);
         if (!steps)
             return 1;
+        /* One detent moves one step, as a stock list does: the accumulator
+         * keeps a remainder and so returns two steps for some motions, and
+         * a stock list takes only the sign of its count unless the wheel is
+         * turning fast enough to scroll by more. */
+        if (WheelAccumulator_IsSlowTurn(wheel, speed))
+            steps = steps > 0 ? 1 : -1;
         if (d->kind == RV_SCREEN_KIND_SLIDER) {
             slide(s, steps);
             return 1;
@@ -245,6 +256,7 @@ void core_canvas_attach(void *controller)
 {
     core_controller_attach(controller, controller_vtable);
     WheelAccumulator_Init(wheel, WHEEL_THRESHOLD, WHEEL_ACCELERATE, WHEEL_INTERVAL);
+    WheelAccumulator_SetMaxMultiplier(wheel, WHEEL_MAX_MULTIPLIER);
 }
 
 void core_canvas_init(void)
