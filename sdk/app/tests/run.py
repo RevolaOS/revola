@@ -34,6 +34,7 @@ with tempfile.TemporaryDirectory(prefix="rv-app-tests-") as name:
                 "-Wextra",
                 "-Werror",
                 f'-DRV_APP_ROOT="{package_root}"',
+                f'-DRV_APP_DATA_ROOT="{package_root.replace("/Revola/", "/Revola/Data/")}"',
                 "-I" + str(root),
                 "-I" + str(root / "runtime"),
                 "-I" + str(header.parent),

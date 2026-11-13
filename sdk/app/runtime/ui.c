@@ -2,13 +2,31 @@
 /* Adapted from RepriseOS game-sdk/runtime/ui.c by lgreitis. */
 #include "rv_app_ui.h"
 
-void rv_app_clear(const struct rv_app_framebuffer *fb, uint16_t color)
+void rv_app_fill_rect(const struct rv_app_framebuffer *fb, int x, int y, int width, int height,
+                      uint16_t color)
 {
     if (!fb || !fb->pixels)
         return;
-    for (unsigned y = 0; y < fb->height; ++y)
-        for (unsigned x = 0; x < fb->width; ++x)
-            fb->pixels[y * fb->stride_pixels + x] = color;
+    int right = x + width, bottom = y + height;
+    if (x < 0)
+        x = 0;
+    if (y < 0)
+        y = 0;
+    if (right > (int)fb->width)
+        right = fb->width;
+    if (bottom > (int)fb->height)
+        bottom = fb->height;
+    for (; y < bottom; ++y) {
+        uint16_t *row = fb->pixels + (unsigned)y * fb->stride_pixels;
+        for (int px = x; px < right; ++px)
+            row[px] = color;
+    }
+}
+
+void rv_app_clear(const struct rv_app_framebuffer *fb, uint16_t color)
+{
+    if (fb)
+        rv_app_fill_rect(fb, 0, 0, fb->width, fb->height, color);
 }
 
 static void move(struct rv_app_menu *menu, int direction)

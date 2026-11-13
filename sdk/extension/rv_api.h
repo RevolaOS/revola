@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 54
+#define RV_API_MINOR 55
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -654,9 +654,9 @@ struct rv_api {
      * no pane has shown one. */
     void (*pane_refresh)(rv_extension_handle self);
 
-    /* Files in the extension's data folder, /Revola/Data/<id>/. `name` is a
-     * path inside it ("presets/rock.bin") without "..". file_open with
-     * RV_FILE_WRITE creates the folders above it and a missing file; to
+    /* Files in the extension's data folder, /Revola/Data/Extensions/<id>/.
+     * `name` is a path inside it ("presets/rock.bin") without "..". file_open
+     * with RV_FILE_WRITE creates the folders above it and a missing file; to
      * replace a file, delete it first. file_read sets *got, short at the end.
      * folder_list calls `each` for every entry of a folder ("" for the data
      * folder), nothing when it is missing. The core closes what is still open

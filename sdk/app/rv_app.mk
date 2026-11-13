@@ -24,8 +24,10 @@ include $(SDK)/rv_firmware.mk
 
 ifeq ($(KIND),game)
 RV_APP_ROOT := /Revola/Games/
+RV_APP_DATA_ROOT := /Revola/Data/Games/
 else ifeq ($(KIND),app)
 RV_APP_ROOT := /Revola/Apps/
+RV_APP_DATA_ROOT := /Revola/Data/Apps/
 else
 $(error KIND must be game or app)
 endif
@@ -58,7 +60,7 @@ $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)
 
 $(RV_APP_RUNTIME_DIR)/%.o: $(SDK)/app/runtime/%.c $(SDK)/app/rv_app.mk
 	@mkdir -p $(@D)
-	$(CC) $(RV_APP_CFLAGS) -DRV_APP_ROOT='"$(RV_APP_ROOT)"' -MMD -MP -c $< -o $@
+	$(CC) $(RV_APP_CFLAGS) -DRV_APP_ROOT='"$(RV_APP_ROOT)"' -DRV_APP_DATA_ROOT='"$(RV_APP_DATA_ROOT)"' -MMD -MP -c $< -o $@
 
 $(RV_APP_STARTUP): $(SDK)/app/runtime/startup.S $(SDK)/app/rv_app.mk
 	@mkdir -p $(@D)

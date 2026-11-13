@@ -58,6 +58,10 @@ extern const struct rv_app rv_app_application;
  * lower-case letters are drawn in upper case, other characters are skipped. */
 void rv_app_draw_text(const struct rv_app_framebuffer *framebuffer, unsigned x, unsigned y,
                       const char *text, uint16_t color);
+/* The same text with every font pixel `scale` pixels wide and high: a glyph
+ * cell is 6 x 7 font pixels. */
+void rv_app_draw_text_scaled(const struct rv_app_framebuffer *framebuffer, unsigned x,
+                             unsigned y, const char *text, uint16_t color, unsigned scale);
 
 /* Ends the app after the current callback returns. */
 void rv_app_request_exit(void);
@@ -119,6 +123,15 @@ int rv_app_file_seek(struct rv_app_file *file, uint32_t offset);
 uint32_t rv_app_file_size(const struct rv_app_file *file);
 uint32_t rv_app_file_position(const struct rv_app_file *file);
 void rv_app_file_close(struct rv_app_file *file);
+
+/* Files of the package's data folder, /Revola/Data/Games/<id>/ for a game and
+ * /Revola/Data/Apps/<id>/ for an app, by path inside it with the package's
+ * path rules. Writing creates the folder and replaces the file; the handle
+ * takes write, seek and close. Delete returns 0, -1 on failure. */
+enum rv_app_file_mode { RV_APP_FILE_READ = 1, RV_APP_FILE_WRITE = 2 };
+struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mode);
+int rv_app_file_write(struct rv_app_file *file, const void *data, size_t size);
+int rv_app_data_delete(const char *name);
 
 #ifdef __cplusplus
 }

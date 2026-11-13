@@ -11,8 +11,10 @@
 #include <string.h>
 
 const struct rv_app rv_app_application = {.package_id = "test-game"};
-static unsigned opened, closed, strings, native_opens;
-static char opened_path[258], expected[300], long_name[300];
+static unsigned opened, closed, strings, native_opens, open_mode, created, deleted;
+static char opened_path[258], expected[300], long_name[300], created_path[258],
+    deleted_path[258], written[64];
+static unsigned written_bytes;
 static const char *result_name;
 
 struct DirectoryIterator;
@@ -67,8 +69,9 @@ struct NativePath *NativePath_Destroy(struct NativePath *path)
 int File_OpenLegacyPath(void *path, uint32_t fork, int mode, void **handle)
 {
     const struct rv_app_path *legacy = path;
-    assert(legacy->volume == 0 && fork == 0x64617461u && mode == 1);
+    assert(legacy->volume == 0 && fork == 0x64617461u && (mode == 1 || mode == 2));
     strcpy(opened_path, legacy->text);
+    open_mode = mode;
     *handle = &native_opens;
     ++native_opens;
     return 0;
@@ -89,6 +92,34 @@ int File_ReadLegacyHandle(void *handle, void *buffer, uint32_t bytes, uint32_t f
     (void)bytes;
     (void)flags;
     *read = 0;
+    return 0;
+}
+
+int File_WriteLegacyHandle(void *handle, const void *buffer, uint32_t bytes, uint32_t flags,
+                           uint32_t *out_written)
+{
+    (void)handle;
+    assert(flags == 1 && written_bytes + bytes <= sizeof(written));
+    memcpy(written + written_bytes, buffer, bytes);
+    written_bytes += bytes;
+    *out_written = bytes;
+    return 0;
+}
+
+int File_DeleteLegacyPath(void *path)
+{
+    const struct rv_app_path *legacy = path;
+    assert(legacy->volume == 0);
+    strcpy(deleted_path, legacy->text);
+    ++deleted;
+    return 0;
+}
+
+int Directory_CreateWithParents(const char *path, uint32_t volume)
+{
+    assert(volume == 0);
+    strcpy(created_path, path);
+    ++created;
     return 0;
 }
 
@@ -123,8 +154,11 @@ int main(int argc, char **argv)
     for (unsigned i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
         assert(!rv_app_directory_open(invalid[i], 1));
         assert(!rv_app_file_open(invalid[i]));
+        assert(!rv_app_data_open(invalid[i], RV_APP_FILE_READ));
+        assert(!rv_app_data_open(invalid[i], RV_APP_FILE_WRITE));
+        assert(rv_app_data_delete(invalid[i]) == -1);
     }
-    assert(!opened && !native_opens);
+    assert(!opened && !native_opens && !created && !deleted);
     struct rv_app_directory *dirs[4];
     for (unsigned i = 0; i < 4; ++i)
         assert((dirs[i] = rv_app_directory_open("", 1)));
@@ -150,6 +184,31 @@ int main(int argc, char **argv)
     assert(file && !strcmp(opened_path, under_root(root, "test-game/roms/Example.NES")));
     rv_app_files_close_all();
     assert(!native_opens);
+
+    /* The data folder: reads create nothing, writes create the folder and
+     * replace the file, and only a handle opened for writing takes writes. */
+    assert(!rv_app_data_open("", RV_APP_FILE_READ) && !rv_app_data_open("scores", 3));
+    file = rv_app_data_open("scores", RV_APP_FILE_READ);
+    assert(file && open_mode == 1 && !created && !deleted);
+    assert(!strcmp(opened_path, RV_APP_DATA_ROOT "test-game/scores"));
+    assert(rv_app_file_write(file, "x", 1) == -1);
+    rv_app_file_close(file);
+    file = rv_app_data_open("saves/game", RV_APP_FILE_WRITE);
+    assert(file && open_mode == 2 && created == 1 && deleted == 1);
+    assert(!strcmp(opened_path, RV_APP_DATA_ROOT "test-game/saves/game"));
+    assert(!strcmp(created_path, RV_APP_DATA_ROOT "test-game/saves"));
+    assert(!strcmp(deleted_path, opened_path));
+    assert(rv_app_file_write(file, "abc", 3) == 3 && rv_app_file_write(file, "", 0) == 0);
+    assert(rv_app_file_write(file, "de", 2) == 2 && written_bytes == 5);
+    assert(!memcmp(written, "abcde", 5));
+    assert(rv_app_file_size(file) == 5 && rv_app_file_position(file) == 5);
+    assert(rv_app_file_seek(file, 2) == 0 && rv_app_file_position(file) == 2);
+    rv_app_file_close(file);
+    assert(!native_opens);
+    assert(rv_app_data_delete("saves/game") == 0 && deleted == 2);
+    assert(!strcmp(deleted_path, RV_APP_DATA_ROOT "test-game/saves/game"));
+    assert(rv_app_data_delete("") == -1 && deleted == 2);
+
     struct rv_app_path path;
     char name[258] = {0};
     unsigned prefix = strlen(under_root(root, "test-game/"));
@@ -158,6 +217,6 @@ int main(int argc, char **argv)
     name[257 - prefix] = 'x';
     assert(rv_app_make_path(&path, name, 0) == -1);
     assert(!rv_app_directory_open(name, 1));
-    printf("%s: path boundaries, directory lifecycle and entry copies pass\n", root);
+    printf("%s: path boundaries, directory and file lifecycle and the data folder pass\n", root);
     return 0;
 }

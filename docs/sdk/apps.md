@@ -59,18 +59,19 @@ make SDK=/path/to/revola-sdk
 
 | Area | Calls |
 |---|---|
-| Drawing | `frame->framebuffer`: 320 x 240 RGB565 pixels, borrowed for one `frame` call and shown when it returns; `rv_app_clear`, `rv_app_draw_text` (5 x 7 font: digits, upper-case letters, `-`, `+`, `:`) |
+| Drawing | `frame->framebuffer`: 320 x 240 RGB565 pixels, borrowed for one `frame` call and shown when it returns; `rv_app_clear`, `rv_app_fill_rect`, `rv_app_draw_text` and `rv_app_draw_text_scaled` (5 x 7 font at 1 to n pixels per font pixel: digits, upper-case letters, `-`, `+`, `:`) |
 | Buttons | `input` receives Menu, Center, Next, Previous and Play presses and releases with a millisecond timestamp |
 | Wheel | `rv_app_read_wheel` (clockwise delta since the last read, position, touched), `rv_app_wheel_directions` (eight sectors as Up, Right, Down, Left bits) |
 | Hold | `rv_app_hold_locked` |
 | Heap | `rv_app_alloc`, `rv_app_realloc`, `rv_app_free` from the host's heap, at most 8 MiB per block, all freed when the app ends |
 | Time | `rv_app_ticks_ms` since the first call, `rv_app_sleep_ms` |
-| Files | `rv_app_file_open`, `read`, `seek`, `size`, `position`, `close`: read only, paths inside the package, twelve open at once |
+| Files | `rv_app_file_open`, `read`, `seek`, `size`, `position`, `close`: read only, paths inside the package, twelve open at once with the data files |
+| Data | `rv_app_data_open` opens a path inside the package's data folder, `/Revola/Data/Games/<id>/` or `/Revola/Data/Apps/<id>/`, for reading or writing, `rv_app_file_write` on a handle opened for writing, `rv_app_data_delete`; writing creates the folder and replaces the file. The folder belongs to the app; Apple's own play counts and saves of a package stay under `iPod_Control/` |
 | Folders | `rv_app_directory_open` (recursive or not), `read`, `close`: four open at once |
 | Menus | `rv_app_ui.h`: `rv_app_menu_input`, `rv_app_menu_scroll`, `rv_app_menu_draw` draw a text list; `rv_app_file_picker_open` lists up to 64 files with an extension, sorted |
 | Exit | `rv_app_request_exit` ends the app after the current callback |
 
-TODO: audio, writable files and a data folder at `/Revola/Data/<id>/`.
+TODO: audio.
 
 ## With a C library
 

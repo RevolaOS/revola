@@ -7,6 +7,9 @@
 #ifndef RV_APP_ROOT
 #error "RV_APP_ROOT names the folder the package is installed under"
 #endif
+#ifndef RV_APP_DATA_ROOT
+#error "RV_APP_DATA_ROOT names the folder the package's data lives under"
+#endif
 
 #define FORK_DATA 0x64617461u /* 'data' */
 
@@ -14,15 +17,20 @@ struct rv_app_file {
     void *handle;
     uint32_t size;
     uint32_t position;
+    uint8_t writable;
 };
 
 static struct rv_app_file files[12];
 
-int rv_app_make_path(struct rv_app_path *path, const char *name, int allow_root)
+/* `root`, the package id and `name` into `path`, with the package's rules. */
+static int make_path(struct rv_app_path *path, const char *root, const char *name,
+                     int allow_root)
 {
-    *path = (struct rv_app_path){0, RV_APP_ROOT};
+    path->volume = 0;
+    unsigned i = 0;
+    for (; root[i]; ++i)
+        path->text[i] = root[i];
 
-    unsigned i = sizeof(RV_APP_ROOT) - 1;
     const char *id = rv_app_application.package_id;
     if (!id || !*id || *id == '.')
         return -1;
@@ -64,18 +72,19 @@ int rv_app_make_path(struct rv_app_path *path, const char *name, int allow_root)
     return 0;
 }
 
-struct rv_app_file *rv_app_file_open(const char *name)
+int rv_app_make_path(struct rv_app_path *path, const char *name, int allow_root)
 {
-    struct rv_app_path path;
-    if (rv_app_make_path(&path, name, 0) < 0)
-        return NULL;
+    return make_path(path, RV_APP_ROOT, name, allow_root);
+}
 
+static struct rv_app_file *open_path(struct rv_app_path *path, enum rv_app_file_mode mode)
+{
     for (unsigned slot = 0; slot < sizeof(files) / sizeof(files[0]); ++slot) {
         struct rv_app_file *file = &files[slot];
         if (file->handle)
             continue;
 
-        if (File_OpenLegacyPath(&path, FORK_DATA, 1, &file->handle) != 0) {
+        if (File_OpenLegacyPath(path, FORK_DATA, mode, &file->handle) != 0) {
             file->handle = NULL;
             return NULL;
         }
@@ -84,10 +93,69 @@ struct rv_app_file *rv_app_file_open(const char *name)
             return NULL;
         }
         file->position = 0;
+        file->writable = mode == RV_APP_FILE_WRITE;
         return file;
     }
 
     return NULL;
+}
+
+struct rv_app_file *rv_app_file_open(const char *name)
+{
+    struct rv_app_path path;
+    if (make_path(&path, RV_APP_ROOT, name, 0) < 0)
+        return NULL;
+    return open_path(&path, RV_APP_FILE_READ);
+}
+
+/* Creates the folder above the file in `path`, which make_path built: the
+ * root ends in a slash, so there is one. */
+static void make_parents(struct rv_app_path *path)
+{
+    char *slash = NULL;
+    for (char *c = path->text; *c; ++c)
+        if (*c == '/')
+            slash = c;
+    *slash = 0;
+    Directory_CreateWithParents(path->text, 0);
+    *slash = '/';
+}
+
+struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mode)
+{
+    struct rv_app_path path;
+    if ((mode != RV_APP_FILE_READ && mode != RV_APP_FILE_WRITE) ||
+        make_path(&path, RV_APP_DATA_ROOT, name, 0) < 0)
+        return NULL;
+    if (mode == RV_APP_FILE_WRITE) {
+        make_parents(&path);
+        File_DeleteLegacyPath(&path);
+    }
+    return open_path(&path, mode);
+}
+
+int rv_app_data_delete(const char *name)
+{
+    struct rv_app_path path;
+    if (make_path(&path, RV_APP_DATA_ROOT, name, 0) < 0)
+        return -1;
+    return File_DeleteLegacyPath(&path) == 0 ? 0 : -1;
+}
+
+int rv_app_file_write(struct rv_app_file *file, const void *data, size_t size)
+{
+    uint32_t written = 0;
+
+    if (!file || !file->handle || !file->writable || (!data && size))
+        return -1;
+    if (!size)
+        return 0;
+    if (File_WriteLegacyHandle(file->handle, data, size, 1, &written) != 0 || written != size)
+        return -1;
+    file->position += written;
+    if (file->position > file->size)
+        file->size = file->position;
+    return (int)written;
 }
 
 int rv_app_file_read(struct rv_app_file *file, void *buffer, size_t size)

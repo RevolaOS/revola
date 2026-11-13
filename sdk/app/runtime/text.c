@@ -27,12 +27,12 @@ static const uint8_t glyphs[][7] = {
     {0, 4, 4, 0, 4, 4, 0},
 };
 
-void rv_app_draw_text(const struct rv_app_framebuffer *fb, unsigned x, unsigned y,
-                      const char *value, uint16_t color)
+void rv_app_draw_text_scaled(const struct rv_app_framebuffer *fb, unsigned x, unsigned y,
+                             const char *value, uint16_t color, unsigned scale)
 {
-    if (!fb || !fb->pixels || !value)
+    if (!fb || !fb->pixels || !value || !scale)
         return;
-    for (; *value && x + 5 <= fb->width; ++value, x += 6) {
+    for (; *value && x + 5 * scale <= fb->width; ++value, x += 6 * scale) {
         char c = *value;
         if (c >= 'a' && c <= 'z')
             c -= 'a' - 'A';
@@ -43,9 +43,15 @@ void rv_app_draw_text(const struct rv_app_framebuffer *fb, unsigned x, unsigned 
         if (!*glyph)
             continue;
 
-        for (unsigned dy = 0; dy < 7 && y + dy < fb->height; ++dy)
-            for (unsigned dx = 0; dx < 5; ++dx)
-                if (glyphs[glyph - alphabet][dy] & (16u >> dx))
+        for (unsigned dy = 0; dy < 7 * scale && y + dy < fb->height; ++dy)
+            for (unsigned dx = 0; dx < 5 * scale; ++dx)
+                if (glyphs[glyph - alphabet][dy / scale] & (16u >> (dx / scale)))
                     fb->pixels[(y + dy) * fb->stride_pixels + x + dx] = color;
     }
+}
+
+void rv_app_draw_text(const struct rv_app_framebuffer *fb, unsigned x, unsigned y,
+                      const char *value, uint16_t color)
+{
+    rv_app_draw_text_scaled(fb, x, y, value, color, 1);
 }
