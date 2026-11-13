@@ -1,6 +1,6 @@
 # Files
 
-Each extension has a data folder, `/Revola/Data/<id>/`. Paths cannot leave it, and the core closes what an extension left open when it unloads.
+Each extension has a data folder, `/Revola/Data/Extensions/<id>/`; games and apps have theirs under `/Revola/Data/Games/` and `/Revola/Data/Apps/`. Paths cannot leave it, and the core closes what an extension left open when it unloads.
 
 An extension that shows files a listener copies onto the iPod names the folder in its manifest, `content = "Themes"` (or a list of folders), and reads `/Revola/Themes/` through `api->content_open` and `api->content_list` with names that start with the folder, such as `Themes/flat.rvt`. A content folder is read-only and has one owner: a second enabled extension naming it does not load, and Settings > Extensions lists it as Conflict. `api->firmware_open` opens the booted firmware image, `/Revola/Firmware/revola.bin`, which is where a theme reads the stock artwork from. Handles from `content_open` and `firmware_open`, and from `asset_open` in [Assets](assets.md), take `file_read`, `file_seek` and `file_close` like a data file.
 

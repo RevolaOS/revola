@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Each extension's data folder, /Revola/Data/<id>/, the content folders its
- * manifest names under /Revola/, the booted firmware image, and the files it
- * opened there. Names are paths inside a folder; a content name starts with
+/* Each extension's data folder, /Revola/Data/Extensions/<id>/, the content
+ * folders its manifest names under /Revola/, the booted firmware image, and
+ * the files it opened there. Names are paths inside a folder; a content name starts with
  * the folder ("Themes/x").
  * The core keeps every open file on a list so it can close them when the
  * extension unloads. A file may be a window of a larger one, as an asset in
@@ -14,7 +14,7 @@
 #include "rv_api.h"
 #include <stddef.h>
 
-#define ROOT "/Revola/Data/"
+#define ROOT "/Revola/Data/Extensions/"
 #define CONTENT_ROOT "/Revola/"
 #define FIRMWARE "/Revola/Firmware/revola.bin"
 #define PATH_BYTES 128
