@@ -5,6 +5,8 @@
 #include "ui/resources.h"
 #include <stdint.h>
 
+struct core_screen;
+
 /* The name core rows' delayedselected bindings switch to. */
 extern const char core_panes_layout_name[];
 
@@ -23,6 +25,10 @@ void core_panes_store(uint32_t id, const void *data, uint32_t bytes, uint32_t st
 int core_panes_prepare(void);
 /* Makes the Settings row with this item id the one the pane shows. */
 void core_panes_show(uint32_t item);
+/* Asks the pane on screen for its icon and caption again: what they show changed. */
+void core_panes_refresh(void);
+/* `screen` closed: its pane, if it was the list pane shown, is forgotten. */
+void core_panes_screen_closed(struct core_screen *screen);
 /* Answers the pane's caption, detail, icon and box properties; 0 for anything
  * else. */
 int core_panes_property(uint32_t type, uint32_t id, uint32_t out);

@@ -20,11 +20,19 @@ static inline int core_lists_kind(uint8_t kind)
     return kind == RV_SCREEN_KIND_LIST || core_lists_indexed(kind);
 }
 
+/* 1 for a list whose rows each bring a pane: the pane shows the highlighted row's. */
+static inline int core_lists_per_row_pane(const struct rv_screen *d)
+{
+    return d->kind == RV_SCREEN_KIND_LIST && d->list.panes;
+}
+
 /* Ids the split layout of a list screen takes after the full layout's: its
  * screen, its layout, the pane, four layout clones, and the pane's caption,
- * icon and box sources. */
-#define CORE_LIST_SPLIT_IDS 10
+ * icon, box and title sources (the title names the highlighted row when the
+ * pane follows it). */
+#define CORE_LIST_SPLIT_IDS 11
 #define CORE_LIST_PANE_CAPTION(screen) ((screen) + 7)
+#define CORE_LIST_PANE_TITLE(screen) ((screen) + 10)
 
 /* A long-press menu takes one id for the long press and one per row (its label
  * string; "Rv" and the id name its handler), plus four for its titled screen

@@ -24,8 +24,9 @@
 const char core_panes_layout_name[] = "RvSettingsPane";
 
 static void *bank;
-static uint32_t layout;  /* the shared layout; its ids follow */
-static uint32_t current; /* item id of the row the pane shows */
+static uint32_t layout;    /* the shared layout; its ids follow */
+static uint32_t current;   /* item id of the row the pane shows */
+static uint32_t list_pane; /* caption id of the last list pane shown, 0 before one */
 
 #define SSIN (layout + 1)
 #define PANE (layout + 2)
@@ -173,6 +174,24 @@ void core_panes_show(uint32_t item)
     core_screens_notify(BOX);
 }
 
+void core_panes_screen_closed(struct core_screen *screen)
+{
+    if (core_lists_kind(screen->declaration->kind) &&
+        list_pane == CORE_LIST_PANE_CAPTION(core_lists_screen_id(screen, 1)))
+        list_pane = 0;
+}
+
+/* `current` outlives the Settings screen, so a refresh while Settings is closed
+ * decodes the last row's icon once for nobody. */
+void core_panes_refresh(void)
+{
+    if (layout && current)
+        core_panes_show(current);
+    if (list_pane)
+        for (uint32_t i = 0; i < 4; i++)
+            core_screens_notify(list_pane + i);
+}
+
 /* The entry's pane icon now. */
 static const struct rv_bitmap *icon_of(const struct rv_menu_entry *e,
                                        struct rv_extension_record *owner)
@@ -183,14 +202,11 @@ static const struct rv_bitmap *icon_of(const struct rv_menu_entry *e,
     return e->bitmap_for(&ctx);
 }
 
-/* The box behind an icon, or a transparent pixel for a row without one: an
- * image view keeps its last bitmap when it is answered NULL. */
-static const void *box_for(const struct rv_menu_entry *e, struct rv_extension_record *owner)
+/* A transparent pixel for a pane without an icon: an image view keeps its
+ * last bitmap when it is answered NULL. */
+static const void *clear_bitmap(void)
 {
     static uint32_t clear[(BMap_payload + 4) / 4];
-    if (icon_of(e, owner) && !e->plain_icon)
-        return ResourceService_GetBitmap(UI_GetResourceService(),
-                                         RES_SettingsPreview_Background_Image);
     if (!clear[0]) {
         uint8_t *b = (uint8_t *)clear;
         *(uint16_t *)(b + BMap_format) = BMapFormat_BGRA8888;
@@ -202,15 +218,27 @@ static const void *box_for(const struct rv_menu_entry *e, struct rv_extension_re
     return clear;
 }
 
+static const void *icon_box(void)
+{
+    return ResourceService_GetBitmap(UI_GetResourceService(), RES_SettingsPreview_Background_Image);
+}
+
+/* The box behind an icon, or the transparent pixel for a row without one. */
+static const void *box_for(const struct rv_menu_entry *e, struct rv_extension_record *owner)
+{
+    return icon_of(e, owner) && !e->plain_icon ? icon_box() : clear_bitmap();
+}
+
 int core_panes_property(uint32_t type, uint32_t id, uint32_t out)
 {
     const struct rv_menu_entry *e;
     struct rv_extension_record *owner;
     if (!layout || id - CAPTION >= 4 || !(e = core_menus_entry(current, &owner)))
         return 0;
-    if (id == ICON && type == Property_Bitmap)
-        *(const void **)out = core_bitmap(owner, icon_of(e, owner));
-    else if (id == BOX && type == Property_Bitmap)
+    if (id == ICON && type == Property_Bitmap) {
+        const void *icon = core_bitmap(owner, icon_of(e, owner));
+        *(const void **)out = icon ? icon : clear_bitmap();
+    } else if (id == BOX && type == Property_Bitmap)
         *(const void **)out = box_for(e, owner);
     else if (id == CAPTION && type == Property_String)
         *(const char **)out = core_row_label(&e->row, owner, NULL);
@@ -231,28 +259,55 @@ int core_panes_list_property(struct core_screen *s, uint32_t type, uint32_t id, 
     if (!core_lists_kind(d->kind))
         return 0;
     uint32_t caption = CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1)), index;
+    /* A list with a pane per row answers for the highlighted row. */
+    const struct rv_pane *pane = NULL;
+    if (core_lists_per_row_pane(d) && (index = core_indexed_selected()) < d->list.count)
+        pane = &d->list.panes[index];
+    struct rv_context ctx = {s->owner, NULL, NULL, NULL, -1, NULL};
     if (id == caption && type == Property_String && d->kind == RV_SCREEN_KIND_CHOICE &&
         (index = core_indexed_selected()) < d->choice.count)
         *(const char **)out = d->choice.labels[index];
-    else if (id == caption && type == Property_String)
+    else if (id == caption && type == Property_String && pane) {
+        const char *text = pane->caption_text ? pane->caption_text(&ctx) : pane->caption;
+        *(const char **)out = text ? text : "";
+    } else if (id == caption && type == Property_String)
         *(const char **)out = d->caption ? d->caption : "";
-    else if (id == caption + 1 && type == Property_Bitmap)
+    else if ((id == caption + 1 || id == caption + 2) && type == Property_Bitmap && pane) {
+        const void *icon =
+            core_bitmap(s->owner, pane->bitmap_for ? pane->bitmap_for(&ctx) : pane->bitmap);
+        if (!icon)
+            *(const void **)out = clear_bitmap();
+        else
+            *(const void **)out = id == caption + 1 ? icon : icon_box();
+    } else if (id == caption + 1 && type == Property_Bitmap)
         *(const void **)out = core_bitmap(s->owner, d->bitmap);
     else if (id == caption + 2 && type == Property_Bitmap)
-        *(const void **)out = ResourceService_GetBitmap(UI_GetResourceService(),
-                                                        RES_SettingsPreview_Background_Image);
+        *(const void **)out = icon_box();
+    else if (id == caption + 3 && type == Property_String && pane)
+        *(const char **)out = core_row_label(&d->list.rows[index], s->owner, NULL);
+    else if (id == caption + 3 && type == Property_String)
+        *(const char **)out = d->title ? d->title : "";
     else
         return 0;
     return 1;
 }
 
+/* The highlight moved: the pane's caption, and with a pane per row its icon and
+ * title, are read again. */
 int core_panes_list_action(struct core_screen *s, uint32_t id, uint32_t argument)
 {
-    if (!core_lists_kind(s->declaration->kind) ||
-        id != CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1)))
+    const struct rv_screen *d = s->declaration;
+    if (!core_lists_kind(d->kind) || id != CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1)))
         return 0;
-    if (argument != ActionSupportQuery)
-        core_screens_notify(id);
+    if (argument == ActionSupportQuery)
+        return 1;
+    core_screens_notify(id);
+    if (core_lists_per_row_pane(d)) {
+        list_pane = id;
+        core_screens_notify(id + 1);
+        core_screens_notify(id + 2);
+        core_screens_notify(id + 3);
+    }
     return 1;
 }
 

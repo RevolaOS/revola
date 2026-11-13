@@ -232,6 +232,7 @@ uint32_t core_screens_abandon(struct rv_extension_record *owner)
         if (!s || s->owner != owner)
             continue;
         core_bitmaps_screen_closed(s);
+        core_panes_screen_closed(s);
         open[i].screen = NULL;
         abandoned++;
     }
@@ -307,8 +308,10 @@ static void screen_left(void *controller)
         closing.origin = origin;
         if (s->open)
             s->open--;
-        if (!s->open)
+        if (!s->open) {
             core_bitmaps_screen_closed(s);
+            core_panes_screen_closed(s);
+        }
         if (!s->open && !s->owner)
             core_extensions_closed(s);
         if (s->owner)

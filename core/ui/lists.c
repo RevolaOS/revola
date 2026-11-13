@@ -39,14 +39,13 @@ static int indexed(const struct core_screen *s)
     return core_lists_indexed(s->declaration->kind);
 }
 
-/* list.pid.<item>.chosen for `count` items two ids apart, each naming its Rv
- * handler; with `pane`, the first item's delayedselected naming the pane line's
- * handler, so the line follows the highlight; `more` events follow. */
+/* A chosen event per row, and when the pane follows the highlight a
+ * delayed-selected event per row that names the pane's handler. */
 static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_t count,
                              uint32_t pane, uint32_t more)
 {
     char name[48], handler[11], *n;
-    core_write_word(w, count + (pane != 0) + more);
+    core_write_word(w, count + (pane ? count : 0) + more);
     for (uint32_t i = 0; i < count; i++) {
         n = core_put_text(name, name + sizeof name, "list.pid.");
         n = core_put_number(n, name + sizeof name, first_item + 2 * i);
@@ -54,20 +53,25 @@ static void write_row_events(struct core_writer *w, uint32_t first_item, uint32_
         core_screens_handler_name(handler, first_item + 2 * i);
         core_write_event(w, name, handler, NULL, NULL, 0);
     }
-    if (pane) {
+    for (uint32_t i = 0; pane && i < count; i++) {
         n = core_put_text(name, name + sizeof name, "list.pid.");
-        n = core_put_number(n, name + sizeof name, first_item);
+        n = core_put_number(n, name + sizeof name, first_item + 2 * i);
         core_put_text(n, name + sizeof name, ".delayedselected");
         core_screens_handler_name(handler, pane);
         core_write_event(w, name, handler, NULL, NULL, 0);
     }
 }
 
-/* A choice screen's pane line names the highlighted choice, as Settings > EQ
- * does; the other lists show their declared caption. */
+/* Whether the pane changes with the highlighted row: a choice screen names the
+ * choice, a list with a pane per row shows that row's. */
 static int pane_follows(const struct rv_screen *d)
 {
-    return d->kind == RV_SCREEN_KIND_CHOICE;
+    return d->kind == RV_SCREEN_KIND_CHOICE || core_lists_per_row_pane(d);
+}
+
+static int pane_has_icon(const struct rv_screen *d)
+{
+    return d->bitmap || core_lists_per_row_pane(d);
 }
 
 uint32_t core_lists_screen_id(const struct core_screen *s, int split)
@@ -80,7 +84,8 @@ uint32_t core_lists_screen_id(const struct core_screen *s, int split)
  * the list bound by the screen's VSlt (the stock split screens bind their list
  * there, not in the list instance). Takes one id from *next for the pane;
  * the declaration's caption and icon, when set, fill the pane's detail line
- * and icon; a choice screen's line follows the highlight instead. */
+ * and icon; a choice screen's line follows the highlight instead, and a list
+ * with a pane per row shows the highlighted row's title, caption and icon. */
 static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, uint8_t *scratch,
                        uint32_t bytes)
 {
@@ -88,12 +93,14 @@ static int clone_split(struct core_screen *s, uint32_t screen, uint32_t *next, u
     const struct rv_screen *d = s->declaration;
     uint32_t caption = CORE_LIST_PANE_CAPTION(screen);
     uint32_t pane_id = (*next)++;
-    uint32_t icon = d->bitmap ? caption + 1 : 0, box = d->bitmap ? caption + 2 : 0;
+    uint32_t icon = pane_has_icon(d) ? caption + 1 : 0, box = pane_has_icon(d) ? caption + 2 : 0;
     uint32_t line = d->caption || pane_follows(d) ? caption : 0;
-    uint32_t stock_pane = core_panes_write(&w, s->id + 2, line, icon, box);
+    int per_row = core_lists_per_row_pane(d);
+    uint32_t stock_pane =
+        core_panes_write(&w, per_row ? CORE_LIST_PANE_TITLE(screen) : s->id + 2, line, icon, box);
     if (!stock_pane)
         return 0;
-    for (uint32_t i = 0; i < 3; i++)
+    for (uint32_t i = 0; i < (per_row ? 4u : 3u); i++)
         core_set_source(caption + i, caption + i, SourceDestination_Title);
     core_panes_store(pane_id, scratch, w.at, stock_pane);
     uint32_t vslt[5] = {1, 8, ViewBinding_ItemTable, RES_SettingsList_View, s->id + 3};
@@ -225,7 +232,7 @@ int core_clone_list(struct core_screen *s, int split)
                         ? CORE_LIST_PANE_CAPTION(core_lists_screen_id(s, 1))
                         : 0;
     uint32_t bytes = 4 + count * (8 + ROW_BYTES);
-    uint32_t events = 4 + (count + menu) * ROW_EVENT_BYTES + (pane ? PANE_EVENT_BYTES : 0);
+    uint32_t events = 4 + (count + menu) * ROW_EVENT_BYTES + (pane ? count * PANE_EVENT_BYTES : 0);
     if (bytes < CORE_CLONE_SCRATCH_BYTES)
         bytes = CORE_CLONE_SCRATCH_BYTES;
     uint8_t *scratch = Heap_AllocateZeroed(events + bytes);
