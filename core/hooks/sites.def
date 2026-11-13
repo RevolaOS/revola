@@ -208,6 +208,12 @@ SITE(EAppBlocks_Acquire_call, SITE_EAppBlocks_Acquire_call, CALL, ADDR_EAppBlock
 SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlocks_Release,
      BL(SITE_EAppBlocks_Release_call, ADDR_EAppBlocks_Release), 0, 0, 1, 0)
 
+/* Game manifest reader: (reader, manifest_path, storage_mode, signature_path). A NULL
+ * signature path skips the signature check. */
+SITE(GameManifest_InitReader_call, SITE_GameManifest_InitReader_call, CALL,
+     ADDR_GameManifest_InitReader,
+     BL(SITE_GameManifest_InitReader_call, ADDR_GameManifest_InitReader), 0, 1, 4, 0)
+
 /* Position of an entry in a list order: (entry, order, reverse), position in r0 and
  * the entry in r1. Nothing is inside it while core_boot runs during UI start-up. */
 SITE(MediaList_GetEntryOrderIndex_entry, SITE_MediaList_GetEntryOrderIndex_entry, ENTRY,
