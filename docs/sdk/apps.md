@@ -67,8 +67,9 @@ make SDK=/path/to/revola-sdk
 | Time | `rv_app_ticks_ms` since the first call, `rv_app_sleep_ms` |
 | Files | `rv_app_file_open`, `read`, `seek`, `size`, `position`, `close`: read only, paths inside the package, twelve open at once with the data files |
 | Data | `rv_app_data_open` opens a path inside the package's data folder for reading or writing, `rv_app_file_write` on a handle opened for writing, `rv_app_data_delete`; writing creates the folder and replaces the file, and the bytes are on disk when the handle is closed. The host names the folder: `/Revola/Data/Games/<id>/` or `/Revola/Data/Apps/<id>/` under RevolaOS, where Homebrew redirects it, and Apple's `iPod_Control/gamedata_RW/<id>/` anywhere else |
+| Saves | `rv_app_save_open`, `read`, `write`, `size`, `close`: Apple's save store for an app with little to keep, a file of the data folder whose contents the host holds in memory and writes at the next system save or app launch, not when the app exits. Four slots exist on the device, 100 KiB together; `write` replaces the contents. Anything larger, or that must be on disk when the app exits, is a data file |
 | Folders | `rv_app_directory_open` (recursive or not), `read`, `close`: four open at once; entry names are relative to the folder opened, subfolders are walked depth first, a folder lists at most 500 entries |
-| Errors | `rv_app_file_error`: the host's status of the last file, data or folder call that failed, as the `FileStatus_*` values of the symbols header |
+| Errors | `rv_app_file_error`: the host's status of the last file, data, folder or save call that failed, as the `FileStatus_*` and `GameSaveStatus_*` values of the symbols header |
 | Menus | `rv_app_ui.h`: `rv_app_menu_input`, `rv_app_menu_scroll`, `rv_app_menu_draw` draw a text list; `rv_app_file_picker_open` lists up to 64 files with an extension, sorted |
 | Exit | `rv_app_request_exit` ends the app after the current callback |
 
@@ -84,4 +85,4 @@ An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources a
 
 Files and folders are requests to the host's file worker, which runs on its own task and hands finished requests back with a later frame. The runtime keeps the calls synchronous: it waits for a request's outputs, yielding to the worker in between. The requests are a small ring that is never freed, because the worker links a finished request to the next one after the fact (`runtime/request.c`). `eapp-pack` checks the header, the entries and the import list, converts the icon, writes `Manifest.plist` and the package folder; `--zip` adds a ZIP with the folder under `Revola/Games/<id>/` or `Revola/Apps/<id>/` for sharing. Its module, `eapp_package.py`, serves an app with a packaging script of its own.
 
-`python3 app/tests/run.py` checks the package path rules, the request lifecycle and the file and folder calls against stand-ins for the host.
+`python3 app/tests/run.py` checks the package path rules, the request lifecycle and the file, folder and save store calls against stand-ins for the host.

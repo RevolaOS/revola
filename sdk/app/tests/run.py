@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Check the package path rules, the request lifecycle and the file and folder
-calls against host stand-ins: python3 tests/run.py [SYMBOLS_HEADER]."""
+"""Check the package path rules, the request lifecycle and the file, folder and
+save store calls against host stand-ins: python3 tests/run.py [SYMBOLS_HEADER]."""
 
 import os
 import subprocess
@@ -39,6 +39,7 @@ with tempfile.TemporaryDirectory(prefix="rv-app-tests-") as name:
             str(root / "runtime/request.c"),
             str(root / "runtime/files.c"),
             str(root / "runtime/directory.c"),
+            str(root / "runtime/save.c"),
             "-o",
             str(executable),
         ],

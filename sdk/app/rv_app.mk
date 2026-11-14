@@ -44,7 +44,7 @@ RV_APP_RUNTIME_DIR := $(OUT)/runtime
 RV_APP_RUNTIME := $(RV_APP_RUNTIME_DIR)/librv_app.a
 RV_APP_STARTUP := $(RV_APP_RUNTIME_DIR)/startup.o
 RV_APP_RUNTIME_OBJECTS := $(addprefix $(RV_APP_RUNTIME_DIR)/,\
-    runtime.o imports.o request.o memory.o time.o input.o files.o directory.o display.o \
+    runtime.o imports.o request.o memory.o time.o input.o files.o directory.o save.o display.o \
     text.o ui.o wheel.o)
 
 $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)

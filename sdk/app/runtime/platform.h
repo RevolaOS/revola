@@ -15,6 +15,7 @@ void *rv_app_platform_begin_frame(const struct rv_app_eapp_frame_input *input,
 void rv_app_platform_present(void *surface);
 void rv_app_files_close_all(void);
 void rv_app_directories_close_all(void);
+void rv_app_saves_close_all(void);
 
 /* `name` without leading "./", or NULL when it leaves its folder: a leading
  * slash, an empty, "." or ".." component, a trailing slash, a backslash or a
@@ -39,7 +40,7 @@ enum rv_app_request_output {
     RV_APP_REQUEST_TRANSFERRED = 4,
 };
 int rv_app_request_finish(struct GameFileRequest *request, int queued, unsigned outputs);
-/* What rv_app_file_error reports; set by a failed request. */
+/* What rv_app_file_error reports; set by a failed request and by save.c. */
 extern uint32_t rv_app_file_error_status;
 
 #endif

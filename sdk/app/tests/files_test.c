@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Adapted from RepriseOS game-sdk/tests/files_test.c by lgreitis. */
 
-/* Host stand-ins for the file worker that files.c, directory.c and
- * request.c drive, and the rules they must keep: a
+/* Host stand-ins for the file worker and the save store that files.c,
+ * directory.c, request.c and save.c drive, and the rules they must keep: a
  * request completes only when the game's task yields, its outputs arrive in
  * the host's order, and it stays allocated until a frame hands it back. */
 
@@ -353,6 +353,90 @@ void GameDirectory_ReleaseList(int handle)
     lists[handle].used = 0;
 }
 
+/* The save store: four slots held in memory, written at a flush. */
+static struct {
+    char path[64];
+    char data[64];
+    int bytes;
+    int position;
+    unsigned references;
+    int dirty;
+} slots[GameSave_MaxSlots];
+
+int GameSaveFile_Open(uint32_t kind, const char *path, int *out_slot)
+{
+    if (kind == GameDirectory_Package)
+        return FileStatus_NotPermitted;
+    for (int i = 0; i < GameSave_MaxSlots; ++i)
+        if (slots[i].path[0] && !strcmp(slots[i].path, path)) {
+            ++slots[i].references;
+            *out_slot = i;
+            return FileStatus_Ok;
+        }
+    for (int i = 0; i < GameSave_MaxSlots; ++i)
+        if (!slots[i].path[0]) {
+            strcpy(slots[i].path, path);
+            slots[i].references = 1;
+            *out_slot = i;
+            return FileStatus_Ok;
+        }
+    return FileStatus_NoSlot;
+}
+
+int GameSaveFile_Close(uint32_t slot)
+{
+    assert(slot < GameSave_MaxSlots && slots[slot].path[0] && slots[slot].references);
+    if (--slots[slot].references == 0 && !slots[slot].dirty)
+        memset(&slots[slot], 0, sizeof slots[slot]);
+    return FileStatus_Ok;
+}
+
+int GameSaveFile_Read(uint32_t slot, void *buffer, int *byte_count, int whence, uint32_t offset)
+{
+    assert(slot < GameSave_MaxSlots && slots[slot].path[0]);
+    int position = whence == FileSeek_Start ? (int)offset
+                   : whence == FileSeek_Current ? slots[slot].position + (int)offset
+                                                : -1;
+    if (position < 0)
+        return GameSaveStatus_BadOffset;
+    if (position >= slots[slot].bytes)
+        return GameSaveStatus_EndOfData;
+    if (*byte_count > slots[slot].bytes - position)
+        *byte_count = slots[slot].bytes - position;
+    memcpy(buffer, slots[slot].data + position, *byte_count);
+    slots[slot].position = position + *byte_count;
+    return FileStatus_Ok;
+}
+
+int GameSaveFile_Write(uint32_t slot, const void *buffer, int byte_count)
+{
+    assert(slot < GameSave_MaxSlots && slots[slot].path[0]);
+    if (byte_count > (int)sizeof slots[slot].data)
+        return GameSaveStatus_TooLarge;
+    memcpy(slots[slot].data, buffer, byte_count);
+    slots[slot].bytes = byte_count;
+    slots[slot].position = 0;
+    slots[slot].dirty = 1;
+    return FileStatus_Ok;
+}
+
+/* The host's flush: dirty slots to the data folder, freed when unreferenced. */
+static void flush_saves(void)
+{
+    for (int i = 0; i < GameSave_MaxSlots; ++i) {
+        if (!slots[i].path[0] || !slots[i].dirty)
+            continue;
+        struct fake_file *file = find_data(slots[i].path);
+        if (!file)
+            file = create_data(slots[i].path);
+        memcpy(file->data, slots[i].data, slots[i].bytes);
+        file->size = slots[i].bytes;
+        slots[i].dirty = 0;
+        if (!slots[i].references)
+            memset(&slots[i], 0, sizeof slots[i]);
+    }
+}
+
 static void check_names(void)
 {
     const char *invalid[] = {NULL,   "/root", "../other", "roms/../../other",
@@ -364,9 +448,10 @@ static void check_names(void)
         assert(!rv_app_data_open(invalid[i], RV_APP_FILE_READ));
         assert(!rv_app_data_open(invalid[i], RV_APP_FILE_WRITE));
         assert(rv_app_data_delete(invalid[i]) == -1);
+        assert(!rv_app_save_open(invalid[i]));
     }
     assert(!rv_app_file_open("") && !rv_app_data_open("", RV_APP_FILE_READ));
-    assert(!rv_app_data_open("scores", 3));
+    assert(!rv_app_data_open("scores", 3) && !rv_app_save_open(""));
     assert(!yields && LIVE(0) && !queued_opens);
 }
 
@@ -481,6 +566,61 @@ static void check_data(void)
     assert(rv_app_file_error() == FileStatus_NotFound && open_handles() == 0);
 }
 
+static void check_saves(void)
+{
+    /* No file yet: the open looked for one and found nothing. */
+    struct rv_app_save *save = rv_app_save_open("runs");
+    assert(save && rv_app_save_size(save) == 0 && slots[0].references == 1);
+    unsigned opens = queued_opens;
+    assert(LIVE(0));
+    assert(rv_app_save_read(save, text, 8, 0) == 0);
+    assert(rv_app_save_write(save, "ab", 2) == 0 && rv_app_save_size(save) == 2);
+    assert(slots[0].bytes == 2 && slots[0].dirty);
+    assert(rv_app_save_read(save, text, 8, 1) == 1 && text[0] == 'b');
+    assert(rv_app_save_read(save, text, 8, 2) == 0);
+    assert(rv_app_save_open("runs") == save && slots[0].references == 2);
+    rv_app_save_close(save);
+    rv_app_save_close(save);
+    rv_app_save_close(save);
+    assert(slots[0].references == 0 && slots[0].dirty && LIVE(0));
+
+    /* The host still holds the slot: its contents are found and used. */
+    save = rv_app_save_open("runs");
+    assert(save && rv_app_save_size(save) == 2 && LIVE(0) && queued_opens == opens);
+    assert(rv_app_save_read(save, text, 8, 0) == 2 && !memcmp(text, "ab", 2));
+    rv_app_save_close(save);
+    flush_saves();
+    assert(!slots[0].path[0] && find_data("runs") && find_data("runs")->size == 2);
+
+    /* After the flush the slot is empty: the file is read from the disk. */
+    save = rv_app_save_open("runs");
+    assert(save && rv_app_save_size(save) == 2 && LIVE(1) && open_handles() == 0);
+    assert(rv_app_save_read(save, text, 1, 1) == 1 && text[0] == 'b');
+    assert(rv_app_save_write(save, "xyz", 3) == 0 && LIVE(0));
+    assert(rv_app_save_read(save, text, 8, 0) == 3 && !memcmp(text, "xyz", 3));
+
+    struct rv_app_save *more[3];
+    for (unsigned i = 0; i < 3; ++i) {
+        char name[8] = {'s', (char)('0' + i), 0};
+        assert((more[i] = rv_app_save_open(name)));
+    }
+    assert(!rv_app_save_open("fifth") && rv_app_file_error() == FileStatus_NoSlot);
+    rv_app_saves_close_all();
+    assert(rv_app_save_read(save, text, 8, 0) == -1);
+    for (unsigned i = 0; i < GameSave_MaxSlots; ++i)
+        assert(slots[i].references == 0);
+    assert(LIVE(0));
+
+    /* The file a fresh save or a write open looks for first may be missing;
+     * the error reported stays the caller's last failure. */
+    assert((save = rv_app_save_open("fresh")) && rv_app_file_error() == FileStatus_NoSlot);
+    rv_app_save_close(save);
+    struct rv_app_file *file = rv_app_data_open("fresh.dat", RV_APP_FILE_WRITE);
+    assert(file && rv_app_file_error() == FileStatus_NoSlot);
+    rv_app_file_close(file);
+    assert(LIVE(0) && open_handles() == 0);
+}
+
 int main(void)
 {
     arena = malloc(ARENA_BYTES);
@@ -491,7 +631,8 @@ int main(void)
     check_files();
     check_directories();
     check_data();
+    check_saves();
     assert(!pending.request);
-    printf("path rules, requests, files, folders and data files pass\n");
+    printf("path rules, requests, files, folders, data files and saves pass\n");
     return 0;
 }

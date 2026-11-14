@@ -134,9 +134,23 @@ struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mod
 int rv_app_file_write(struct rv_app_file *file, const void *data, size_t size);
 int rv_app_data_delete(const char *name);
 
-/* The host's status of the last file, data or folder call that failed, a
- * FileStatus_* value of osos-2.0.5.h; 0 while nothing failed. */
+/* The host's status of the last file, data, folder or save call that failed,
+ * a FileStatus_* or GameSaveStatus_* value of osos-2.0.5.h; 0 while nothing
+ * failed. */
 uint32_t rv_app_file_error(void);
+
+/* Apple's save store, for an app with little to keep: a file of the data
+ * folder whose contents the host holds in memory and writes at the next
+ * system save or app launch, not when the app exits. Four slots exist on the
+ * device and the slots hold 100 KiB together. Open loads the file; write
+ * replaces the contents; read copies from `offset` and returns the bytes
+ * copied, 0 past the end, -1 on error. Shutdown closes what is left open. */
+struct rv_app_save;
+struct rv_app_save *rv_app_save_open(const char *name);
+int rv_app_save_read(struct rv_app_save *save, void *buffer, size_t size, uint32_t offset);
+int rv_app_save_write(struct rv_app_save *save, const void *data, size_t size);
+uint32_t rv_app_save_size(const struct rv_app_save *save);
+void rv_app_save_close(struct rv_app_save *save);
 
 #ifdef __cplusplus
 }
