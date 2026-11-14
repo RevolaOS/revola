@@ -165,9 +165,9 @@ static uint32_t build(uint32_t stock_template, uint32_t ids, template_writer wri
 
 /* Text page: the stock Legal template's second block is a paragraph, its last
  * the bottom margin; each paragraph hangs below the one before. View offsets
- * count from the screen top, so the first paragraph starts below the 20 px title
- * bar with the stock page's 15 px top margin. */
-#define TEXT_TOP 35
+ * count from the template's top edge under the title bar, so the first
+ * paragraph keeps the stock page's 15 px top margin. */
+#define TEXT_TOP 15
 #define PARAGRAPH_GAP 12
 static int write_text(struct core_writer *w, uint32_t t, const void *views)
 {
