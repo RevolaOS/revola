@@ -128,3 +128,19 @@ class ThemeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeedPromptTests(unittest.TestCase):
+    def test_prompted_seed_is_held_in_a_private_file_and_removed(self):
+        with patch("getpass.getpass", return_value=" " + "ab" * 32 + "\n"):
+            with release.seed_file() as path:
+                self.assertEqual(path.read_text(), "ab" * 32)
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(path.exists())
+
+    def test_seed_must_be_64_hex_digits(self):
+        for bad in ("", "ab" * 31, "zz" * 32):
+            with patch("getpass.getpass", return_value=bad):
+                with self.assertRaises(ValueError):
+                    with release.seed_file():
+                        pass

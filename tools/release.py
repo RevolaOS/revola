@@ -16,6 +16,8 @@ CLI, and with --upload publishes everything as a GitHub release of this reposito
 """
 
 import argparse
+import contextlib
+import getpass
 import hashlib
 import json
 import os
@@ -25,6 +27,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -322,10 +325,16 @@ def main():
     parser.add_argument("--extensions", type=Path, default=ROOT.parent / "extensions")
     parser.add_argument("--themes", type=Path, default=ROOT.parent / "themes")
     parser.add_argument("--homebrew", type=Path, default=ROOT.parent / "homebrew")
-    parser.add_argument(
+    signing = parser.add_mutually_exclusive_group()
+    signing.add_argument(
         "--seed",
         type=Path,
         help="ed25519 seed that signs the manifest; omit for an unsigned trial",
+    )
+    signing.add_argument(
+        "--seed-prompt",
+        action="store_true",
+        help="ask for the seed instead of reading it from a file",
     )
     parser.add_argument(
         "--notes", type=Path, help="release notes; generated from commits otherwise"
@@ -347,9 +356,9 @@ def main():
         target = firmware.load()
         sdklock.check()
         build_identity = identity(ROOT, args.tag)
-        if args.upload and args.seed is None:
+        if args.upload and args.seed is None and not args.seed_prompt:
             raise ValueError(
-                "--upload needs --seed; the installer accepts only signed bundles"
+                "--upload needs --seed or --seed-prompt; the installer accepts only signed bundles"
             )
         if not shutil.which(args.assembler):
             raise ValueError(
@@ -363,9 +372,29 @@ def main():
             "homebrew": pinned(args.homebrew, "homebrew"),
         }
         prefix = build.compiler_prefix(args.cross_prefix, target["toolchain"]["gcc"])
-        release(args, build_identity, pins, prefix)
+        if args.seed_prompt:
+            with seed_file() as args.seed:
+                release(args, build_identity, pins, prefix)
+        else:
+            release(args, build_identity, pins, prefix)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
+
+
+@contextlib.contextmanager
+def seed_file():
+    """Ask for the ed25519 seed and hold it in a private file for the installer CLI
+    while the release builds."""
+    seed = getpass.getpass("ed25519 seed (64 hex digits): ").strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", seed):
+        raise ValueError("the seed is 32 bytes as 64 hex digits")
+    handle, path = tempfile.mkstemp(prefix="revola-seed-")
+    try:
+        with os.fdopen(handle, "w") as file:
+            file.write(seed)
+        yield Path(path)
+    finally:
+        os.unlink(path)
 
 
 def release(args, build_identity, pins, prefix):
