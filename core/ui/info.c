@@ -44,7 +44,7 @@ static const char *const paragraphs[] = {
     "Provided as is, without warranty of any kind. GPL-3.0-only.",
 };
 
-static const struct rv_bitmap icon = {"extensions"};
+static const struct rv_bitmap icon = {"info"};
 
 static const struct rv_screen screen = {
     .id = "core.info", .title = "RevolaOS Info", .kind = RV_SCREEN_KIND_TEXT,

@@ -31,8 +31,9 @@ static struct page {
 } *page;
 
 static char title[sizeof listed->file];
-/* The Extensions row's icon. */
+/* The Extensions row's icon, and the Optimize screen's. */
 static const struct rv_bitmap extensions_icon = {"extensions"};
+static const struct rv_bitmap optimize_icon = {"optimize"};
 static char meter[24];
 static char line[32]; /* a row's second line, formatted when asked */
 
@@ -335,7 +336,8 @@ static const struct rv_screen screens[] = {
     /* Whether extensions' optional modules and assets, the default class, are
      * kept in memory: Performance, Memory, or Auto by the disk. */
     {.id = "core.optimize", .title = "Optimize", .kind = RV_SCREEN_KIND_CHOICE,
-     .choice = {.key = CORE_KEY_OPTIMIZE, .labels = optimize_labels, .count = 3}},
+     .choice = {.key = CORE_KEY_OPTIMIZE, .labels = optimize_labels, .count = 3},
+     .bitmap = &optimize_icon},
 };
 
 static const struct rv_menu_entry entry = {

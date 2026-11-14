@@ -121,10 +121,11 @@ class AssetCatalogTests(unittest.TestCase):
 
     def test_core_icons(self):
         records = assets.core_catalog(ROOT.parent / "core/assets")
-        self.assertEqual([r["asset"] for r in records], ["extensions"])
-        self.assertEqual(records[0]["id"], manifest.CORE_ID)
-        self.assertEqual((records[0]["width"], records[0]["height"]), (78, 121))
-        self.assertEqual(records[0]["palette_colors"], 0)
+        self.assertEqual([r["asset"] for r in records], ["extensions", "info", "optimize"])
+        for record in records:
+            self.assertEqual(record["id"], manifest.CORE_ID)
+            self.assertEqual((record["width"], record["height"]), (78, 121))
+            self.assertEqual(record["palette_colors"], 0)
 
     def test_a_missing_package_is_an_error_the_command_reports(self):
         with tempfile.TemporaryDirectory() as directory:
