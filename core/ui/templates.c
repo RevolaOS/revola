@@ -97,7 +97,13 @@ static void slide_like_brightness(uint32_t id)
  * (its parent's when it has one), the owner as event target when it has one,
  * and the standard kind. The owner's children are walked in order when a
  * template is looked up, so one appended now is found. 0 when Apple hands no
- * template view back. */
+ * template view back.
+ *
+ * A template's views attach while their parent is still unknown to them, so
+ * they wait for the owner's enable and show passes, which at UI start follow
+ * the enumeration; the first layout then hides every template it does not
+ * show. A template built now gets the same three steps, or its views never
+ * leave the waiting state and a layout showing them finds nothing to show. */
 static int construct(uint32_t id)
 {
     uint8_t *owner = RV_FIELD(UI_GetLayoutManager(), LayoutManager_template_owner, uint8_t *);
@@ -119,6 +125,14 @@ static int construct(uint32_t id)
     if (!view)
         return 0;
     view[TemplateView_kind] = TemplateKind_Standard;
+    uint8_t *root = RV_FIELD(view, View_parent, uint8_t *);
+    void **methods = RV_FIELD(root, 0, void **);
+    void (*enabled)(void *, int) = RV_FIELD(methods, View_parent_enabled_method, void *);
+    void (*shown)(void *, int) = RV_FIELD(methods, View_parent_shown_method, void *);
+    void (*show)(void *, int) = RV_FIELD(methods, View_show_method, void *);
+    enabled(root, 1);
+    shown(root, 1);
+    show(root, 0);
     return 1;
 }
 
