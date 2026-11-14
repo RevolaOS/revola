@@ -4,12 +4,11 @@
 #include "osos-2.0.5.h"
 #include "platform.h"
 
-#define FORK_DATA 0x64617461u /* 'data' */
-
 struct rv_app_file {
-    void *handle;
+    uint32_t handle;
     uint32_t size;
     uint32_t position;
+    uint8_t open;
     uint8_t writable;
 };
 
@@ -38,132 +37,145 @@ static int name_is_inside(const char *name)
     return 0;
 }
 
-int rv_app_make_path(struct rv_app_path *path, uint32_t directory_kind, const char *name,
-                     int allow_root)
+const char *rv_app_check_name(const char *name, int allow_root)
 {
     if (!name)
-        return -1;
+        return NULL;
     while (name[0] == '.' && name[1] == '/')
         name += 2;
-    if (!*name && !allow_root)
-        return -1;
-    if (*name && name_is_inside(name) < 0)
-        return -1;
-
-    /* The host copies the capacity, not the length, and does not terminate. */
-    path->volume = 0;
-    int length = sizeof(path->text) - 1;
-    if (GameSystem_GetPath(directory_kind, path->text, &length, name) < 0)
-        return -1;
-    path->text[length] = 0;
-    return 0;
+    if (!*name)
+        return allow_root ? name : NULL;
+    return name_is_inside(name) < 0 ? NULL : name;
 }
 
-static struct rv_app_file *open_path(struct rv_app_path *path, enum rv_app_file_mode mode)
+static void close_handle(uint32_t handle)
 {
-    for (unsigned slot = 0; slot < sizeof(files) / sizeof(files[0]); ++slot) {
-        struct rv_app_file *file = &files[slot];
-        if (file->handle)
-            continue;
+    struct GameFileRequest *request = rv_app_request_new(GameFileRequest_Close);
+    request->handle = handle;
+    rv_app_request_finish(request, GameFile_QueueClose(request), 0);
+}
 
-        if (File_OpenLegacyPath(path, FORK_DATA, mode, &file->handle) != 0) {
-            file->handle = NULL;
-            return NULL;
-        }
-        if (File_GetLegacyHandleSize(file->handle, &file->size) != 0) {
-            rv_app_file_close(file);
-            return NULL;
-        }
-        file->position = 0;
-        file->writable = mode == RV_APP_FILE_WRITE;
-        return file;
+/* The host's file `name` of the package folder `directory_kind`; the host
+ * creates a missing file and its folders when read_only is 0. */
+static struct rv_app_file *open_name(uint32_t directory_kind, const char *name, int read_only)
+{
+    struct rv_app_file *file = NULL;
+    for (unsigned slot = 0; slot < sizeof(files) / sizeof(files[0]) && !file; ++slot)
+        if (!files[slot].open)
+            file = &files[slot];
+    if (!file)
+        return NULL;
+
+    struct GameFileRequest *request = rv_app_request_new(GameFileRequest_Open);
+    if (rv_app_request_finish(request,
+                              GameFile_QueueOpen(directory_kind, name, read_only, request),
+                              RV_APP_REQUEST_SIZE | RV_APP_REQUEST_HANDLE) != FileStatus_Ok) {
+        /* Left open, the handle blocks a later write open of the same path
+         * with a sharing conflict the host reports as success with garbage
+         * outputs. */
+        if (request->handle != RV_APP_REQUEST_PENDING)
+            close_handle(request->handle);
+        return NULL;
     }
-
-    return NULL;
+    file->handle = request->handle;
+    file->size = request->size;
+    file->position = 0;
+    file->open = 1;
+    file->writable = !read_only;
+    return file;
 }
 
 struct rv_app_file *rv_app_file_open(const char *name)
 {
-    struct rv_app_path path;
-    if (rv_app_make_path(&path, GameDirectory_Package, name, 0) < 0)
-        return NULL;
-    return open_path(&path, RV_APP_FILE_READ);
+    name = rv_app_check_name(name, 0);
+    return name ? open_name(GameDirectory_Package, name, 1) : NULL;
 }
 
-/* Creates the folders above the file in `path`, which rv_app_make_path built
- * under the host's data folder, so there is a slash. */
-static void make_parents(struct rv_app_path *path)
+static int delete_name(uint32_t directory_kind, const char *name)
 {
-    char *slash = NULL;
-    for (char *c = path->text; *c; ++c)
-        if (*c == '/')
-            slash = c;
-    if (!slash)
-        return;
-    *slash = 0;
-    Directory_CreateWithParents(path->text, 0);
-    *slash = '/';
+    struct GameFileRequest *request = rv_app_request_new(GameFileRequest_Delete);
+    return rv_app_request_finish(request, GameFile_QueueDelete(directory_kind, name, request),
+                                 0) == FileStatus_Ok
+               ? 0
+               : -1;
 }
 
 struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mode)
 {
-    struct rv_app_path path;
-    if ((mode != RV_APP_FILE_READ && mode != RV_APP_FILE_WRITE) ||
-        rv_app_make_path(&path, GameDirectory_UserData, name, 0) < 0)
+    name = rv_app_check_name(name, 0);
+    if (!name || (mode != RV_APP_FILE_READ && mode != RV_APP_FILE_WRITE))
         return NULL;
+    /* Whether the host truncates a file opened for writing is not known, so
+     * the old file goes first; a missing one is not the caller's failure. */
     if (mode == RV_APP_FILE_WRITE) {
-        make_parents(&path);
-        File_DeleteLegacyPath(&path);
+        uint32_t status = rv_app_file_error_status;
+        delete_name(GameDirectory_UserData, name);
+        rv_app_file_error_status = status;
     }
-    return open_path(&path, mode);
+    return open_name(GameDirectory_UserData, name, mode == RV_APP_FILE_READ);
 }
 
 int rv_app_data_delete(const char *name)
 {
-    struct rv_app_path path;
-    if (rv_app_make_path(&path, GameDirectory_UserData, name, 0) < 0)
+    name = rv_app_check_name(name, 0);
+    return name ? delete_name(GameDirectory_UserData, name) : -1;
+}
+
+/* A read, write or seek on the file's handle; the request's transferred count,
+ * or -1 when the host refused. A read reports the count, a write the count
+ * and the file's size, a seek only the result. */
+static int transfer(struct rv_app_file *file, uint32_t type, const void *buffer, uint32_t length,
+                    uint32_t offset)
+{
+    struct GameFileRequest *request = rv_app_request_new(type);
+    request->handle = file->handle;
+    request->buffer = (uint32_t)(uintptr_t)buffer;
+    request->length = length;
+    request->offset = (int32_t)offset;
+    request->whence = FileSeek_Start;
+    unsigned outputs = type == GameFileRequest_Read    ? RV_APP_REQUEST_TRANSFERRED
+                       : type == GameFileRequest_Write ? RV_APP_REQUEST_TRANSFERRED |
+                                                             RV_APP_REQUEST_SIZE
+                                                       : 0;
+    if (rv_app_request_finish(request, GameFile_QueueTransfer(request), outputs) != FileStatus_Ok)
         return -1;
-    return File_DeleteLegacyPath(&path) == 0 ? 0 : -1;
+    return type == GameFileRequest_Seek ? 0 : (int)request->transferred;
 }
 
 int rv_app_file_write(struct rv_app_file *file, const void *data, size_t size)
 {
-    uint32_t written = 0;
-
-    if (!file || !file->handle || !file->writable || (!data && size))
+    if (!file || !file->open || !file->writable || (!data && size) || size > INT32_MAX)
         return -1;
     if (!size)
         return 0;
-    if (File_WriteLegacyHandle(file->handle, data, size, 1, &written) != 0 || written != size)
+    int written = transfer(file, GameFileRequest_Write, data, size, 0);
+    if (written != (int)size)
         return -1;
     file->position += written;
     if (file->position > file->size)
         file->size = file->position;
-    return (int)written;
+    return written;
 }
 
 int rv_app_file_read(struct rv_app_file *file, void *buffer, size_t size)
 {
-    uint32_t read = 0;
-
-    if (!file || !file->handle || (!buffer && size))
+    if (!file || !file->open || (!buffer && size))
         return -1;
     if (size > file->size - file->position)
         size = file->size - file->position;
     if (!size)
         return 0;
-
-    int result = File_ReadLegacyHandle(file->handle, buffer, size, 0, &read);
-    if (read > size)
+    int read = transfer(file, GameFileRequest_Read, buffer, size, 0);
+    if (read < 0 || (size_t)read > size)
         return -1;
     file->position += read;
-    return read ? (int)read : (result ? -1 : 0);
+    return read;
 }
 
 int rv_app_file_seek(struct rv_app_file *file, uint32_t offset)
 {
-    if (!file || !file->handle || offset > file->size ||
-        File_SeekLegacyHandle(file->handle, offset) != 0)
+    if (!file || !file->open || offset > file->size || offset > INT32_MAX ||
+        transfer(file, GameFileRequest_Seek, NULL, 0, offset) < 0)
         return -1;
     file->position = offset;
     return 0;
@@ -181,10 +193,10 @@ uint32_t rv_app_file_position(const struct rv_app_file *file)
 
 void rv_app_file_close(struct rv_app_file *file)
 {
-    if (file && file->handle) {
-        File_CloseLegacyHandle(file->handle);
-        file->handle = NULL;
-    }
+    if (!file || !file->open)
+        return;
+    file->open = 0;
+    close_handle(file->handle);
 }
 
 void rv_app_files_close_all(void)

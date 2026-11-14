@@ -1,177 +1,360 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Adapted from RepriseOS game-sdk/tests/files_test.c by lgreitis. */
 
-/* Host stand-ins for the host path service and the Apple file and directory
- * functions files.c and directory.c call, and the rules they must keep. */
+/* Host stand-ins for the file worker that files.c, directory.c and
+ * request.c drive, and the rules they must keep: a
+ * request completes only when the game's task yields, its outputs arrive in
+ * the host's order, and it stays allocated until a frame hands it back. */
 
 #include "osos-2.0.5.h"
 #include "platform.h"
 #include "rv_app.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 const struct rv_app rv_app_application = {.package_id = "test-game"};
-static unsigned opened, closed, strings, native_opens, open_mode, created, deleted;
-static char opened_path[258], expected[300], long_name[300], created_path[258],
-    deleted_path[258], written[64];
-static unsigned written_bytes;
-static const char *result_name;
 
-struct DirectoryIterator;
-struct NativePath;
-struct NativeString;
+/* The heap: one arena that does not cross a 4 GiB boundary, so the 32-bit
+ * word a request carries for its buffer leads back to the pointer, and a
+ * count of the blocks alive. Nothing is reused. */
+#define ARENA_BYTES (1 << 20)
+static uint8_t *arena;
+static size_t arena_used;
+static unsigned live_blocks;
 
-/* The host's folders of the package "test-game": the package root and its
- * user data folder, as the stock host lays them out. */
-#define PACKAGE_ROOT "iPod_Control/games_RO/test-game/"
-#define DATA_ROOT "iPod_Control/gamedata_RW/test-game/"
-static unsigned built;
+/* The buffers the tests read and write through requests, the two blocks alive
+ * from the start; lit() stages a literal for a write. */
+static char *text, *staged;
+#define LIVE(blocks) (live_blocks == 2 + (blocks))
 
-int GameSystem_GetPath(uint32_t directory_kind, char *buffer, int *capacity,
-                       const char *relative)
+static const char *lit(const char *literal)
 {
-    assert(directory_kind == GameDirectory_Package || directory_kind == GameDirectory_UserData);
-    assert(relative && *relative != '/');
-    const char *root = directory_kind == GameDirectory_Package ? PACKAGE_ROOT : DATA_ROOT;
-    unsigned length = strlen(root) + strlen(relative);
-    ++built;
-    if (*capacity < (int)length)
-        return -1;
-    memcpy(buffer, root, strlen(root));
-    memcpy(buffer + strlen(root), relative, strlen(relative));
-    /* The host copies the capacity, not the length: no terminator. */
-    memset(buffer + length, 'X', *capacity - length);
-    *capacity = length;
-    return (int)length;
+    return strcpy(staged, literal);
 }
 
-struct DirectoryIterator *DirectoryIterator_Init(struct DirectoryIterator *iterator,
-                                                 const char *path, uint8_t recursive,
-                                                 uint32_t volume)
+static void *test_pointer(uint32_t word)
 {
-    assert(recursive == 1 && volume == 0);
-    strcpy(opened_path, path);
-    *(uint32_t *)iterator = 0;
-    ++opened;
-    return iterator;
+    uintptr_t pointer = ((uintptr_t)arena & ~(uintptr_t)0xffffffffu) | word;
+    assert(pointer >= (uintptr_t)arena && pointer < (uintptr_t)arena + ARENA_BYTES);
+    return (void *)pointer;
 }
 
-int DirectoryIterator_Next(struct DirectoryIterator *iterator, struct NativePath *path,
-                           uint8_t *is_directory)
+void *rv_app_alloc(size_t size)
 {
-    (void)path;
-    unsigned index = (*(uint32_t *)iterator)++;
-    *is_directory = index == 1;
-    result_name = index == 0 ? "roms/Example.NES" : index == 1 ? "roms" : long_name;
-    return index < 3;
+    size = (size + 15) & ~(size_t)15;
+    assert(arena_used + size <= ARENA_BYTES);
+    void *block = arena + arena_used;
+    arena_used += size;
+    ++live_blocks;
+    return block;
 }
 
-void DirectoryIterator_Destroy(struct DirectoryIterator *iterator)
+void rv_app_free(void *pointer)
 {
-    (void)iterator;
-    ++closed;
+    if (pointer)
+        --live_blocks;
 }
 
-struct NativePath *NativePath_InitEmpty(struct NativePath *path)
+/* The package and its data folder as two small file systems. */
+struct fake_file {
+    const char *name;
+    char data[64];
+    unsigned size;
+    unsigned used;
+};
+
+static const struct fake_file package_files[] = {
+    {"roms/Example.NES", "NESDATA", 7, 1},
+    {"roms/sub/Deep.NES", "DEEP", 4, 1},
+    {"readme.txt", "hi", 2, 1},
+};
+static struct fake_file data_files[8];
+static char data_names[8][64];
+
+struct fake_folder {
+    const char *name;
+    const char *entries[4];
+    unsigned char directory[4];
+    unsigned count;
+    int truncated; /* Listed as the first 500 of more entries. */
+};
+
+static const struct fake_folder package_folders[] = {
+    {"", {"readme.txt", "roms"}, {0, 1}, 2, 0},
+    {"roms", {".", "..", "Example.NES", "sub"}, {1, 1, 0, 1}, 4, 0},
+    {"roms/sub", {"Deep.NES"}, {0}, 1, 0},
+    {"big", {"a", "b"}, {0, 0}, 2, 1},
+};
+#define FOLDERS (sizeof package_folders / sizeof package_folders[0])
+
+static struct fake_file *find_data(const char *name)
 {
-    ++strings;
-    return path;
+    for (unsigned i = 0; i < 8; ++i)
+        if (data_files[i].used && !strcmp(data_files[i].name, name))
+            return &data_files[i];
+    return NULL;
 }
 
-char *NativeString_GetUtf8(struct NativeString *string)
+static struct fake_file *create_data(const char *name)
 {
-    (void)string;
-    return (char *)result_name;
+    unsigned i = 0;
+    while (data_files[i].used)
+        ++i;
+    strcpy(data_names[i], name);
+    data_files[i].name = data_names[i];
+    data_files[i].size = 0;
+    data_files[i].used = 1;
+    return &data_files[i];
 }
 
-struct NativePath *NativePath_Destroy(struct NativePath *path)
+/* Open files and directory lists of the worker; a list without a folder is
+ * one the host built for a listing that failed. */
+struct fake_handle {
+    const struct fake_file *package;
+    struct fake_file *data;
+    unsigned position;
+    int used;
+};
+static struct fake_handle handles[16];
+static struct {
+    const struct fake_folder *folder;
+    unsigned next;
+    int used;
+} lists[8];
+
+static unsigned open_handles(void)
 {
-    --strings;
-    return path;
+    unsigned n = 0;
+    for (unsigned i = 0; i < 16; ++i)
+        n += handles[i].used;
+    return n;
 }
 
-int File_OpenLegacyPath(void *path, uint32_t fork, int mode, void **handle)
+static unsigned open_lists(void)
 {
-    const struct rv_app_path *legacy = path;
-    assert(legacy->volume == 0 && fork == 0x64617461u && (mode == 1 || mode == 2));
-    strcpy(opened_path, legacy->text);
-    open_mode = mode;
-    *handle = &native_opens;
-    ++native_opens;
-    return 0;
+    unsigned n = 0;
+    for (unsigned i = 0; i < 8; ++i)
+        n += lists[i].used;
+    return n;
 }
 
-int File_GetLegacyHandleSize(void *handle, uint32_t *size)
+/* The one request queued and not performed yet, with what the Queue entry
+ * copied, and the completed list as the host links it. */
+static struct {
+    struct GameFileRequest *request;
+    uint32_t kind;
+    char path[300];
+    int read_only;
+} pending;
+static struct GameFileRequest *completed_head, *completed_tail;
+static unsigned yields, queued_deletes, queued_opens;
+
+static int queue(uint32_t type, struct GameFileRequest *request, uint32_t kind, const char *path)
 {
-    (void)handle;
-    *size = 0;
-    return 0;
+    assert(request && request->next == 0 && !pending.request);
+    assert(request->result == RV_APP_REQUEST_PENDING && request->size == RV_APP_REQUEST_PENDING);
+    if (request->type != type)
+        return 0;
+    assert(path == NULL || strlen(path) < sizeof pending.path);
+    pending.request = request;
+    pending.kind = kind;
+    strcpy(pending.path, path ? path : "");
+    return 1;
 }
 
-int File_ReadLegacyHandle(void *handle, void *buffer, uint32_t bytes, uint32_t flags,
-                          uint32_t *read)
+int GameFile_QueueOpen(uint32_t kind, const char *path, int read_only,
+                       struct GameFileRequest *request)
 {
-    (void)handle;
-    (void)buffer;
-    (void)bytes;
-    (void)flags;
-    *read = 0;
-    return 0;
+    ++queued_opens;
+    pending.read_only = read_only;
+    return queue(GameFileRequest_Open, request, kind, path);
 }
 
-int File_WriteLegacyHandle(void *handle, const void *buffer, uint32_t bytes, uint32_t flags,
-                           uint32_t *out_written)
+int GameFile_QueueClose(struct GameFileRequest *request)
 {
-    (void)handle;
-    assert(flags == 1 && written_bytes + bytes <= sizeof(written));
-    memcpy(written + written_bytes, buffer, bytes);
-    written_bytes += bytes;
-    *out_written = bytes;
-    return 0;
+    return queue(GameFileRequest_Close, request, 0, NULL);
 }
 
-int File_DeleteLegacyPath(void *path)
+int GameFile_QueueTransfer(struct GameFileRequest *request)
 {
-    const struct rv_app_path *legacy = path;
-    assert(legacy->volume == 0);
-    strcpy(deleted_path, legacy->text);
-    ++deleted;
-    return 0;
+    assert(request->type == GameFileRequest_Read || request->type == GameFileRequest_Write ||
+           request->type == GameFileRequest_Seek);
+    return queue(request->type, request, 0, NULL);
 }
 
-int Directory_CreateWithParents(const char *path, uint32_t volume)
+int GameFile_QueueDelete(uint32_t kind, const char *path, struct GameFileRequest *request)
 {
-    assert(volume == 0);
-    strcpy(created_path, path);
-    ++created;
-    return 0;
+    ++queued_deletes;
+    return queue(GameFileRequest_Delete, request, kind, path);
 }
 
-int File_SeekLegacyHandle(void *handle, uint64_t offset)
+int GameDirectory_QueueList(uint32_t kind, const char *path, uint32_t create,
+                            struct GameFileRequest *request)
 {
-    (void)handle;
-    (void)offset;
-    return 0;
+    assert(!create);
+    return queue(GameFileRequest_ListDirectory, request, kind, path);
 }
 
-int File_CloseLegacyHandle(void *handle)
+static void complete(struct GameFileRequest *request)
 {
-    (void)handle;
-    --native_opens;
-    return 0;
+    /* The worker links through the previous tail; it never clears next. */
+    if (completed_tail)
+        completed_tail->next = (uint32_t)(uintptr_t)request;
+    else
+        completed_head = request;
+    completed_tail = request;
 }
 
-static const char *under_root(const char *root, const char *tail)
+/* The worker's turn: performs the pending request, writing the outputs in
+ * the host's order: an open's handle, result and size; a read's count then
+ * result; a listing's result and size, then the handle of the list the host
+ * built whatever the result, unless it had no slot for it. */
+static void perform(void)
 {
-    strcpy(expected, root);
-    strcat(expected, tail);
-    return expected;
+    struct GameFileRequest *r = pending.request;
+    pending.request = NULL;
+    struct fake_handle *h = NULL;
+    if (r->type == GameFileRequest_Read || r->type == GameFileRequest_Write ||
+        r->type == GameFileRequest_Seek || r->type == GameFileRequest_Close) {
+        assert(r->handle < 16 && handles[r->handle].used);
+        h = &handles[r->handle];
+    }
+    switch (r->type) {
+    case GameFileRequest_Open: {
+        unsigned slot = 0;
+        while (slot < 16 && handles[slot].used)
+            ++slot;
+        assert(slot < 16);
+        const struct fake_file *package = NULL;
+        struct fake_file *data = NULL;
+        /* The host takes the handle first and keeps it when the open fails. */
+        handles[slot] = (struct fake_handle){NULL, NULL, 0, 1};
+        r->handle = slot;
+        if (pending.kind == GameDirectory_Package) {
+            for (unsigned i = 0; i < 3; ++i)
+                if (!strcmp(package_files[i].name, pending.path))
+                    package = &package_files[i];
+            if (!package || !pending.read_only) {
+                r->result = package ? FileStatus_NotPermitted : FileStatus_NotFound;
+                return complete(r);
+            }
+        } else {
+            assert(pending.kind == GameDirectory_UserData);
+            data = find_data(pending.path);
+            if (!data && pending.read_only) {
+                r->result = FileStatus_NotFound;
+                return complete(r);
+            }
+            if (!data)
+                data = create_data(pending.path);
+        }
+        handles[slot] = (struct fake_handle){package, data, 0, 1};
+        r->result = FileStatus_Ok;
+        r->size = package ? package->size : data->size;
+        return complete(r);
+    }
+    case GameFileRequest_Close:
+        h->used = 0;
+        r->result = FileStatus_Ok;
+        return complete(r);
+    case GameFileRequest_Read: {
+        const struct fake_file *file = h->package ? h->package : h->data;
+        unsigned n = r->length;
+        if (n > file->size - h->position)
+            n = file->size - h->position;
+        memcpy(test_pointer(r->buffer), file->data + h->position, n);
+        h->position += n;
+        r->transferred = n;
+        r->result = FileStatus_Ok;
+        return complete(r);
+    }
+    case GameFileRequest_Write:
+        assert(h->data && h->position + r->length <= sizeof h->data->data);
+        memcpy(h->data->data + h->position, test_pointer(r->buffer), r->length);
+        h->position += r->length;
+        if (h->position > h->data->size)
+            h->data->size = h->position;
+        r->transferred = r->length;
+        r->result = FileStatus_Ok;
+        r->size = h->data->size;
+        return complete(r);
+    case GameFileRequest_Seek:
+        assert(r->whence == FileSeek_Start && r->offset >= 0);
+        h->position = r->offset;
+        r->result = FileStatus_Ok;
+        return complete(r);
+    case GameFileRequest_Delete: {
+        struct fake_file *data = find_data(pending.path);
+        if (pending.kind != GameDirectory_UserData)
+            r->result = FileStatus_NotPermitted;
+        else if (!data)
+            r->result = FileStatus_NotFound;
+        else {
+            data->used = 0;
+            r->result = FileStatus_Ok;
+        }
+        return complete(r);
+    }
+    case GameFileRequest_ListDirectory: {
+        assert(pending.kind == GameDirectory_Package);
+        const struct fake_folder *folder = NULL;
+        for (unsigned i = 0; i < FOLDERS; ++i)
+            if (!strcmp(package_folders[i].name, pending.path))
+                folder = &package_folders[i];
+        r->result = !folder ? FileStatus_NotFound
+                    : folder->truncated ? FileStatus_ListTruncated
+                                        : FileStatus_Ok;
+        r->size = folder ? folder->count : 0;
+        unsigned slot = 0;
+        while (slot < 8 && lists[slot].used)
+            ++slot;
+        if (slot == 8) {
+            r->result = FileStatus_NoSlot;
+            return complete(r);
+        }
+        lists[slot].folder = folder;
+        lists[slot].next = 0;
+        lists[slot].used = 1;
+        r->handle = slot;
+        return complete(r);
+    }
+    default:
+        assert(!"request type");
+    }
 }
 
-int main(void)
+void GameSystem_Sleep(uint32_t milliseconds)
 {
-    const char *root = PACKAGE_ROOT;
+    assert(milliseconds == 0);
+    ++yields;
+    if (pending.request)
+        perform();
+}
+
+int GameDirectory_ReadEntry(int handle, char *name, uint32_t capacity, uint8_t *is_directory)
+{
+    assert(handle >= 0 && handle < 8 && lists[handle].used);
+    const struct fake_folder *folder = lists[handle].folder;
+    unsigned i = lists[handle].next;
+    if (!folder || i >= folder->count)
+        return GameDirectoryStatus_Last;
+    assert(strlen(folder->entries[i]) < capacity);
+    strcpy(name, folder->entries[i]);
+    *is_directory = folder->directory[i];
+    lists[handle].next = i + 1;
+    return i + 1 == folder->count ? GameDirectoryStatus_Last : GameDirectoryStatus_More;
+}
+
+void GameDirectory_ReleaseList(int handle)
+{
+    assert(handle >= 0 && handle < 8 && lists[handle].used);
+    lists[handle].used = 0;
+}
+
+static void check_names(void)
+{
     const char *invalid[] = {NULL,   "/root", "../other", "roms/../../other",
                              "a//b", "roms/", "a/./b",    "a\\b",
                              "a:b"};
@@ -182,66 +365,133 @@ int main(void)
         assert(!rv_app_data_open(invalid[i], RV_APP_FILE_WRITE));
         assert(rv_app_data_delete(invalid[i]) == -1);
     }
-    assert(!opened && !native_opens && !created && !deleted && !built);
+    assert(!rv_app_file_open("") && !rv_app_data_open("", RV_APP_FILE_READ));
+    assert(!rv_app_data_open("scores", 3));
+    assert(!yields && LIVE(0) && !queued_opens);
+}
+
+static void check_files(void)
+{
+    /* A refused open leaves the host's handle behind; the runtime closes it. */
+    assert(!rv_app_file_open("missing") && yields == 2);
+    assert(rv_app_file_error() == FileStatus_NotFound && open_handles() == 0);
+    struct rv_app_file *file = rv_app_file_open("./roms/Example.NES");
+    assert(file && !strcmp(pending.path, "roms/Example.NES") && pending.read_only);
+    assert(yields == 3);
+    assert(rv_app_file_size(file) == 7 && rv_app_file_position(file) == 0);
+    assert(rv_app_file_read(file, text, 3) == 3 && !memcmp(text, "NES", 3));
+    assert(rv_app_file_position(file) == 3);
+    assert(rv_app_file_seek(file, 5) == 0 && rv_app_file_seek(file, 8) == -1);
+    assert(rv_app_file_read(file, text, 10) == 2 && !memcmp(text, "TA", 2));
+    assert(rv_app_file_read(file, text, 10) == 0 && rv_app_file_read(file, NULL, 1) == -1);
+    assert(rv_app_file_write(file, lit("x"), 1) == -1);
+    assert(open_handles() == 1);
+    rv_app_file_close(file);
+    rv_app_file_close(file);
+    assert(open_handles() == 0);
+
+    struct rv_app_file *many[12];
+    for (unsigned i = 0; i < 12; ++i)
+        assert((many[i] = rv_app_file_open("readme.txt")));
+    assert(!rv_app_file_open("readme.txt") && open_handles() == 12);
+    rv_app_files_close_all();
+    assert(open_handles() == 0 && LIVE(0));
+}
+
+static void check_directories(void)
+{
     struct rv_app_directory *dirs[4];
+    struct rv_app_directory_entry entry;
     for (unsigned i = 0; i < 4; ++i)
         assert((dirs[i] = rv_app_directory_open("", 1)));
-    assert(!strcmp(opened_path, under_root(root, "")));
-    assert(!rv_app_directory_open("", 1));
-    struct rv_app_directory_entry entry;
-    assert(rv_app_directory_read(dirs[0], &entry) == 1);
-    assert(!strcmp(entry.name, "roms/Example.NES") && !entry.is_directory);
-    assert(rv_app_directory_read(dirs[0], &entry) == 1 && entry.is_directory);
-    memset(long_name, 'x', sizeof(long_name) - 1);
-    assert(rv_app_directory_read(dirs[0], &entry) == -1 && !strings);
-    assert(rv_app_directory_read(dirs[0], &entry) == 0 && !entry.name[0] && !strings);
-    rv_app_directory_close(dirs[0]);
-    rv_app_directory_close(dirs[0]);
-    assert(closed == 1);
-    assert(rv_app_directory_read(dirs[0], &entry) == -1);
-    assert((dirs[0] = rv_app_directory_open("./roms", 1)));
-    assert(!strcmp(opened_path, under_root(root, "roms")));
-    rv_app_directories_close_all();
-    assert(opened == closed && !strings);
-    assert(!rv_app_file_open(""));
-    struct rv_app_file *file = rv_app_file_open("./roms/Example.NES");
-    assert(file && !strcmp(opened_path, under_root(root, "roms/Example.NES")));
-    rv_app_files_close_all();
-    assert(!native_opens);
+    assert(!rv_app_directory_open("", 1) && open_lists() == 4);
+    rv_app_directory_close(dirs[1]);
+    rv_app_directory_close(dirs[2]);
+    rv_app_directory_close(dirs[3]);
 
-    /* The data folder: reads create nothing, writes create the folder and
-     * replace the file, and only a handle opened for writing takes writes. */
-    assert(!rv_app_data_open("", RV_APP_FILE_READ) && !rv_app_data_open("scores", 3));
-    file = rv_app_data_open("scores", RV_APP_FILE_READ);
-    assert(file && open_mode == 1 && !created && !deleted);
-    assert(!strcmp(opened_path, DATA_ROOT "scores"));
-    assert(rv_app_file_write(file, "x", 1) == -1);
-    rv_app_file_close(file);
-    file = rv_app_data_open("saves/game", RV_APP_FILE_WRITE);
-    assert(file && open_mode == 2 && created == 1 && deleted == 1);
-    assert(!strcmp(opened_path, DATA_ROOT "saves/game"));
-    assert(!strcmp(created_path, DATA_ROOT "saves"));
-    assert(!strcmp(deleted_path, opened_path));
-    assert(rv_app_file_write(file, "abc", 3) == 3 && rv_app_file_write(file, "", 0) == 0);
-    assert(rv_app_file_write(file, "de", 2) == 2 && written_bytes == 5);
-    assert(!memcmp(written, "abcde", 5));
+    /* Depth first, names relative to the folder opened, "." and ".." skipped. */
+    const char *walk[] = {"readme.txt", "roms", "roms/Example.NES", "roms/sub",
+                          "roms/sub/Deep.NES"};
+    for (unsigned i = 0; i < 5; ++i) {
+        assert(rv_app_directory_read(dirs[0], &entry) == 1);
+        assert(!strcmp(entry.name, walk[i]));
+        assert(entry.is_directory == (i == 1 || i == 3));
+    }
+    assert(rv_app_directory_read(dirs[0], &entry) == 0 && !entry.name[0]);
+    assert(rv_app_directory_read(dirs[0], &entry) == 0 && open_lists() == 0);
+    rv_app_directory_close(dirs[0]);
+    assert(rv_app_directory_read(dirs[0], &entry) == -1);
+
+    assert((dirs[0] = rv_app_directory_open("./roms", 0)));
+    assert(!strcmp(pending.path, "roms"));
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "Example.NES"));
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "sub"));
+    assert(entry.is_directory && open_lists() == 1);
+    assert(rv_app_directory_read(dirs[0], &entry) == 0 && open_lists() == 0);
+    rv_app_directory_close(dirs[0]);
+
+    assert((dirs[0] = rv_app_directory_open("roms", 1)));
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "Example.NES"));
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "sub"));
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "sub/Deep.NES"));
+    assert(open_lists() == 2);
+    rv_app_directories_close_all();
+    assert(open_lists() == 0);
+
+    /* A missing folder opens and reads nothing; the list the host built for
+     * it is given back at once. */
+    assert((dirs[0] = rv_app_directory_open("nope", 1)));
+    assert(open_lists() == 0 && rv_app_file_error() == FileStatus_NotFound);
+    assert(rv_app_directory_read(dirs[0], &entry) == 0);
+    rv_app_directory_close(dirs[0]);
+
+    /* A listing the host cut at 500 entries reads what it holds. */
+    assert((dirs[0] = rv_app_directory_open("big", 0)) && open_lists() == 1);
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "a"));
+    assert(rv_app_directory_read(dirs[0], &entry) == 1 && !strcmp(entry.name, "b"));
+    assert(rv_app_directory_read(dirs[0], &entry) == 0 && open_lists() == 0);
+    rv_app_directory_close(dirs[0]);
+    assert(LIVE(0));
+}
+
+static void check_data(void)
+{
+    assert(!rv_app_data_open("scores", RV_APP_FILE_READ) && queued_deletes == 0);
+    struct rv_app_file *file = rv_app_data_open("saves/game", RV_APP_FILE_WRITE);
+    assert(file && queued_deletes == 1 && !pending.read_only);
+    assert(!strcmp(pending.path, "saves/game") && pending.kind == GameDirectory_UserData);
+    assert(rv_app_file_write(file, lit("abc"), 3) == 3 && rv_app_file_write(file, "", 0) == 0);
+    assert(rv_app_file_write(file, lit("de"), 2) == 2);
     assert(rv_app_file_size(file) == 5 && rv_app_file_position(file) == 5);
     assert(rv_app_file_seek(file, 2) == 0 && rv_app_file_position(file) == 2);
+    assert(rv_app_file_read(file, text, 10) == 3 && !memcmp(text, "cde", 3));
     rv_app_file_close(file);
-    assert(!native_opens);
-    assert(rv_app_data_delete("saves/game") == 0 && deleted == 2);
-    assert(!strcmp(deleted_path, DATA_ROOT "saves/game"));
-    assert(rv_app_data_delete("") == -1 && deleted == 2);
+    assert(find_data("saves/game") && find_data("saves/game")->size == 5);
 
-    struct rv_app_path path;
-    char name[258] = {0};
-    unsigned prefix = strlen(root);
-    memset(name, 'x', 257 - prefix);
-    assert(rv_app_make_path(&path, GameDirectory_Package, name, 0) == 0 &&
-           strlen(path.text) == 257);
-    name[257 - prefix] = 'x';
-    assert(rv_app_make_path(&path, GameDirectory_Package, name, 0) == -1);
-    assert(!rv_app_directory_open(name, 1));
-    printf("path boundaries, directory and file lifecycle and the data folder pass\n");
+    file = rv_app_data_open("saves/game", RV_APP_FILE_READ);
+    assert(file && rv_app_file_size(file) == 5 && rv_app_file_write(file, "x", 1) == -1);
+    assert(rv_app_file_read(file, text, 16) == 5 && !memcmp(text, "abcde", 5));
+    rv_app_file_close(file);
+    /* Writing again replaces the file: the old one is deleted first. */
+    file = rv_app_data_open("saves/game", RV_APP_FILE_WRITE);
+    assert(file && queued_deletes == 2 && rv_app_file_size(file) == 0);
+    rv_app_file_close(file);
+    assert(rv_app_data_delete("saves/game") == 0 && !find_data("saves/game"));
+    assert(rv_app_data_delete("saves/game") == -1);
+    assert(rv_app_file_error() == FileStatus_NotFound && open_handles() == 0);
+}
+
+int main(void)
+{
+    arena = malloc(ARENA_BYTES);
+    assert(arena && ((uintptr_t)arena >> 32) == (((uintptr_t)arena + ARENA_BYTES) >> 32));
+    text = rv_app_alloc(16);
+    staged = rv_app_alloc(16);
+    check_names();
+    check_files();
+    check_directories();
+    check_data();
+    assert(!pending.request);
+    printf("path rules, requests, files, folders and data files pass\n");
     return 0;
 }

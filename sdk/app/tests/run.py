@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Check the package path rules and the directory and file lifecycle on the host:
-python3 tests/run.py [SYMBOLS_HEADER]."""
+"""Check the package path rules, the request lifecycle and the file and folder
+calls against host stand-ins: python3 tests/run.py [SYMBOLS_HEADER]."""
 
 import os
 import subprocess
@@ -36,6 +36,7 @@ with tempfile.TemporaryDirectory(prefix="rv-app-tests-") as name:
             "-I" + str(root / "runtime"),
             "-I" + str(header.parent),
             str(root / "tests/files_test.c"),
+            str(root / "runtime/request.c"),
             str(root / "runtime/files.c"),
             str(root / "runtime/directory.c"),
             "-o",
@@ -44,4 +45,4 @@ with tempfile.TemporaryDirectory(prefix="rv-app-tests-") as name:
         check=True,
     )
     subprocess.run([str(executable)], check=True)
-print("eApp SDK path and lifecycle checks passed")
+print("eApp SDK host checks passed")

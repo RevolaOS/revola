@@ -39,13 +39,13 @@ RV_APP_CFLAGS := -std=c11 -Os $(RV_APP_ARCH_FLAGS) -mlong-calls \
     -fno-pic -fno-pie -fno-unwind-tables -fno-asynchronous-unwind-tables \
     -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
     -I$(SDK)/app -I$(SDK) $(EXTRA_CFLAGS)
-RV_APP_LDFLAGS := -nostdlib -Wl,-T,$(SDK)/app/runtime/rv_app.lds -Wl,--gc-sections \
-    -Wl,--just-symbols=$(SDK)/$(RV_FIRMWARE_LD)
+RV_APP_LDFLAGS := -nostdlib -Wl,-T,$(SDK)/app/runtime/rv_app.lds -Wl,--gc-sections
 RV_APP_RUNTIME_DIR := $(OUT)/runtime
 RV_APP_RUNTIME := $(RV_APP_RUNTIME_DIR)/librv_app.a
 RV_APP_STARTUP := $(RV_APP_RUNTIME_DIR)/startup.o
 RV_APP_RUNTIME_OBJECTS := $(addprefix $(RV_APP_RUNTIME_DIR)/,\
-    runtime.o imports.o memory.o time.o input.o files.o directory.o display.o text.o ui.o wheel.o)
+    runtime.o imports.o request.o memory.o time.o input.o files.o directory.o display.o \
+    text.o ui.o wheel.o)
 
 $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)
 	$(RM) $@

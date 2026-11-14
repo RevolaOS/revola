@@ -125,13 +125,18 @@ uint32_t rv_app_file_position(const struct rv_app_file *file);
 void rv_app_file_close(struct rv_app_file *file);
 
 /* Files of the package's data folder, /Revola/Data/Games/<id>/ for a game and
- * /Revola/Data/Apps/<id>/ for an app, by path inside it with the package's
- * path rules. Writing creates the folder and replaces the file; the handle
- * takes write, seek and close. Delete returns 0, -1 on failure. */
+ * /Revola/Data/Apps/<id>/ for an app under RevolaOS, by path inside it with
+ * the package's path rules. Writing creates the folder and replaces the file;
+ * the handle takes write, seek and close, and the bytes are on disk when it
+ * is closed. Delete returns 0, -1 on failure. */
 enum rv_app_file_mode { RV_APP_FILE_READ = 1, RV_APP_FILE_WRITE = 2 };
 struct rv_app_file *rv_app_data_open(const char *name, enum rv_app_file_mode mode);
 int rv_app_file_write(struct rv_app_file *file, const void *data, size_t size);
 int rv_app_data_delete(const char *name);
+
+/* The host's status of the last file, data or folder call that failed, a
+ * FileStatus_* value of osos-2.0.5.h; 0 while nothing failed. */
+uint32_t rv_app_file_error(void);
 
 #ifdef __cplusplus
 }
