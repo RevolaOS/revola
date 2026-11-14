@@ -13,7 +13,10 @@
  * sizes are the pictures of the kinds below. A menu's layout of a kind is
  * built on the first highlight of a row whose picture asks for it and added to
  * the menu's running controller, so a menu nobody highlights an extension row
- * on costs nothing. */
+ * on costs nothing. A music or video item without pane fields binds the stock
+ * highlight handler instead (core_panes_stock_handler): Apple's handler emits
+ * the controller event that switches to the stock count, artwork or empty
+ * pane, and refreshes it when the artwork changes. */
 
 #include "ui/panes.h"
 #include "osos-2.0.5.h"
@@ -25,7 +28,6 @@
 #include "ui/resources.h"
 #include "ui/screens.h"
 #include "ui/templates.h"
-#include "rv_api.h"
 #include <stddef.h>
 
 /* The pane kinds, each with the picture its pane shows, the stock template
@@ -145,6 +147,27 @@ static const struct menu *menu_of(uint8_t root)
         if (menus[i].root == root)
             return &menus[i];
     return NULL;
+}
+
+/* The menus the MainMediaMenu controller runs, the ones with media items. */
+static int media_menu(uint8_t root)
+{
+    return root == RV_MENU_MAIN || root == RV_MENU_MUSIC || root == RV_MENU_VIDEOS;
+}
+
+const char *core_panes_stock_handler(uint8_t root, const struct rv_menu_entry *e)
+{
+    if (!e || !media_menu(root) || e->caption || e->caption_text || e->bitmap || e->bitmap_for ||
+        e->lines[0] || e->lines[1] || e->line_text || e->badge || e->badge_for)
+        return NULL;
+    uint32_t preview = root == RV_MENU_MUSIC    ? RV_PREVIEW_MUSIC
+                       : root == RV_MENU_VIDEOS ? RV_PREVIEW_VIDEOS
+                                                : e->preview;
+    /* The handlers of the stock Music and Videos rows (Cover Flow, Search, the
+     * Music and Videos rows on Main), from the menu screens' event tables. */
+    return preview == RV_PREVIEW_MUSIC    ? "HandleMusicHilited"
+           : preview == RV_PREVIEW_VIDEOS ? "HandleVideosHilited"
+                                          : NULL;
 }
 
 static struct pane *pane_of(const struct menu *m, uint32_t kind)
@@ -505,6 +528,12 @@ void core_panes_show(uint8_t root, uint32_t item, void *controller)
         p = pane_for(m, m->kind, controller);
     if (p)
         p->current = item;
+    /* Each stock highlight handler records its pane's kind here and the
+     * controller re-runs the handler of the recorded kind when the artwork
+     * service's model changes, which would switch the pane away from this row;
+     * 0, the kind of the stock rows with a fixed pane, re-runs nothing. */
+    if (media_menu(root))
+        RV_FIELD(controller, MainMediaMenu_preview_kind, uint8_t) = 0;
     /* The binding's navigator.SwitchLayout runs after this handler and looks
      * the menu's pane name up then. A layout the controller does not know
      * would abort the switch, so the stock row's layout stands in when the

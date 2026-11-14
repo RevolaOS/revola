@@ -3,6 +3,7 @@
 #ifndef CORE_PANES_H
 #define CORE_PANES_H
 #include "ui/resources.h"
+#include "rv_api.h"
 #include <stdint.h>
 
 struct core_screen;
@@ -11,6 +12,11 @@ struct core_screen;
  * pane handler points at the layout of the kind each row's picture asks for;
  * NULL for a menu without a pane, which is how callers tell the two apart. */
 const char *core_panes_layout_name(uint8_t root);
+/* The stock highlight handler a row of `root` binds instead of its own pane
+ * handler: that of the stock Music or Videos rows for a music or video item
+ * without pane fields, NULL for a row with a pane of its own or on another
+ * menu. */
+const char *core_panes_stock_handler(uint8_t root, const struct rv_menu_entry *e);
 /* A pane VLyt (the Settings > Main Menu pane's views) with the title line, the
  * line under the icon, the icon and the box behind it bound to these source
  * ids; a 0 source hides its view, and every other view is hidden. Returns the

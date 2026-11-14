@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 58
+#define RV_API_MINOR 59
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -270,7 +270,8 @@ struct rv_asset_provider {
     /* Copies the `stored` bytes of that bitmap into `out`; 1 when it did, 0
      * leaves the core to decode the extension's own. */
     int (*replacement_read)(uint32_t owner, uint32_t asset, void *out, uint32_t stored);
-    /* The extension's own bitmap, decoded, which it may alter; 1 when it did. */
+    /* A decoded bitmap, the provider's replacement or the extension's own,
+     * which it may alter in place; 1 when it did. */
     int (*adjust)(uint32_t owner, uint32_t asset, void *bmap, uint32_t bytes);
 };
 
@@ -465,6 +466,17 @@ enum rv_menu {
     RV_MENU_VIDEO_PLAYLIST_CONTEXT,
 };
 
+/* The stock pane a music or video item shows while its row is highlighted,
+ * as the stock Music and Videos rows do: the note or the film picture with the
+ * library's song or video count beneath, the artwork when Menu Covers shows it
+ * and "No Music" or "No Videos" for an empty library. A Music row is a music
+ * item and a Videos row a video item; a Main row says which it is in `preview`. */
+enum rv_preview {
+    RV_PREVIEW_NONE,
+    RV_PREVIEW_MUSIC,
+    RV_PREVIEW_VIDEOS,
+};
+
 /* A row the extension adds to `menu`. `after` is a stock row of that menu from
  * rv_menus.h (RV_SETTINGS_LEGAL), 0 for the end. While the row is highlighted
  * the menu's pane shows `bitmap` and `caption`: under Settings the label, the
@@ -473,10 +485,12 @@ enum rv_menu {
  * Music, Videos and Extras the picture with the caption, or without one the
  * label, in the pane shape the picture's size picks (docs/sdk/menus.md), with
  * `lines` and `badge` where the shape has them. Either may be NULL, and the
- * pane then shows nothing in its place. With `shown_by`, the key of a declared
- * bool setting, the row shows while that setting is on; under Main and Music,
- * Settings > Main Menu and Music Menu list the row and flip it. Without, the
- * row always shows. */
+ * pane then shows nothing in its place. A music or video item (a Music or
+ * Videos row, a Main row with `preview`) that sets none of the pane fields
+ * shows the stock pane of its kind instead (rv_preview). With `shown_by`, the
+ * key of a declared bool setting, the row shows while that setting is on;
+ * under Main and Music, Settings > Main Menu and Music Menu list the row and
+ * flip it. Without, the row always shows. */
 struct rv_menu_entry {
     uint8_t menu;       /* rv_menu */
     uint8_t plain_icon; /* 1: the pane shows `bitmap` without the system's box behind it */
@@ -500,6 +514,9 @@ struct rv_menu_entry {
      * line, none when NULL. */
     const struct rv_bitmap *badge;
     const struct rv_bitmap *(*badge_for)(const struct rv_context *ctx);
+    /* Main rows only: the stock pane the row shows without pane fields of its
+     * own. A Music or Videos row has its menu's. */
+    uint8_t preview; /* rv_preview */
 };
 
 /* What the core reports to a debugger's trace probe, with the argument. */

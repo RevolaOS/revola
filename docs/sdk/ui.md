@@ -39,6 +39,7 @@ The menus are `RV_MENU_MAIN`, `RV_MENU_MUSIC`, `RV_MENU_EXTRAS`, `RV_MENU_SETTIN
 | Entry field | |
 |---|---|
 | `.caption`, `.bitmap`, `.lines`, `.badge` | fill the menu's pane beside the list, see [Menu placement](menus.md); `.caption_text`, `.line_text`, `.bitmap_for` and `.badge_for` give them as they are now, read again on `api->pane_refresh` |
+| `.preview` | on a Main row, `RV_PREVIEW_MUSIC` or `RV_PREVIEW_VIDEOS`: a music or video item, which without pane fields shows the stock Music or Videos pane, as a Music or Videos row without pane fields does |
 | `.shown_by` | a bool setting that shows the row; Settings > Main Menu and Music Menu flip it |
 | `.available` | decides each time a context menu opens whether the row is offered |
 

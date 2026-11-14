@@ -4,7 +4,9 @@
  * rows' bindings live in each screen's CEVT, so when Apple loads a screen's
  * events the core reads one more stream into them: list.pid.<item>.chosen for a
  * menu row, contextualMenu.<handler> for a context menu row, and on a menu with
- * a pane the row's delayedselected binding, which shows the row in the pane. */
+ * a pane the row's delayedselected binding, which shows the row in the pane or,
+ * for a music or video item without a pane of its own, runs the stock rows'
+ * highlight handler. */
 
 #include "ui/menurows.h"
 #include "osos-2.0.5.h"
@@ -58,12 +60,18 @@ static void write_bindings(struct core_writer *w, uint32_t screen_id, uint32_t l
         const char *const layout[] = {core_panes_layout_name(r->root)};
         if (!layout[0])
             continue;
-        /* The pane: the row's pane handler, then the menu's pane layout name. */
+        /* The pane: the stock handler alone, as the stock rows bind it, or the
+         * row's pane handler, then the menu's pane layout name. */
         n = core_put_text(name, name + sizeof name, "list.pid.");
         n = core_put_number(n, name + sizeof name, r->item);
         core_put_text(n, name + sizeof name, ".delayedselected");
-        core_screens_handler_name(handler, r->item + 2);
-        core_write_event(w, name, handler, "navigator.SwitchLayout", layout, 1);
+        const char *stock = core_panes_stock_handler(r->root, r->entry);
+        if (stock) {
+            core_write_event(w, name, stock, NULL, NULL, 0);
+        } else {
+            core_screens_handler_name(handler, r->item + 2);
+            core_write_event(w, name, handler, "navigator.SwitchLayout", layout, 1);
+        }
         count++;
     }
     if (w->out)
