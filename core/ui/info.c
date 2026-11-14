@@ -42,8 +42,8 @@ static const char *const paragraphs[] = {
     "Rockbox contributors: bootloader, dual-boot installer, hardware drivers, and the "
     "Crossfeed (Thom Johansen, Bertrik Sikken, Michael Sevakis), Channels (Thom Johansen, "
     "Michael Sevakis) and Compressor (Jeffrey Goode) extensions. GPL-2.0-or-later.",
-    "2048 from Rockbox by Franklin Wei, high score table by Linus Nielsen Feltzing. "
-    "GPL-2.0-or-later.",
+    "Homebrew from Rockbox: 2048 by Franklin Wei with the high score table by Linus "
+    "Nielsen Feltzing, Dice by Brandon Low. GPL-2.0-or-later.",
     "wInd3x by Serge \"q3k\" Bazanski: BootROM exploit and DFU tooling. GPL-2.0-or-later.",
     "Cupertino Icons (Framework7 Icons) by Vladimir Kharlampidi: Settings icons and the "
     "Flat theme's glyphs. MIT License.",
