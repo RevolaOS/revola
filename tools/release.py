@@ -7,18 +7,19 @@ Nothing in the release contains Apple bytes, and the recipes come out the same w
 or without the decrypted Apple image; the image only lets the build check the site
 table against it (expected words, no branch into an entry site's second word). A
 release built without the image therefore needs a checked build on a developer
-machine first. The script refuses a dirty tree or a missing tag, builds the recipes, the Rockbox bootloader
-images, the SDK, every extension of a pinned extensions checkout, every first-party
-theme of a pinned themes checkout and the USB helper of a pinned installer checkout,
-writes the bundle specification, exports, signs and
-packs the bundle with the installer's CLI, and with --upload publishes everything as
-a GitHub release of this repository.
+machine first. The script refuses a dirty tree or a missing tag, builds the recipes,
+the Rockbox bootloader images, the SDK, every extension of a pinned extensions
+checkout, every first-party theme of a pinned themes checkout, every game and app of
+a pinned homebrew checkout and the USB helper of a pinned installer checkout, writes
+the bundle specification, exports, signs and packs the bundle with the installer's
+CLI, and with --upload publishes everything as a GitHub release of this repository.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
 import struct
@@ -139,11 +140,38 @@ def build_themes(themes, out):
         if not file.is_file():
             raise ValueError(f"{theme['id']}: no .rvt was built")
         packages[theme["id"]] = {
-            "format": "rvt",
+            "format": "revola-theme-v1",
             "version": theme["version"],
             "file": str(file),
         }
     return packages
+
+
+def build_homebrew(homebrew, sdk, out):
+    """Every game and app of the checkout, built against the staged SDK: one folder
+    each, with the version its Manifest.plist carries."""
+    dist = out / "homebrew"
+    if dist.exists():
+        shutil.rmtree(dist)
+    run(["make", f"SDK={sdk}", f"DIST={dist}", "-s"], homebrew)
+    packages = {"Games": {}, "Apps": {}}
+    for root, entries in packages.items():
+        for folder in sorted(p for p in (dist / root).glob("*") if p.is_dir()):
+            manifest = plistlib.loads((folder / "Manifest.plist").read_bytes())
+            if not isinstance(manifest.get("Version"), str):
+                raise ValueError(
+                    f"{folder.name}: Manifest.plist needs a Version string"
+                )
+            entries[folder.name] = {
+                "format": "revola-eapp-v1",
+                "version": manifest["Version"],
+                "files": {
+                    file.name: str(file)
+                    for file in sorted(folder.iterdir())
+                    if file.is_file()
+                },
+            }
+    return packages["Games"], packages["Apps"]
 
 
 def catalog_fingerprint(themes):
@@ -158,7 +186,7 @@ def catalog_fingerprint(themes):
     return fingerprint
 
 
-def specification(version, minimum, out, helper, extensions, themes, core):
+def specification(version, minimum, out, helper, extensions, themes, games, apps, core):
     return {
         "purpose": "release",
         "version": version,
@@ -198,6 +226,8 @@ def specification(version, minimum, out, helper, extensions, themes, core):
         },
         "extensions": extensions,
         "themes": themes,
+        "games": games,
+        "apps": apps,
     }
 
 
@@ -291,6 +321,7 @@ def main():
     parser.add_argument("--installer", type=Path, default=ROOT.parent / "installer")
     parser.add_argument("--extensions", type=Path, default=ROOT.parent / "extensions")
     parser.add_argument("--themes", type=Path, default=ROOT.parent / "themes")
+    parser.add_argument("--homebrew", type=Path, default=ROOT.parent / "homebrew")
     parser.add_argument(
         "--seed",
         type=Path,
@@ -329,6 +360,7 @@ def main():
             "installer": pinned(args.installer, "installer"),
             "extensions": pinned(args.extensions, "extensions"),
             "themes": pinned(args.themes, "themes"),
+            "homebrew": pinned(args.homebrew, "homebrew"),
         }
         prefix = build.compiler_prefix(args.cross_prefix, target["toolchain"]["gcc"])
         release(args, build_identity, pins, prefix)
@@ -357,6 +389,7 @@ def release(args, build_identity, pins, prefix):
     sdk = config.work / "sdk"
     extensions = build_extensions(args.extensions, sdk, out, api_major)
     themes = build_themes(args.themes, out)
+    games, apps = build_homebrew(args.homebrew, sdk, out)
     helper = build_helper(args.installer, Path(prefix).parent, out, args.jobs)
     core = {
         "api": api_major,
@@ -364,7 +397,15 @@ def release(args, build_identity, pins, prefix):
         "catalog_fingerprint": catalog_fingerprint(args.themes),
     }
     spec = specification(
-        version, args.minimum_installer_version, out, helper, extensions, themes, core
+        version,
+        args.minimum_installer_version,
+        out,
+        helper,
+        extensions,
+        themes,
+        games,
+        apps,
+        core,
     )
     assets = bundle(args.assembler, out, spec, args.seed, version)
     (assets / "build.json").write_text(
