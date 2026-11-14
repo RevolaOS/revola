@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* Settings > RevolaOS Info, after Legal: a text page with the version, what
- * RevolaOS is, and the credits and licence from NOTICE. The system font has no
- * "+" or ";", so the text avoids them. */
+ * RevolaOS is, and the credits and licence from the NOTICE files of everything
+ * the release bundle ships. The system font has no "+", ";", ">" or "_", so the
+ * text avoids them. */
 
 #include "ui/info.h"
 #include "osos-2.0.5.h"
@@ -38,9 +39,16 @@ static const char *const paragraphs[] = {
     "RevolaOS contributors: paviro.",
     "Derived from RepriseOS by lgreitis and the RepriseOS contributors: lgreitis, "
     "alexballvideos-netizen, RaduTek, Swimming33, brilliant-alien, kayboll.",
-    "Rockbox contributors: bootloader, dual-boot installer and hardware drivers.",
-    "wInd3x by Serge \"q3k\" Bazanski: BootROM exploit and DFU tooling.",
-    "Cupertino Icons (Framework7 Icons) by Vladimir Kharlampidi: Settings icons. MIT License.",
+    "Rockbox contributors: bootloader, dual-boot installer, hardware drivers, and the "
+    "Crossfeed (Thom Johansen, Bertrik Sikken, Michael Sevakis), Channels (Thom Johansen, "
+    "Michael Sevakis) and Compressor (Jeffrey Goode) extensions. GPL-2.0-or-later.",
+    "2048 from Rockbox by Franklin Wei, high score table by Linus Nielsen Feltzing. "
+    "GPL-2.0-or-later.",
+    "wInd3x by Serge \"q3k\" Bazanski: BootROM exploit and DFU tooling. GPL-2.0-or-later.",
+    "Cupertino Icons (Framework7 Icons) by Vladimir Kharlampidi: Settings icons and the "
+    "Flat theme's glyphs. MIT License.",
+    "Inter by the Inter Project Authors: the Flat theme's numerals. SIL Open Font License 1.1.",
+    "The Flat theme follows \"My own iPodOS edits\" by u/DrawingCompetitive76 on r/IpodClassic.",
     "Provided as is, without warranty of any kind. GPL-3.0-only.",
 };
 

@@ -22,7 +22,7 @@ An extension describes its UI; the core draws it as stock screens. The descripto
 | `RV_SCREEN_LIST(id, title, rows)` | a menu, full width or beside the Settings preview pane as the screen it opens from decides; `.layout` overrides |
 | `RV_SCREEN_LIST_PANES(id, title, rows, panes)` | the same with an `rv_pane` per row: the caption and icon the pane shows while that row is highlighted, static or from `.caption_text` and `.bitmap_for`; a row without a bitmap shows a caption alone |
 | `RV_SCREEN_CHOICE`, `RV_SCREEN_MULTI_CHOICE`, `RV_SCREEN_SLIDER` | a screen over a setting with a title of its own; beside Settings a choice screen's pane names the highlighted choice under its `.bitmap`, as Settings > EQ does |
-| `RV_SCREEN_TEXT(id, title, paragraphs)` | a text page |
+| `RV_SCREEN_TEXT(id, title, paragraphs)` | a text page of up to 12 paragraphs; the rest are not shown |
 | `RV_SCREEN_DYNAMIC_LIST(id, title, count, row, select)` | rows from callbacks, with an inline or stacked detail |
 | `RV_SCREEN_CANVAS(id, title, draw, input)` | the extension draws and reads wheel and key input |
 | `RV_SCREEN_CONTEXT(rows)` | a long-press menu on a list or dynamic list |

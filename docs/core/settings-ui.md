@@ -4,7 +4,7 @@ The core adds two pages to Apple's Settings menu. Their code is `core/ui/info.c`
 
 ## RevolaOS Info
 
-A text page: the version with its build id, the project address, the RevolaOS and RepriseOS contributors, third-party credits and the licence. The system font has no `+`, so the version shows its build in brackets.
+A text page: the version with its build id, the project address, the RevolaOS and RepriseOS contributors, the third-party credits of everything the release bundle ships (core, extensions, themes, Homebrew packages) and the licence. The system font has no `+`, so the version shows its build in brackets.
 
 ## Extensions
 

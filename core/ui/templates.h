@@ -4,7 +4,7 @@
 #define CORE_TEMPLATES_H
 #include <stdint.h>
 
-#define CORE_MAX_PARAGRAPHS 8
+#define CORE_MAX_PARAGRAPHS 12
 /* View type of the canvas view: 'rvcv'. */
 #define CORE_VIEW_CANVAS 0x72766376u
 
