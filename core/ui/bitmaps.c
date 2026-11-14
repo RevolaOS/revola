@@ -151,8 +151,8 @@ static void *replacement(struct rv_extension_record *owner, uint32_t hash, uint3
 
 /* The bitmap asset `name` of `owner` as a block of *bytes, counted to
  * *charged: the provider's replacement, counted to the provider's extension,
- * else the owner's own, decoded and offered to the provider to adjust. NULL
- * when there is none. */
+ * else the owner's own; either decoded and offered to the provider to adjust.
+ * NULL when there is none. */
 static void *fetch(struct rv_extension_record *owner, uint32_t name, uint32_t *bytes,
                    struct rv_extension_record **charged)
 {
@@ -160,6 +160,8 @@ static void *fetch(struct rv_extension_record *owner, uint32_t name, uint32_t *b
     uint8_t *block = replacement(owner, hash, name, bytes);
     if (block) {
         *charged = provider_owner;
+        if (provider && provider->adjust)
+            provider->adjust(hash, name, block, *bytes);
         return block;
     }
     uint8_t kind = RVX_BITMAP;

@@ -25,7 +25,7 @@ A theme that replaces artwork can replace every extension's bitmap assets too, S
 
 Before the core decodes a bitmap it asks `replacement` whether the theme has one for that asset and how it is stored (`struct rv_asset_stream`: raw or one lz stream in the package format, its stored and decoded sizes), then `replacement_read` for the stored bytes, and decodes them itself into a whole BMap with its 28-byte header, as it would the extension's own.
 
-When the theme has none, the core decodes the extension's own bitmap and offers it to `adjust`, which may alter it in place.
+Either way the decoded bitmap, the replacement or the extension's own, is offered to `adjust`, which may alter it in place: a theme paints a replacement picture in a live colour there, and strips the reflection from an icon under a flat look.
 
 A replacement is counted to the holder's memory, not the asset owner's. One extension holds the provider at a time; NULL releases it, as does unloading the module or freeing the block that holds the table. Setting or releasing it decodes the bitmaps on screen again.
 
