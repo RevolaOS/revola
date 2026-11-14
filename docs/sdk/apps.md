@@ -88,6 +88,7 @@ TODO: audio.
 | `rv_app_draw_line(fb, x0, y0, x1, y1, color)` | a 1 px line, both ends included |
 | `rv_app_fill_triangle(fb, x0, y0, x1, y1, x2, y2, color)` | a filled triangle |
 | `rv_app_draw_circle(fb, cx, cy, radius, color)`, `rv_app_fill_circle(...)` | a 1 px circle, or a filled one |
+| `rv_app_draw_round_rect(fb, x, y, width, height, radius, color)`, `rv_app_fill_round_rect(...)` | a rectangle with quarter-circle corners, outlined or filled |
 | `rv_app_draw_bitmap(fb, x, y, &bitmap)` | a `struct rv_app_bitmap`: RGB565 pixels with a width, height and stride, and a `transparent` colour that is skipped (-1 for none) |
 | `rv_app_draw_bitmap_part(fb, x, y, &bitmap, source_x, source_y, width, height)` | a part of the bitmap, for a sprite sheet |
 | `rv_app_draw_mono_bitmap(fb, x, y, bits, width, height, color)` | set bits in `color`: one bit per pixel, most significant first, rows padded to a byte |

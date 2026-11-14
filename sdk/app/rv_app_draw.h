@@ -39,6 +39,13 @@ void rv_app_draw_circle(const struct rv_app_framebuffer *fb, int cx, int cy, int
                         uint16_t color);
 void rv_app_fill_circle(const struct rv_app_framebuffer *fb, int cx, int cy, int radius,
                         uint16_t color);
+/* The 1 px outline of a rectangle with quarter-circle corners of `radius`,
+ * cut to less than half the shorter side. */
+void rv_app_draw_round_rect(const struct rv_app_framebuffer *fb, int x, int y, int width,
+                            int height, int radius, uint16_t color);
+/* The same, filled. */
+void rv_app_fill_round_rect(const struct rv_app_framebuffer *fb, int x, int y, int width,
+                            int height, int radius, uint16_t color);
 
 void rv_app_draw_bitmap(const struct rv_app_framebuffer *fb, int x, int y,
                         const struct rv_app_bitmap *bitmap);

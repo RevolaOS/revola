@@ -335,3 +335,74 @@ void rv_app_draw_text_in(const struct rv_app_framebuffer *fb, int x, int y, unsi
         x += slack;
     rv_app_draw_text(fb, x, y, text, color, scale);
 }
+
+/* Midpoint arcs as in circle(); each row of the top and bottom bands is one
+ * span from the left arc to the right one. */
+void rv_app_fill_round_rect(const struct rv_app_framebuffer *fb, int x, int y, int width,
+                            int height, int radius, uint16_t color)
+{
+    if (!usable(fb) || width <= 0 || height <= 0)
+        return;
+    int limit = ((width < height ? width : height) - 1) / 2;
+    if (radius > limit)
+        radius = limit;
+    if (radius <= 0) {
+        rv_app_fill_rect(fb, x, y, width, height, color);
+        return;
+    }
+    int left = x + radius, right = x + width - 1 - radius;
+    int top = y + radius, bottom = y + height - 1 - radius;
+    rv_app_fill_rect(fb, x, top, width, bottom - top + 1, color);
+    int dx = radius, dy = 0, error = 1 - radius;
+    while (dy <= dx) {
+        span(fb, left - dx, top - dy, right - left + 1 + 2 * dx, color);
+        span(fb, left - dx, bottom + dy, right - left + 1 + 2 * dx, color);
+        span(fb, left - dy, top - dx, right - left + 1 + 2 * dy, color);
+        span(fb, left - dy, bottom + dx, right - left + 1 + 2 * dy, color);
+        ++dy;
+        if (error < 0) {
+            error += 2 * dy + 1;
+        } else {
+            --dx;
+            error += 2 * (dy - dx) + 1;
+        }
+    }
+}
+
+void rv_app_draw_round_rect(const struct rv_app_framebuffer *fb, int x, int y, int width,
+                            int height, int radius, uint16_t color)
+{
+    if (!usable(fb) || width <= 0 || height <= 0)
+        return;
+    int limit = ((width < height ? width : height) - 1) / 2;
+    if (radius > limit)
+        radius = limit;
+    if (radius <= 0) {
+        rv_app_draw_rect(fb, x, y, width, height, color);
+        return;
+    }
+    int left = x + radius, right = x + width - 1 - radius;
+    int top = y + radius, bottom = y + height - 1 - radius;
+    span(fb, left + 1, y, right - left - 1, color);
+    span(fb, left + 1, y + height - 1, right - left - 1, color);
+    rv_app_fill_rect(fb, x, top + 1, 1, bottom - top - 1, color);
+    rv_app_fill_rect(fb, x + width - 1, top + 1, 1, bottom - top - 1, color);
+    int dx = radius, dy = 0, error = 1 - radius;
+    while (dy <= dx) {
+        pixel(fb, left - dx, top - dy, color);
+        pixel(fb, right + dx, top - dy, color);
+        pixel(fb, left - dx, bottom + dy, color);
+        pixel(fb, right + dx, bottom + dy, color);
+        pixel(fb, left - dy, top - dx, color);
+        pixel(fb, right + dy, top - dx, color);
+        pixel(fb, left - dy, bottom + dx, color);
+        pixel(fb, right + dy, bottom + dx, color);
+        ++dy;
+        if (error < 0) {
+            error += 2 * dy + 1;
+        } else {
+            --dx;
+            error += 2 * (dy - dx) + 1;
+        }
+    }
+}

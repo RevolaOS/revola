@@ -187,6 +187,51 @@ static void circles(void)
     padding_clean();
 }
 
+static void round_rects(void)
+{
+    clear();
+    rv_app_fill_round_rect(&fb, 1, 1, 12, 9, 3, INK);
+    /* The corners are cut, the edges and the middle filled. */
+    assert(at(1, 1) == BG && at(12, 1) == BG && at(1, 9) == BG && at(12, 9) == BG);
+    assert(at(4, 1) == INK && at(1, 4) == INK && at(6, 5) == INK && at(12, 4) == INK);
+    assert(at(9, 9) == INK && at(0, 5) == BG && at(13, 5) == BG && at(6, 0) == BG);
+    assert(at(6, 10) == BG);
+    for (int y = 1; y <= 9; ++y)
+        for (int x = 1; x <= 12; ++x)
+            assert(at(x, y) == at(13 - x, y) && at(x, y) == at(x, 10 - y));
+    unsigned filled = count();
+    assert(filled < 12 * 9);
+    uint16_t fill[H * STRIDE];
+    memcpy(fill, pixels, sizeof fill);
+
+    /* The outline lies on the fill and is thinner. */
+    clear();
+    rv_app_draw_round_rect(&fb, 1, 1, 12, 9, 3, INK);
+    assert(at(1, 1) == BG && at(4, 1) == INK && at(1, 4) == INK && at(6, 5) == BG);
+    assert(at(12, 4) == INK && at(6, 9) == INK);
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x)
+            assert(at(x, y) == BG || fill[y * STRIDE + x] == INK);
+    assert(count() < filled);
+
+    /* No radius is a plain rectangle; a radius of half the shorter side or
+     * more is cut below it; clipping covers the framebuffer. */
+    clear();
+    rv_app_fill_round_rect(&fb, 2, 2, 6, 4, 0, INK);
+    assert(count() == 24 && at(2, 2) == INK);
+    clear();
+    rv_app_fill_round_rect(&fb, 2, 2, 6, 4, 10, INK);
+    assert(count() < 24 && at(2, 2) == BG && at(4, 3) == INK);
+    unsigned cut = count();
+    clear();
+    rv_app_fill_round_rect(&fb, 2, 2, 6, 4, 1, INK);
+    assert(count() == cut);
+    clear();
+    rv_app_fill_round_rect(&fb, -4, -4, 40, 30, 6, INK);
+    assert(count() == W * H);
+    padding_clean();
+}
+
 static void bitmaps(void)
 {
     static const uint16_t art[3 * 5] = {
@@ -334,6 +379,7 @@ int main(void)
     lines();
     triangles();
     circles();
+    round_rects();
     bitmaps();
     text();
     random_stream();
