@@ -147,6 +147,66 @@ int rv_app_save_write(struct rv_app_save *save, const void *data, size_t size);
 uint32_t rv_app_save_size(const struct rv_app_save *save);
 void rv_app_save_close(struct rv_app_save *save);
 
+/* Sound effects: PCM samples the host mixes over the music on one of eight
+ * voices; the oldest voice is taken when all eight play. A sample is 8-bit
+ * signed or 16-bit little-endian PCM, 1 or 2 channels, 8000..48000 Hz. The
+ * host reads the sample memory while the sound plays: a buffer given to
+ * create stays the app's and must outlive the sound, and any sound that
+ * names it as next; load keeps its own copy. Thirty-two sounds may exist at
+ * once. Free stops the sound unless another names it as next. Shutdown
+ * stops and frees what is left. */
+struct rv_app_sound;
+
+#define RV_APP_SOUND_VOLUME_MAX 0x7fff
+#define RV_APP_SOUND_PAN_MAX 0x7fff /* -max is left, max right. */
+#define RV_APP_SOUND_SPEED_MIN 500  /* Per mille. */
+#define RV_APP_SOUND_SPEED_MAX 2000
+#define RV_APP_SOUND_RATE_MIN 8000 /* Hz. */
+#define RV_APP_SOUND_RATE_MAX 48000
+
+/* A PCM WAV of the package (format 1, 8 or 16 bits, 1 or 2 channels,
+ * 8000..48000 Hz); NULL when missing, not plain PCM or out of range. */
+struct rv_app_sound *rv_app_sound_load(const char *path);
+/* `bytes` of PCM at `pcm`, whole frames; NULL for a format the host refuses
+ * or when no sound is free. */
+struct rv_app_sound *rv_app_sound_create(const void *pcm, size_t bytes, uint32_t rate,
+                                         uint32_t channels, uint32_t bits);
+void rv_app_sound_free(struct rv_app_sound *sound);
+
+/* Play starts the sound from the beginning, stopping a run still playing,
+ * with the properties set so far. */
+void rv_app_sound_play(struct rv_app_sound *sound);
+void rv_app_sound_stop(struct rv_app_sound *sound);
+void rv_app_sound_pause(struct rv_app_sound *sound);
+void rv_app_sound_resume(struct rv_app_sound *sound);
+/* 1 while a voice renders the sound; a paused sound is not playing. */
+int rv_app_sound_playing(const struct rv_app_sound *sound);
+/* Frames played of the current pass: 0 before the first play and after a
+ * natural end; stale after a stop. */
+uint32_t rv_app_sound_position(const struct rv_app_sound *sound);
+
+/* The host's defaults: volume RV_APP_SOUND_VOLUME_MAX, pan 0, speed 1000,
+ * play count 1, no lead-in, tail or next, music duck off. Ranges are the
+ * host's and are not checked. */
+void rv_app_sound_set_volume(struct rv_app_sound *sound, uint32_t volume);
+void rv_app_sound_set_pan(struct rv_app_sound *sound, int32_t pan);
+void rv_app_sound_set_speed(struct rv_app_sound *sound, uint32_t per_mille);
+/* 0 loops until stop, n plays n times. */
+void rv_app_sound_set_play_count(struct rv_app_sound *sound, uint32_t count);
+/* Silence before the sound (added to the music duck's milliseconds) and
+ * after it, before `next`. */
+void rv_app_sound_set_lead_in_ms(struct rv_app_sound *sound, uint32_t milliseconds);
+void rv_app_sound_set_tail_ms(struct rv_app_sound *sound, uint32_t milliseconds);
+/* `next` plays after the sound and its tail. The host cannot unchain, so a
+ * next that is freed stays, and plays, until the last sound naming it is
+ * freed. */
+void rv_app_sound_set_next(struct rv_app_sound *sound, struct rv_app_sound *next);
+/* The music fades to `level` (0..RV_APP_SOUND_VOLUME_MAX) over
+ * `milliseconds` of silence before the sound and comes back after it;
+ * 0 ms leaves the music alone. */
+void rv_app_sound_set_music_duck(struct rv_app_sound *sound, uint32_t level,
+                                 uint32_t milliseconds);
+
 #ifdef __cplusplus
 }
 #endif

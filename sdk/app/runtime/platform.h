@@ -16,6 +16,7 @@ void rv_app_platform_present(void *surface);
 void rv_app_files_close_all(void);
 void rv_app_directories_close_all(void);
 void rv_app_saves_close_all(void);
+void rv_app_sounds_free_all(void);
 
 /* `name` without leading "./", or NULL when it leaves its folder: a leading
  * slash, an empty, "." or ".." component, a trailing slash, a backslash or a

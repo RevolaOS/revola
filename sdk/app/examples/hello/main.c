@@ -1,14 +1,34 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 /* Draws a greeting, the wheel direction, the time since start and how often
- * it ran, kept in Apple's save store; Menu exits. */
+ * it ran, kept in Apple's save store; Center plays a tone computed at start,
+ * Play the beep.wav of the package; Menu exits. */
 
 #include "rv_app_draw.h"
 
 static char seconds[12], runs[12];
+static struct rv_app_sound *tone, *beep;
+
+/* 300 ms of a 441 Hz square wave, 16-bit mono 44100 Hz, in a heap block
+ * that stays the app's while the sound exists. */
+static struct rv_app_sound *make_tone(void)
+{
+    enum { RATE = 44100, FRAMES = RATE * 3 / 10, HALF_PERIOD = 50 };
+    int16_t *pcm = rv_app_alloc(FRAMES * sizeof *pcm);
+    if (!pcm)
+        return NULL;
+    for (unsigned i = 0; i < FRAMES; ++i)
+        pcm[i] = (i / HALF_PERIOD) & 1 ? 6000 : -6000;
+    struct rv_app_sound *sound = rv_app_sound_create(pcm, FRAMES * sizeof *pcm, RATE, 1, 16);
+    if (!sound)
+        rv_app_free(pcm);
+    return sound;
+}
 
 static void init(void)
 {
+    tone = make_tone();
+    beep = rv_app_sound_load("beep.wav");
     struct rv_app_save *save = rv_app_save_open("runs");
     if (!save)
         return;
@@ -29,8 +49,20 @@ static void init(void)
 
 static void input(const struct rv_app_input_event *event)
 {
-    if (event->button == RV_APP_BUTTON_MENU && event->type == RV_APP_INPUT_PRESS)
+    if (event->type != RV_APP_INPUT_PRESS)
+        return;
+    if (event->button == RV_APP_BUTTON_MENU)
         rv_app_request_exit();
+    else if (event->button == RV_APP_BUTTON_CENTER)
+        rv_app_sound_play(tone);
+    else if (event->button == RV_APP_BUTTON_PLAY)
+        rv_app_sound_play(beep);
+}
+
+static void shutdown(void)
+{
+    rv_app_sound_free(tone);
+    rv_app_sound_free(beep);
 }
 
 static void frame(const struct rv_app_frame *frame)
@@ -68,6 +100,12 @@ static void frame(const struct rv_app_frame *frame)
     rv_app_draw_text(fb, 20, 100, "RUNS:", 0xffff, 1);
     rv_app_draw_text(fb, 56, 100, runs, 0xffff, 1);
 
+    rv_app_draw_text(fb, 20, 120, "SOUND:", 0xffff, 1);
+    rv_app_draw_text(fb, 62, 120,
+                     rv_app_sound_playing(tone) || rv_app_sound_playing(beep) ? "ON" : "OFF",
+                     0xffff, 1);
+
+    rv_app_draw_text(fb, 20, 200, "CENTER: TONE  PLAY: BEEP", 0x8410, 1);
     rv_app_draw_text(fb, 20, 220, "MENU: EXIT", 0x8410, 1);
 }
 
@@ -76,4 +114,5 @@ const struct rv_app rv_app_application = {
     .init = init,
     .input = input,
     .frame = frame,
+    .shutdown = shutdown,
 };

@@ -43,6 +43,7 @@ void rv_app_runtime_shutdown(void)
     rv_app_files_close_all();
     rv_app_directories_close_all();
     rv_app_saves_close_all();
+    rv_app_sounds_free_all();
 }
 
 void rv_app_runtime_frame(const struct rv_app_eapp_frame_input *input,

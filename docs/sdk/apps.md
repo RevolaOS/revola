@@ -72,9 +72,8 @@ make SDK=/path/to/revola-sdk
 | Folders | `rv_app_directory_open` (recursive or not), `read`, `close`: four open at once; entry names are relative to the folder opened, subfolders are walked depth first, a folder lists at most 500 entries |
 | Errors | `rv_app_file_error`: the host's status of the last file, data, folder or save call that failed, as the `FileStatus_*` and `GameSaveStatus_*` values of the symbols header |
 | Menus | `rv_app_ui.h`: `rv_app_menu_input`, `rv_app_menu_scroll`, `rv_app_menu_draw` draw a text list; `rv_app_file_picker_open` lists up to 64 files with an extension, sorted |
+| Sound | `rv_app_sound_load` (a PCM WAV of the package) or `rv_app_sound_create` (a buffer of the app's), `play`, `stop`, `pause`, `resume`, `playing`, `position`, `free`, and a setter per property of the host's sound: volume, pan, speed, play count, lead-in, tail, next, music duck. Thirty-two sounds at once on eight mixer voices; the format is below |
 | Exit | `rv_app_request_exit` ends the app after the current callback |
-
-TODO: audio.
 
 ## Drawing
 
@@ -96,6 +95,12 @@ TODO: audio.
 | `rv_app_draw_text_in(fb, x, y, width, text, color, scale, align)` | the same text at the left, centre or right of the `width` pixels from `x` (`RV_APP_ALIGN_LEFT`, `CENTER`, `RIGHT`) |
 | `rv_app_text_width(text, scale)` | the pixels a text spans: glyph cells 6 font pixels apart, no gap after the last |
 
+## Sound samples
+
+The host mixes a sound's samples over the music on one of eight voices and resamples to the output rate. It takes 8-bit signed or 16-bit little-endian PCM, 1 or 2 channels, 8000..48000 Hz, and nothing else: `rv_app_sound_create` refuses other formats, because the host would play them with a stale format instead of failing. `rv_app_sound_load` reads a WAV from the package: RIFF/WAVE with a plain PCM format chunk (format 1, not float or extensible) and a data chunk; 8-bit WAVs are unsigned on disk and converted after loading. One `sox` line makes such a file from anything: `sox in.wav -r 22050 -c 1 -b 16 out.wav`. Ship WAVs through `FILES`; the hello example generates its `beep.wav` with `tone.py` at build time.
+
+The host reads the sample memory while a voice plays, so a buffer given to `create` stays the app's until the sound is freed, and until any sound naming it as `next` is freed; `load` keeps the file block itself. `play` starts from the beginning and stops a run still playing; the properties take the host's values as they are (volume 0..`RV_APP_SOUND_VOLUME_MAX`, pan -`RV_APP_SOUND_PAN_MAX`..`RV_APP_SOUND_PAN_MAX`, speed 500..2000 per mille, play count 0 for ever), with the host's defaults. A sound set as another's `next` plays after it and its tail; the host cannot unchain, so freeing such a sound leaves it with the host, still playing in its turn, until nothing names it. The music duck fades the music to a level over a silence inserted before the sound and restores it after. Shutdown stops and frees whatever is left; the host also stops every voice when an app ends.
+
 ## With a C library
 
 An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources and supplies `rv_app_libc_write` and `rv_app_libc_exit` from `rv_app_libc.h`. The glue maps `malloc` to the heap, `open` (read only) to the package's files, `write` on the standard streams to `rv_app_libc_write` and `exit` to `rv_app_libc_exit`, which must unwind to the current callback: the host owns the task and its stack. Such an app writes its own link rule with `RV_APP_ARCH_FLAGS`, `RV_APP_CFLAGS`, `RV_APP_LDFLAGS`, `$(RV_APP_STARTUP)` and `$(RV_APP_RUNTIME)`, links `-lgcc` and its libraries, runs `objcopy -O binary` and then `eapp-pack` with `--symbols` naming the SDK's `osos-2.0.5.h`, where the image checks come from.
@@ -106,4 +111,4 @@ An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources a
 
 Files and folders are requests to the host's file worker, which runs on its own task and hands finished requests back with a later frame. The runtime keeps the calls synchronous: it waits for a request's outputs, yielding to the worker in between. The requests are a small ring that is never freed, because the worker links a finished request to the next one after the fact (`runtime/request.c`). `eapp-pack` checks the header, the entries and the import list, converts the icon, writes `Manifest.plist` and the package folder; `--zip` adds a ZIP with the folder under `Revola/Games/<id>/` or `Revola/Apps/<id>/` for sharing. Its module, `eapp_package.py`, serves an app with a packaging script of its own.
 
-`python3 app/tests/run.py` checks the package path rules, the request lifecycle and the file, folder and save store calls against stand-ins for the host.
+`python3 app/tests/run.py` checks the package path rules, the request lifecycle and the file, folder, save store and sound calls against stand-ins for the host, and the drawing calls on a small framebuffer.

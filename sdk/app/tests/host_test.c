@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Adapted from RepriseOS game-sdk/tests/files_test.c by lgreitis. */
 
-/* Host stand-ins for the file worker and the save store that files.c,
- * directory.c, request.c and save.c drive, and the rules they must keep: a
- * request completes only when the game's task yields, its outputs arrive in
- * the host's order, and it stays allocated until a frame hands it back. */
+/* Host stand-ins for the file worker, the save store and the sound objects
+ * that files.c, directory.c, request.c, save.c and sound.c drive, and the
+ * rules they must keep: a request completes only when the game's task
+ * yields, its outputs arrive in the host's order, and it stays allocated
+ * until a frame hands it back; a sound's samples stay the app's memory while
+ * the host plays them. */
 
 #include "osos-2.0.5.h"
 #include "platform.h"
@@ -65,11 +67,58 @@ struct fake_file {
     unsigned used;
 };
 
-static const struct fake_file package_files[] = {
+/* The two WAVs are written by wav_files() before the checks. */
+static struct fake_file package_files[] = {
     {"roms/Example.NES", "NESDATA", 7, 1},
     {"roms/sub/Deep.NES", "DEEP", 4, 1},
     {"readme.txt", "hi", 2, 1},
+    {"sounds/beep.wav", "", 0, 1},
+    {"sounds/float.wav", "", 0, 1},
+    {"sounds/short.wav", "RIFF", 4, 1},
+    {"sounds/cut.wav", "", 0, 1},
 };
+
+static void put32(char *p, uint32_t v)
+{
+    for (int i = 0; i < 4; ++i)
+        p[i] = (char)(v >> (8 * i));
+}
+
+/* A WAV with `format`, 8-bit mono 8000 Hz, `bytes` of samples declared as
+ * `declared` in the data chunk; `list` puts a three-byte LIST chunk (padded
+ * to four) before the format chunk. */
+static unsigned wav(char *out, unsigned format, const uint8_t *samples, unsigned bytes,
+                    unsigned declared, int list)
+{
+    memcpy(out, "RIFF", 4);
+    put32(out + 4, 36 + bytes);
+    memcpy(out + 8, "WAVE", 4);
+    char *p = out + 12;
+    if (list) {
+        memcpy(p, "LIST", 4);
+        put32(p + 4, 3);
+        memcpy(p + 8, "abc", 4);
+        p += 12;
+    }
+    memcpy(p, "fmt ", 4);
+    put32(p + 4, 16);
+    put32(p + 8, format | 1 << 16); /* format, channels 1 */
+    put32(p + 12, 8000);
+    put32(p + 16, 8000);
+    put32(p + 20, 1 | 8 << 16); /* block align 1, bits 8 */
+    memcpy(p + 24, "data", 4);
+    put32(p + 28, declared);
+    memcpy(p + 32, samples, bytes);
+    return (unsigned)(p + 32 + bytes - out);
+}
+
+static void wav_files(void)
+{
+    static const uint8_t samples[] = {0x80, 0xff, 0x00, 0x7f};
+    package_files[3].size = wav(package_files[3].data, 1, samples, 4, 4, 1);
+    package_files[4].size = wav(package_files[4].data, 3, samples, 4, 4, 0);
+    package_files[6].size = wav(package_files[6].data, 1, samples, 4, 1000, 0);
+}
 static struct fake_file data_files[8];
 static char data_names[8][64];
 
@@ -233,7 +282,7 @@ static void perform(void)
         handles[slot] = (struct fake_handle){NULL, NULL, 0, 1};
         r->handle = slot;
         if (pending.kind == GameDirectory_Package) {
-            for (unsigned i = 0; i < 3; ++i)
+            for (unsigned i = 0; i < sizeof package_files / sizeof package_files[0]; ++i)
                 if (!strcmp(package_files[i].name, pending.path))
                     package = &package_files[i];
             if (!package || !pending.read_only) {
@@ -437,6 +486,175 @@ static void flush_saves(void)
     }
 }
 
+/* The host's sound objects: a table indexed by the handle, with the fields
+ * Create initialises, a voice that Play attaches and a natural end releases
+ * (end_sound()) without touching the state. */
+struct fake_sound {
+    const void *data;
+    uint32_t byte_count, sample_rate, channels, bits, volume, speed, play_count;
+    uint32_t lead_in_ms, tail_ms, duck_level, duck_ms;
+    int32_t pan;
+    int next; /* -1 for none. */
+    uint8_t state, attached, used;
+    unsigned plays, stops;
+};
+static struct fake_sound host_sounds[40];
+static unsigned host_sound_count, sound_create_failures;
+
+static struct fake_sound *sound_at(int handle)
+{
+    if (handle < 0 || handle >= (int)(sizeof host_sounds / sizeof host_sounds[0]) ||
+        !host_sounds[handle].used)
+        return NULL;
+    return &host_sounds[handle];
+}
+
+int GameSound_Create(void)
+{
+    if (sound_create_failures) {
+        --sound_create_failures;
+        return -1;
+    }
+    for (unsigned i = 0; i < sizeof host_sounds / sizeof host_sounds[0]; ++i)
+        if (!host_sounds[i].used) {
+            host_sounds[i] = (struct fake_sound){.sample_rate = 44100,
+                                                 .channels = 1,
+                                                 .bits = 16,
+                                                 .volume = 0x7fff,
+                                                 .speed = 1000,
+                                                 .play_count = 1,
+                                                 .duck_level = 0x7fff,
+                                                 .next = -1,
+                                                 .used = 1};
+            ++host_sound_count;
+            return (int)i;
+        }
+    return -1;
+}
+
+int GameSound_Destroy(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (!s)
+        return 0;
+    memset(s, 0, sizeof *s);
+    --host_sound_count;
+    return 1;
+}
+
+/* The host writes a state along the whole next ring. */
+static void set_ring_state(struct fake_sound *s, uint8_t state)
+{
+    for (struct fake_sound *r = s;;) {
+        r->state = state;
+        if (r->next < 0 || r->next == s - host_sounds)
+            return;
+        r = &host_sounds[r->next];
+    }
+}
+
+int GameSound_Play(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (!s)
+        return 0;
+    assert(s->data && s->byte_count);
+    s->attached = 1;
+    set_ring_state(s, GameSoundState_Playing);
+    ++s->plays;
+    return 1;
+}
+
+int GameSound_Stop(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (!s)
+        return 0;
+    set_ring_state(s, GameSoundState_Stopped);
+    ++s->stops;
+    return 1;
+}
+
+int GameSound_Pause(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (s)
+        s->state = GameSoundState_Paused;
+    return s != NULL;
+}
+
+int GameSound_Resume(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (s)
+        s->state = GameSoundState_Playing;
+    return s != NULL;
+}
+
+int GameSound_IsPlaying(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    return s && s->attached && s->state == GameSoundState_Playing;
+}
+
+uint32_t GameSound_GetVoicePosition(int handle)
+{
+    struct fake_sound *s = sound_at(handle);
+    return s && s->attached ? 123 : 0;
+}
+
+static void end_sound(int handle)
+{
+    sound_at(handle)->attached = 0;
+}
+
+#define SOUND_SETTER(name, type, field)             \
+    int GameSound_Set##name(int handle, type value) \
+    {                                               \
+        struct fake_sound *s = sound_at(handle);    \
+        if (s)                                      \
+            s->field = value;                       \
+        return s != NULL;                           \
+    }
+SOUND_SETTER(ByteCount, uint32_t, byte_count)
+SOUND_SETTER(SampleRate, uint32_t, sample_rate)
+SOUND_SETTER(Channels, uint32_t, channels)
+SOUND_SETTER(BitsPerSample, uint32_t, bits)
+SOUND_SETTER(Volume, uint32_t, volume)
+SOUND_SETTER(Pan, int32_t, pan)
+SOUND_SETTER(Speed, uint32_t, speed)
+SOUND_SETTER(PlayCount, uint32_t, play_count)
+SOUND_SETTER(LeadInMilliseconds, uint32_t, lead_in_ms)
+SOUND_SETTER(TailMilliseconds, uint32_t, tail_ms)
+
+int GameSound_SetData(int handle, const void *samples)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (!s || !samples)
+        return 0;
+    s->data = samples;
+    return 1;
+}
+
+int GameSound_SetNext(int handle, int next)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (!s || !sound_at(next))
+        return 0;
+    s->next = next;
+    return 1;
+}
+
+int GameSound_SetMusicDuck(int handle, uint32_t level, uint32_t milliseconds)
+{
+    struct fake_sound *s = sound_at(handle);
+    if (!s)
+        return 0;
+    s->duck_level = level;
+    s->duck_ms = milliseconds;
+    return 1;
+}
+
 static void check_names(void)
 {
     const char *invalid[] = {NULL,   "/root", "../other", "roms/../../other",
@@ -621,6 +839,125 @@ static void check_saves(void)
     assert(LIVE(0) && open_handles() == 0);
 }
 
+static void check_sounds(void)
+{
+    static const int16_t frames[4] = {0, 1000, -1000, 0};
+    struct rv_app_sound *tone;
+    /* Formats the host's voice would refuse are refused here, in time. */
+    assert(!rv_app_sound_create(NULL, 8, 44100, 1, 16));
+    assert(!rv_app_sound_create(frames, 0, 44100, 1, 16));
+    assert(!rv_app_sound_create(frames, 8, 7999, 1, 16));
+    assert(!rv_app_sound_create(frames, 8, 48001, 1, 16));
+    assert(!rv_app_sound_create(frames, 8, 44100, 3, 16));
+    assert(!rv_app_sound_create(frames, 8, 44100, 1, 12));
+    assert(!rv_app_sound_create(frames, 6, 44100, 2, 16)); /* A partial frame. */
+    assert(host_sound_count == 0);
+    assert((tone = rv_app_sound_create(frames, 8, 8000, 1, 16)));
+    struct fake_sound *host = sound_at(0);
+    assert(host && host->data == frames && host->byte_count == 8 && host->sample_rate == 8000);
+    assert(host->channels == 1 && host->bits == 16 && host->volume == 0x7fff);
+    rv_app_sound_free(tone);
+    assert((tone = rv_app_sound_create(frames, 8, 48000, 2, 8)) && sound_at(0)->bits == 8);
+    assert(sound_at(0)->channels == 2 && sound_at(0)->sample_rate == 48000 && LIVE(0));
+
+    /* Play restarts: the host would take a second voice for a sound that
+     * still plays, so a stop goes first. The natural end clears the voice,
+     * not the state. */
+    assert(!rv_app_sound_playing(tone) && rv_app_sound_position(tone) == 0);
+    rv_app_sound_play(tone);
+    assert(host->stops == 1 && host->plays == 1 && rv_app_sound_playing(tone));
+    assert(rv_app_sound_position(tone) == 123);
+    rv_app_sound_play(tone);
+    assert(host->stops == 2 && host->plays == 2);
+    rv_app_sound_pause(tone);
+    assert(!rv_app_sound_playing(tone) && host->state == GameSoundState_Paused);
+    rv_app_sound_resume(tone);
+    assert(rv_app_sound_playing(tone));
+    end_sound(0);
+    assert(!rv_app_sound_playing(tone) && host->state == GameSoundState_Playing);
+    rv_app_sound_play(tone);
+    rv_app_sound_stop(tone);
+    assert(!rv_app_sound_playing(tone) && host->state == GameSoundState_Stopped);
+
+    rv_app_sound_set_volume(tone, 100);
+    rv_app_sound_set_pan(tone, -RV_APP_SOUND_PAN_MAX);
+    rv_app_sound_set_speed(tone, 1500);
+    rv_app_sound_set_play_count(tone, 0);
+    rv_app_sound_set_lead_in_ms(tone, 10);
+    rv_app_sound_set_tail_ms(tone, 20);
+    rv_app_sound_set_music_duck(tone, 0x1000, 250);
+    assert(host->volume == 100 && host->pan == -0x7fff && host->speed == 1500);
+    assert(host->play_count == 0 && host->lead_in_ms == 10 && host->tail_ms == 20);
+    assert(host->duck_level == 0x1000 && host->duck_ms == 250);
+
+    /* A WAV of the package: the block is the runtime's until the sound is
+     * freed, 8-bit samples are flipped to signed. */
+    struct rv_app_sound *beep = rv_app_sound_load("sounds/beep.wav");
+    assert(beep && LIVE(1) && host_sound_count == 2 && open_handles() == 0);
+    struct fake_sound *beep_host = sound_at(1);
+    assert(beep_host->byte_count == 4 && beep_host->sample_rate == 8000);
+    assert(beep_host->channels == 1 && beep_host->bits == 8);
+    assert(!memcmp(beep_host->data, "\x00\x7f\x80\xff", 4));
+    assert(!rv_app_sound_load("sounds/float.wav") && !rv_app_sound_load("sounds/short.wav"));
+    assert(!rv_app_sound_load("missing.wav") && !rv_app_sound_load("readme.txt"));
+    assert(LIVE(1) && host_sound_count == 2 && open_handles() == 0);
+    /* A data chunk declared past the end of the file is cut to the file. */
+    struct rv_app_sound *cut = rv_app_sound_load("sounds/cut.wav");
+    assert(cut && sound_at(2)->byte_count == 4 && LIVE(2));
+    rv_app_sound_free(cut);
+    assert(LIVE(1) && host_sound_count == 2);
+
+    /* NULL and freed handles are ignored everywhere. */
+    rv_app_sound_set_next(tone, NULL);
+    rv_app_sound_set_next(tone, cut);
+    assert(host->next == -1);
+    rv_app_sound_set_volume(NULL, 1);
+    rv_app_sound_set_volume(cut, 1);
+    rv_app_sound_pause(cut);
+    rv_app_sound_resume(NULL);
+    rv_app_sound_stop(NULL);
+    assert(!rv_app_sound_playing(NULL) && rv_app_sound_position(cut) == 0);
+    rv_app_sound_free(NULL);
+    rv_app_sound_free(cut);
+
+    /* A freed next stays with the host while a sound names it, and goes
+     * when nothing reaches it any more. */
+    rv_app_sound_set_next(tone, beep);
+    assert(host->next == 1);
+    rv_app_sound_free(beep);
+    assert(host_sound_count == 2 && LIVE(1) && beep_host->used);
+    rv_app_sound_play(beep); /* A freed sound no longer plays. */
+    assert(!rv_app_sound_playing(beep) && beep_host->plays == 0);
+    struct rv_app_sound *third = rv_app_sound_create(frames, 8, 8000, 1, 16);
+    assert(third && sound_at(2) && host_sound_count == 3);
+    rv_app_sound_set_next(tone, third);
+    assert(host_sound_count == 2 && LIVE(0) && !beep_host->used);
+    /* A ring: freeing one keeps it, and does not stop the other, whose host
+     * stop would run along the ring. */
+    rv_app_sound_set_next(third, tone);
+    rv_app_sound_play(tone);
+    rv_app_sound_free(third);
+    assert(host_sound_count == 2 && rv_app_sound_playing(tone));
+    assert(sound_at(2)->state == GameSoundState_Playing);
+    rv_app_sound_free(tone);
+    assert(host_sound_count == 0 && !sound_at(0) && !sound_at(2));
+    rv_app_sound_free(tone);
+
+    /* Thirty-two sounds at once; shutdown stops and frees them all. */
+    struct rv_app_sound *many[32];
+    for (unsigned i = 0; i < 32; ++i)
+        assert((many[i] = rv_app_sound_create(frames, 8, 8000, 1, 16)));
+    assert(!rv_app_sound_create(frames, 8, 8000, 1, 16) && host_sound_count == 32);
+    rv_app_sound_play(many[5]);
+    sound_create_failures = 1;
+    rv_app_sound_free(many[0]);
+    assert(!rv_app_sound_create(frames, 8, 8000, 1, 16) && host_sound_count == 31);
+    assert((many[0] = rv_app_sound_create(frames, 8, 8000, 1, 16)) && host_sound_count == 32);
+    rv_app_sounds_free_all();
+    assert(host_sound_count == 0 && sound_at(5) == NULL);
+    assert(LIVE(0));
+}
+
 int main(void)
 {
     arena = malloc(ARENA_BYTES);
@@ -632,7 +969,9 @@ int main(void)
     check_directories();
     check_data();
     check_saves();
+    wav_files();
+    check_sounds();
     assert(!pending.request);
-    printf("path rules, requests, files, folders, data files and saves pass\n");
+    printf("path rules, requests, files, folders, data files, saves and sounds pass\n");
     return 0;
 }

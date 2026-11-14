@@ -8,6 +8,7 @@
 #   SOURCES := main.c            # the app's sources
 #   ICON := icon.png             # 55 x 55 PNG shown in the list
 #   HEAP_KIB := 5120             # the heap the host gives the app
+#   FILES := beep.wav            # data files packed into the package by name
 #   include $(SDK)/app/rv_app.mk
 #
 # An app with its own link step (newlib, extra libraries) uses the variables
@@ -45,7 +46,7 @@ RV_APP_RUNTIME := $(RV_APP_RUNTIME_DIR)/librv_app.a
 RV_APP_STARTUP := $(RV_APP_RUNTIME_DIR)/startup.o
 RV_APP_RUNTIME_OBJECTS := $(addprefix $(RV_APP_RUNTIME_DIR)/,\
     runtime.o imports.o request.o memory.o time.o input.o files.o directory.o save.o display.o \
-    draw.o ui.o wheel.o random.o)
+    draw.o ui.o wheel.o random.o sound.o)
 
 $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)
 	$(RM) $@
