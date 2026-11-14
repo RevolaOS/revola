@@ -65,7 +65,69 @@ void *rv_app_alloc(size_t size);
 void *rv_app_realloc(void *pointer, size_t size);
 void rv_app_free(void *pointer);
 uint32_t rv_app_ticks_ms(void);
+/* Blocks the app's task for at least that long; the host's tasks keep
+ * running. */
 void rv_app_sleep_ms(uint32_t milliseconds);
+
+/* The iPod's clock, local time; a fixed default date while the user never
+ * set the clock. */
+struct rv_app_date_time {
+    uint16_t year; /* The full year. */
+    uint8_t month; /* 1..12 */
+    uint8_t day;   /* 1..31 */
+    uint8_t hour;  /* 0..23 */
+    uint8_t minute;
+    uint8_t second;
+};
+
+void rv_app_date_time(struct rv_app_date_time *out);
+/* 1 when Settings > Date & Time shows the 24-hour clock, else 0. */
+int rv_app_clock_24h(void);
+
+#define RV_APP_TIME_TEXT_SIZE 9
+
+/* "9:05 PM" or "21:05" after the user's clock setting, into `out` of
+ * RV_APP_TIME_TEXT_SIZE bytes; returns the end of the text. */
+char *rv_app_format_time(char *out, const struct rv_app_date_time *time);
+
+/* The backlight, 0..100 of the brightness scale. A level stays after the
+ * app ends: the host makes it the user's Brightness setting, and the
+ * host's level query reports only what the app set, never the user's
+ * value, so set it only when the user asked for it. Dimmed
+ * caps the level at 20 and is undone when the app ends. The backlight
+ * timer of Settings keeps running, so the screen still goes dark without
+ * input. */
+void rv_app_set_backlight_level(uint32_t percent);
+void rv_app_set_backlight_dimmed(int on);
+
+/* 1 while a computer or a charger powers the iPod over the cable, 0 on
+ * battery; USB power the iPod's charger detection cannot classify does
+ * not count, which is what the emulator's USB mode supplies. */
+int rv_app_external_power(void);
+
+/* The iPod the host runs on, as the games platform Apple's games are built
+ * for; the emulator reports the classic. */
+enum rv_app_platform {
+    RV_APP_PLATFORM_UNKNOWN = 0,
+    RV_APP_PLATFORM_IPOD_VIDEO = 1,
+    RV_APP_PLATFORM_NANO_3G = 2,
+    RV_APP_PLATFORM_CLASSIC = 3,
+};
+
+enum rv_app_platform rv_app_platform(void);
+
+/* The language of Settings as a locale code, "en_US", "de_DE", ...; NULL
+ * for one the runtime does not know. */
+const char *rv_app_language(void);
+
+/* The package's name as Extras lists it, in the current language when the
+ * manifest has it, into `out`; returns its length, or -1 when it does not
+ * fit in `capacity` with its terminator. */
+int rv_app_name(char *out, size_t capacity);
+
+/* One line to the host's debug console: the emulator's qemu.log; an iPod
+ * without a debugger shows nothing. */
+void rv_app_log(const char *text);
 
 /* xorshift32 from a fixed state until seeded; seed 0 is treated as that state. */
 void rv_app_random_seed(uint32_t seed);

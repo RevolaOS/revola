@@ -64,7 +64,11 @@ make SDK=/path/to/revola-sdk
 | Wheel | `rv_app_read_wheel` (clockwise delta since the last read, position, touched), `rv_app_wheel_directions` (eight sectors as Up, Right, Down, Left bits) |
 | Hold | `rv_app_hold_locked` |
 | Heap | `rv_app_alloc`, `rv_app_realloc`, `rv_app_free` from the host's heap, at most 8 MiB per block, all freed when the app ends |
-| Time | `rv_app_ticks_ms` since the first call, `rv_app_sleep_ms` |
+| Time | `rv_app_ticks_ms` since the first call; `rv_app_sleep_ms` blocks the app's task in the host for at least that long, 0 yields |
+| Clock | `rv_app_date_time` fills a `struct rv_app_date_time` (year, month, day, hour, minute, second, local time), `rv_app_clock_24h` reads the clock setting, `rv_app_format_time` writes "9:05 PM" or "21:05" after it, below |
+| Backlight | `rv_app_set_backlight_level` (0..100) and `rv_app_set_backlight_dimmed`; a level outlives the app as the user's Brightness setting, below |
+| Device | `rv_app_platform` (iPod video, nano 3G or classic), `rv_app_external_power` (a computer or a charger on the cable; the emulator's USB mode carries no charger classification, so only its adapter mode counts there), `rv_app_language` (a locale code such as `de_DE`), `rv_app_name` (the package's name as Extras lists it, in the current language when the manifest has it) |
+| Log | `rv_app_log` writes a line to the host's debug console: the emulator's `qemu.log` in the run folder; an iPod without a debugger shows nothing |
 | Random | `rv_app_random` (xorshift32, 32 bits per call), `rv_app_random_seed`; the stream starts the same every run until seeded, say from the first input's timestamp |
 | Files | `rv_app_file_open`, `read`, `seek`, `size`, `position`, `close`: read only, paths inside the package, twelve open at once with the data files |
 | Data | `rv_app_data_open` opens a path inside the package's data folder for reading or writing, `rv_app_file_write` on a handle opened for writing, `rv_app_data_delete`; writing creates the folder and replaces the file, and the bytes are on disk when the handle is closed. The host names the folder: `/Revola/Data/Games/<id>/` or `/Revola/Data/Apps/<id>/` under RevolaOS, where Homebrew redirects it, and Apple's `iPod_Control/gamedata_RW/<id>/` anywhere else |
@@ -110,6 +114,14 @@ The host saves the player's settings when the app starts and restores repeat, sh
 
 Play, Next and Previous reach the player through the runtime unless the app handles them (`handles_music_buttons`), and through `rv_app_music_pass_button` for an app that keeps some: the host acts on releases of those three buttons and ignores everything else. The hello example shows the state, position and track under its greeting.
 
+## Clock and device
+
+The clock is the iPod's, in local time; while the user never set it, the host reports a fixed default date. `rv_app_format_time` reads the 12/24-hour setting on every call and writes at most `RV_APP_TIME_TEXT_SIZE` bytes: no leading zero and ` AM`/` PM` in 12-hour mode, two digits in 24-hour mode, all in characters the SDK font has. There is no date formatter: the date-order setting is not one the host hands to apps, so an app that shows a date picks the order from the fields.
+
+`rv_app_set_backlight_level` sets the iPod's brightness, and the level stays when the app ends: the host writes it into the user's Brightness setting, and its level query reports only what the app set, never the user's value, so an app cannot put it back. Set it only when the user asked for it, as a brightness control would. Dimming caps the level at 20 and is undone when the app ends. The backlight timer of Settings keeps running while an app runs, so the screen still goes dark without input after the user's period; nothing in the SDK turns the backlight off or keeps it lit.
+
+`rv_app_language` maps the host's language index to the locale code of the Settings > Language list: en_US, da_DK, de_CH, de_DE, es_ES, fi_FI, fr_BE, fr_CH, fr_FR, it_IT, ja_JP, ko_KR, nl_BE, nl_NL, no_NO, pt_PT, sv_SE, zh_CN, zh_TW, cs_CZ, el_GR, hu_HU, pl_PL, ru_RU, tr_TR. `rv_app_platform` is the games platform the host reports, the same value as `GamesPlatformID` in the iPod's SysInfoExtended; the emulator reports the classic. The hello example shows all of these, measures one `rv_app_sleep_ms(500)` at start, changes the backlight with the wheel and dims while Center is held.
+
 ## With a C library
 
 An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources and supplies `rv_app_libc_write` and `rv_app_libc_exit` from `rv_app_libc.h`. The glue maps `malloc` to the heap, `open` (read only) to the package's files, `write` on the standard streams to `rv_app_libc_write` and `exit` to `rv_app_libc_exit`, which must unwind to the current callback: the host owns the task and its stack. Such an app writes its own link rule with `RV_APP_ARCH_FLAGS`, `RV_APP_CFLAGS`, `RV_APP_LDFLAGS`, `$(RV_APP_STARTUP)` and `$(RV_APP_RUNTIME)`, links `-lgcc` and its libraries, runs `objcopy -O binary` and then `eapp-pack` with `--symbols` naming the SDK's `osos-2.0.5.h`, where the image checks come from.
@@ -120,4 +132,4 @@ An app that needs newlib compiles `runtime/newlib_glue.c` with its own sources a
 
 Files and folders are requests to the host's file worker, which runs on its own task and hands finished requests back with a later frame. The runtime keeps the calls synchronous: it waits for a request's outputs, yielding to the worker in between. The requests are a small ring that is never freed, because the worker links a finished request to the next one after the fact (`runtime/request.c`). `eapp-pack` checks the header, the entries and the import list, converts the icon, writes `Manifest.plist` and the package folder; `--zip` adds a ZIP with the folder under `Revola/Games/<id>/` or `Revola/Apps/<id>/` for sharing. Its module, `eapp_package.py`, serves an app with a packaging script of its own.
 
-`python3 app/tests/run.py` checks the package path rules, the request lifecycle, the file, folder, save store, sound and music calls and the runtime's button forwarding against stand-ins for the host, and the drawing calls on a small framebuffer.
+`python3 app/tests/run.py` checks the package path rules, the request lifecycle, the file, folder, save store, sound, music, clock, settings and device calls and the runtime's button forwarding against stand-ins for the host, and the drawing calls on a small framebuffer.

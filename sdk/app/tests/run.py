@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Check the package path rules, the request lifecycle and the file, folder,
-save store, sound and music calls and the runtime's frame against host stand-ins, and the drawing and random
-calls on a small framebuffer: python3 tests/run.py [SYMBOLS_HEADER]."""
+"""Check the package path rules, the request lifecycle, the file, folder,
+save store, sound, music, clock, settings and device calls and the runtime's
+frame against host stand-ins, and the drawing and random calls on a small
+framebuffer: python3 tests/run.py [SYMBOLS_HEADER]."""
 
 import os
 import subprocess
@@ -20,7 +21,18 @@ header = (
 if header is None or not header.is_file():
     sys.exit("osos-2.0.5.h not found; pass its path")
 PROGRAMS = {
-    "host_test": ("request.c", "files.c", "directory.c", "save.c", "sound.c", "music.c", "runtime.c"),
+    "host_test": (
+        "request.c",
+        "files.c",
+        "directory.c",
+        "save.c",
+        "sound.c",
+        "music.c",
+        "runtime.c",
+        "time.c",
+        "input.c",
+        "system.c",
+    ),
     "draw_test": ("draw.c", "random.c"),
 }
 with tempfile.TemporaryDirectory(prefix="rv-app-tests-") as name:

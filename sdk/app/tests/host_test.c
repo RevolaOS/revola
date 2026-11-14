@@ -1,18 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Adapted from RepriseOS game-sdk/tests/files_test.c by lgreitis. */
 
-/* Host stand-ins for the file worker, the save store and the sound objects
- * that files.c, directory.c, request.c, save.c and sound.c drive, and the
- * rules they must keep: a request completes only when the game's task
- * yields, its outputs arrive in the host's order, and it stays allocated
- * until a frame hands it back; a sound's samples stay the app's memory while
- * the host plays them. */
+/* Host stand-ins for the file worker, the save store, the sound objects, the
+ * music player and the system services that files.c, directory.c,
+ * request.c, save.c, sound.c, music.c, time.c, input.c and system.c drive,
+ * and the rules they must keep: a request completes only when the game's
+ * task yields, its outputs arrive in the host's order, and it stays
+ * allocated until a frame hands it back; a sound's samples stay the app's
+ * memory while the host plays them; a settings value follows the host's
+ * size protocol. */
 
 #include "osos-2.0.5.h"
 #include "platform.h"
 #include "runtime.h"
 #include "rv_app.h"
 #include <assert.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -376,12 +379,123 @@ static void perform(void)
     }
 }
 
+/* The host's clock: a yield keeps the worker running, a delay moves the
+ * clock on by the count. */
+static uint32_t clock_us = 123456789u, delays, delayed_ms;
+
 void GameSystem_Sleep(uint32_t milliseconds)
 {
-    assert(milliseconds == 0);
+    if (milliseconds) {
+        ++delays;
+        delayed_ms += milliseconds;
+        clock_us += milliseconds * 1000;
+        return;
+    }
     ++yields;
     if (pending.request)
         perform();
+}
+
+void Clock_ReadMicroseconds(uint32_t *out_microseconds)
+{
+    *out_microseconds = clock_us;
+}
+
+void GameInput_ReadWheel(int32_t *out_delta, uint32_t *out_flags)
+{
+    *out_delta = 0;
+    *out_flags = 0;
+}
+
+/* The system services: the clock's fields in the host's order, the
+ * backlight record, the settings table with the host's protocol, the name
+ * and the console. */
+static uint32_t host_clock[6] = {7, 5, 21, 14, 11, 2026}; /* 2026-11-14 21:05:07 */
+static struct {
+    int level, dimmed;
+} backlight = {-1, 0};
+static int external_power;
+static uint32_t platform = GamesPlatform_Classic;
+static const char *time_format = "24";
+static uint32_t language_index = 3;
+static uint8_t hold_switch;
+static const char *game_name = "Test Game";
+static char logged[64];
+
+void GameSystem_GetDateTime(uint32_t out_fields[6])
+{
+    memcpy(out_fields, host_clock, sizeof host_clock);
+}
+
+int GameSystem_SetBacklightLevel(int percent)
+{
+    backlight.level = percent < 0 ? 0 : percent > GameBacklight_LevelMax ? GameBacklight_LevelMax
+                                                                          : percent;
+    return 0;
+}
+
+void GameSystem_SetBacklightDimmed(int dimmed)
+{
+    backlight.dimmed = dimmed;
+}
+
+int GameSystem_IsExternalPowerConnected(void)
+{
+    return external_power;
+}
+
+uint32_t GameSystem_GetGamesPlatformId(void)
+{
+    return platform;
+}
+
+int GameSystem_GetGameName(char *out_name, int capacity, int localized)
+{
+    assert(localized == 1);
+    int length = (int)strlen(game_name);
+    if (!out_name || length + 1 > capacity)
+        return -1;
+    strcpy(out_name, game_name);
+    return length;
+}
+
+void GameDebug_Printf(const char *format, ...)
+{
+    va_list arguments;
+    va_start(arguments, format);
+    assert(strcmp(format, "%s\n") == 0);
+    const char *text = va_arg(arguments, const char *);
+    va_end(arguments);
+    assert(strlen(text) < sizeof logged);
+    strcpy(logged, text);
+}
+
+int32_t GameSettings_GetValue(const char *name, void *out_value, uint32_t *size)
+{
+    if (!out_value)
+        return GameSettingsStatus_NullBuffer;
+    if (strcmp(name, "TimeFormat") == 0) {
+        uint32_t length = (uint32_t)strlen(time_format) + 1;
+        if (*size < length)
+            return GameSettingsStatus_BufferTooSmall;
+        *size = length;
+        memcpy(out_value, time_format, length);
+        return 0;
+    }
+    if (strcmp(name, "Language") == 0) {
+        if (*size < 4)
+            return GameSettingsStatus_BufferTooSmall;
+        *size = 4;
+        memcpy(out_value, &language_index, 4);
+        return 0;
+    }
+    if (strcmp(name, "HoldSwitch") == 0) {
+        assert(*size >= 1);
+        *(uint8_t *)out_value = hold_switch;
+        *size = 1;
+        return 0;
+    }
+    return GameSettingsStatus_UnknownName;
 }
 
 int GameDirectory_ReadEntry(int handle, char *name, uint32_t capacity, uint8_t *is_directory)
@@ -1472,6 +1586,84 @@ static void check_music(void)
     assert(rv_app_music_track_index() == 4 && player.state == GamePlaybackState_Playing);
 }
 
+static void check_system(void)
+{
+    /* The sleep is one host delay the clock reflects; a zero sleep yields. */
+    uint32_t start = rv_app_ticks_ms();
+    unsigned yields_before = yields;
+    rv_app_sleep_ms(500);
+    assert(delays == 1 && delayed_ms == 500 && rv_app_ticks_ms() - start == 500);
+    rv_app_sleep_ms(0);
+    assert(delays == 1 && yields == yields_before + 1);
+
+    struct rv_app_date_time now;
+    rv_app_date_time(&now);
+    assert(now.year == 2026 && now.month == 11 && now.day == 14);
+    assert(now.hour == 21 && now.minute == 5 && now.second == 7);
+
+    char text[RV_APP_TIME_TEXT_SIZE];
+    assert(rv_app_clock_24h());
+    assert(rv_app_format_time(text, &now) == text + 5 && strcmp(text, "21:05") == 0);
+    now.hour = 0;
+    rv_app_format_time(text, &now);
+    assert(strcmp(text, "00:05") == 0);
+    time_format = "12";
+    assert(!rv_app_clock_24h());
+    assert(rv_app_format_time(text, &now) == text + 8 && strcmp(text, "12:05 AM") == 0);
+    now.hour = 9;
+    rv_app_format_time(text, &now);
+    assert(strcmp(text, "9:05 AM") == 0);
+    now.hour = 12;
+    now.minute = 0;
+    rv_app_format_time(text, &now);
+    assert(strcmp(text, "12:00 PM") == 0);
+    now.hour = 21;
+    now.minute = 5;
+    rv_app_format_time(text, &now);
+    assert(strcmp(text, "9:05 PM") == 0);
+
+    assert(strcmp(rv_app_language(), "de_DE") == 0);
+    language_index = 0;
+    assert(strcmp(rv_app_language(), "en_US") == 0);
+    language_index = 24;
+    assert(strcmp(rv_app_language(), "tr_TR") == 0);
+    language_index = 25;
+    assert(rv_app_language() == NULL);
+
+    assert(!rv_app_hold_locked());
+    hold_switch = 1;
+    assert(rv_app_hold_locked());
+
+    assert(rv_app_platform() == RV_APP_PLATFORM_CLASSIC);
+    platform = 2;
+    assert(rv_app_platform() == RV_APP_PLATFORM_NANO_3G);
+    platform = 7;
+    assert(rv_app_platform() == RV_APP_PLATFORM_UNKNOWN);
+
+    assert(!rv_app_external_power());
+    external_power = 1;
+    assert(rv_app_external_power());
+
+    rv_app_set_backlight_level(70);
+    assert(backlight.level == 70);
+    rv_app_set_backlight_level(300);
+    assert(backlight.level == GameBacklight_LevelMax);
+    rv_app_set_backlight_level(0);
+    assert(backlight.level == 0);
+    rv_app_set_backlight_dimmed(5);
+    assert(backlight.dimmed == 1);
+    rv_app_set_backlight_dimmed(0);
+    assert(backlight.dimmed == 0);
+
+    char name[16];
+    assert(rv_app_name(name, sizeof name) == 9 && strcmp(name, "Test Game") == 0);
+    assert(rv_app_name(name, 9) == -1 && rv_app_name(NULL, 16) == -1);
+    assert(rv_app_name(name, 0) == -1);
+
+    rv_app_log("hello");
+    assert(strcmp(logged, "hello") == 0);
+}
+
 int main(void)
 {
     arena = malloc(ARENA_BYTES);
@@ -1486,7 +1678,8 @@ int main(void)
     wav_files();
     check_sounds();
     check_music();
+    check_system();
     assert(!pending.request);
-    printf("path rules, requests, files, folders, data files, saves, sounds and music pass\n");
+    printf("path rules, requests, files, folders, data files, saves, sounds, music and system calls pass\n");
     return 0;
 }

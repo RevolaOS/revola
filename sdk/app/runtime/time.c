@@ -28,9 +28,59 @@ uint32_t rv_app_ticks_ms(void)
 
 void rv_app_sleep_ms(uint32_t milliseconds)
 {
-    uint32_t start = rv_app_ticks_ms();
+    GameSystem_Sleep(milliseconds);
+}
 
-    do {
-        GameSystem_Sleep(0);
-    } while (rv_app_ticks_ms() - start < milliseconds);
+void rv_app_date_time(struct rv_app_date_time *out)
+{
+    /* Second, minute, hour, day, month, year, in the host's order. */
+    uint32_t fields[6] = {0};
+    if (!out)
+        return;
+    GameSystem_GetDateTime(fields);
+    out->second = (uint8_t)fields[0];
+    out->minute = (uint8_t)fields[1];
+    out->hour = (uint8_t)fields[2];
+    out->day = (uint8_t)fields[3];
+    out->month = (uint8_t)fields[4];
+    out->year = (uint16_t)fields[5];
+}
+
+int rv_app_clock_24h(void)
+{
+    /* The host answers "12" or "24" with the terminator. */
+    char format[3] = {0};
+    uint32_t size = sizeof format;
+    return GameSettings_GetValue("TimeFormat", format, &size) == 0 && format[0] == '2' &&
+           format[1] == '4';
+}
+
+static char *two_digits(char *out, unsigned value)
+{
+    *out++ = (char)('0' + value / 10 % 10);
+    *out++ = (char)('0' + value % 10);
+    return out;
+}
+
+char *rv_app_format_time(char *out, const struct rv_app_date_time *time)
+{
+    unsigned hour = time->hour % 24, minute = time->minute % 60;
+    int clock_24h = rv_app_clock_24h();
+    if (clock_24h) {
+        out = two_digits(out, hour);
+    } else {
+        unsigned shown = hour % 12 ? hour % 12 : 12;
+        if (shown >= 10)
+            *out++ = '1';
+        *out++ = (char)('0' + shown % 10);
+    }
+    *out++ = ':';
+    out = two_digits(out, minute);
+    if (!clock_24h) {
+        *out++ = ' ';
+        *out++ = hour < 12 ? 'A' : 'P';
+        *out++ = 'M';
+    }
+    *out = 0;
+    return out;
 }
