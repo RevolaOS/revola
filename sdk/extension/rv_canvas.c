@@ -185,19 +185,24 @@ int rv_editor_input(struct rv_editor *editor, const struct rv_input *input)
     case RV_INPUT_HOLD:
         return RV_EDITOR_CONSUMED;
     case RV_INPUT_PRESS:
-        if (input->button == RV_BUTTON_CENTER) {
-            if (editor->depth + 1 < editor->depths) {
-                editor->depth++;
-                return RV_EDITOR_DEEPER;
-            }
-            editor->depth--;
-            return RV_EDITOR_BACK;
-        }
+        if (input->button == RV_BUTTON_CENTER)
+            return RV_EDITOR_CONSUMED;
         if (input->button == RV_BUTTON_MENU && editor->depth) {
             editor->depth--;
             return RV_EDITOR_BACK;
         }
         return RV_EDITOR_IGNORED;
+    case RV_INPUT_RELEASE:
+        if (input->button != RV_BUTTON_CENTER)
+            return RV_EDITOR_IGNORED;
+        if (editor->depth + 1 < editor->depths) {
+            editor->depth++;
+            return RV_EDITOR_DEEPER;
+        }
+        editor->depth--;
+        return RV_EDITOR_BACK;
+    case RV_INPUT_LONG_PRESS:
+        return input->button == RV_BUTTON_CENTER ? RV_EDITOR_RESET : RV_EDITOR_IGNORED;
     default:
         return RV_EDITOR_IGNORED;
     }

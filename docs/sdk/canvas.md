@@ -39,14 +39,15 @@ A `struct rv_plot` names the columns of a plot, `points` from `left`, and the va
 
 ## Input
 
-`rv_editor_input(&editor, input)` is the Select and Menu handling of an editor whose wheel works at `editor.depths` levels: two for choosing a value and editing it, three with a level above, such as the EQ's bands. Select goes one level deeper, from the deepest back one; Menu goes back one and at level 0 leaves the key to the system, which pops the screen.
+`rv_editor_input(&editor, input)` is the Select and Menu handling of an editor whose wheel works at `editor.depths` levels: two for choosing a value and editing it, three with a level above, such as the EQ's bands. Select, on its release, goes one level deeper, from the deepest back one; held, it asks for what is highlighted to return to its default. Menu goes back one and at level 0 leaves the key to the system, which pops the screen.
 
 | Result | What the canvas does |
 |---|---|
 | `RV_EDITOR_IGNORED` | returns 0 from its input callback |
-| `RV_EDITOR_CONSUMED` | returns 1; nothing changed (the hold switch) |
+| `RV_EDITOR_CONSUMED` | returns 1; nothing changed (the hold switch, a Select press) |
 | `RV_EDITOR_WHEEL` | moves what `editor.depth` selects by `input->delta`, then redraws |
 | `RV_EDITOR_DEEPER`, `RV_EDITOR_BACK` | redraws; `editor.depth` has changed |
+| `RV_EDITOR_RESET` | puts what `editor.depth` highlights back to its default, then redraws |
 
 ```c
 static int input(const struct rv_context *ctx, const struct rv_input *input)

@@ -109,17 +109,18 @@ RV_MODULE_CALL void rv_canvas_fields(const struct rv_canvas *canvas, int y, int 
 
 /* The Select and Menu input of an editor whose wheel works at `depths` levels
  * (at least two), two for choosing a value and editing it, three with a level
- * above. Select
- * goes one level deeper, from the deepest back one; Menu goes back one and at
- * level 0 leaves the key to the system, which pops the screen. The wheel is
- * reported with the level it turned at in `depth`. Releases and playback keys
- * are the system's; the hold switch is consumed. */
+ * above. Select, when released, goes one level deeper, from the deepest back
+ * one; held, it asks for what is highlighted to go back to its default. Menu
+ * goes back one and at level 0 leaves the key to the system, which pops the
+ * screen. The wheel is reported with the level it turned at in `depth`. Other
+ * releases and the playback keys are the system's; the hold switch is consumed. */
 enum rv_editor_event {
     RV_EDITOR_IGNORED, /* the input callback returns 0 */
     RV_EDITOR_CONSUMED,
     RV_EDITOR_WHEEL, /* input->delta at depth */
     RV_EDITOR_DEEPER,
     RV_EDITOR_BACK,
+    RV_EDITOR_RESET, /* what `depth` highlights returns to its default */
 };
 struct rv_editor {
     uint8_t depth, depths;

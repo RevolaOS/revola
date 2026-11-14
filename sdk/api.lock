@@ -1,5 +1,5 @@
 {
-  "api": "1.57",
+  "api": "1.58",
   "sha256": {
     "README.md": "dfc5ad19d0d7aea20ba8fadfea7b5c23ae669976919e7697502f322a78e8e7ed",
     "app/eapp_package.py": "ff6b5b191ab7c53e43e3a215edae27bc340f422f6a069f13e47e073364bff243",
@@ -30,10 +30,10 @@
     "app/tests/files_test.c": "5500ba3f4b4c0a9f12f5b4989dad534d2ccbcd4f68d44aa84563014b7247962e",
     "app/tests/run.py": "47d11e6cf94334b9f4f1ed07d0343e237eca9fda956642829bd8e52670819d12",
     "extension/rv.mk": "b5f654d79c6320f4b963f38c6d31e18fc1754a3ce425eb2e303bc32b8d3327e1",
-    "extension/rv_api.h": "ece7fcbadff3ac66ec6d5621f560e12fd1dddb54ec77ee29fa9d3dc9720779b8",
+    "extension/rv_api.h": "f3eb60baea4bf3ee04b4cd52a046bd3fc655e6a04541b63e39006f8cadfb1bc0",
     "extension/rv_audio.h": "754782f7862843dc378c479eea5fa4512c1ea727245f8c17d46cf419046b2093",
-    "extension/rv_canvas.c": "cd49cdea1dc262ec18908deeab9b23f9dbff0e1d8a04228e11ee23f60ffe00ec",
-    "extension/rv_canvas.h": "5f8f0656a30300c973fb2c075882982dbdf94ad13a019511805bff4f41a93e45",
+    "extension/rv_canvas.c": "1a717c0771bfca7ab6ab82d4e39fe3ee9df1e231e64cd2d9007d0ae7310e7253",
+    "extension/rv_canvas.h": "c81c602817193e3dbde853f8a9f0748da67bd9022a60a42e63c2a5e8d209f7df",
     "extension/rv_libc.c": "b3cce32ac21669a79ee9b32e04d7514dab155d61fd486557d15e4320b129af02",
     "extension/rv_libc.h": "94e228bd9f70e2fbfac5bd585a5bd268550f279a60f680297f5fb4f1c50f5c1b",
     "extension/rv_math.c": "231203e931a0ce707b009d544a5da31b99cb63d03ba097469f6e7754e484d26f",

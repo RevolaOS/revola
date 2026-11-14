@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 57
+#define RV_API_MINOR 58
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
@@ -333,8 +333,10 @@ struct rv_gfx {
 };
 
 /* RV_INPUT_HOLD: the hold switch moved; `delta` is 1 when it locked, 0 when it
- * unlocked. What the input callback returns for it is ignored. */
-enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE, RV_INPUT_HOLD };
+ * unlocked. What the input callback returns for it is ignored.
+ * RV_INPUT_LONG_PRESS: `button` has been held for about a second; it comes once,
+ * and no release follows it. A long press of Menu is the system's. */
+enum rv_input_kind { RV_INPUT_WHEEL, RV_INPUT_PRESS, RV_INPUT_RELEASE, RV_INPUT_HOLD, RV_INPUT_LONG_PRESS };
 enum rv_button { RV_BUTTON_CENTER, RV_BUTTON_MENU, RV_BUTTON_PREVIOUS, RV_BUTTON_NEXT, RV_BUTTON_PLAY };
 
 struct rv_input {

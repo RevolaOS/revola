@@ -180,18 +180,23 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
         }
         in.kind = RV_INPUT_WHEEL;
         in.delta = (int16_t)steps;
-    } else if (kind == InputEvent_ButtonDown || kind == InputEvent_ButtonUp) {
+    } else if (kind == InputEvent_ButtonDown || kind == InputEvent_ButtonUp ||
+               kind == InputEvent_ButtonPressAndHold) {
         int key = key_of(ButtonEvent_GetUIKeyCode(event));
-        if (key < 0)
+        /* A held Menu is the system's way to the main menu. */
+        if (key < 0 || (kind == InputEvent_ButtonPressAndHold && key == RV_BUTTON_MENU))
             return 0;
         if (d->kind == RV_SCREEN_KIND_SLIDER) {
-            if (key != RV_BUTTON_PREVIOUS && key != RV_BUTTON_NEXT)
+            if ((key != RV_BUTTON_PREVIOUS && key != RV_BUTTON_NEXT) ||
+                kind == InputEvent_ButtonPressAndHold)
                 return 0;
             if (kind == InputEvent_ButtonDown)
                 slide(s, key == RV_BUTTON_NEXT ? 1 : -1);
             return 1;
         }
-        in.kind = kind == InputEvent_ButtonDown ? RV_INPUT_PRESS : RV_INPUT_RELEASE;
+        in.kind = kind == InputEvent_ButtonDown           ? RV_INPUT_PRESS
+                  : kind == InputEvent_ButtonPressAndHold ? RV_INPUT_LONG_PRESS
+                                                          : RV_INPUT_RELEASE;
         in.button = (uint8_t)key;
     } else {
         return 0;
@@ -199,7 +204,7 @@ static int input(struct core_screen *s, uint32_t kind, void *event)
     struct rv_context ctx;
     core_screens_context(s, &ctx);
     int consumed = d->canvas.input && d->canvas.input(&ctx, &in);
-    if (in.kind == RV_INPUT_WHEEL)
+    if (in.kind == RV_INPUT_WHEEL || in.kind == RV_INPUT_LONG_PRESS)
         return consumed;
     uint8_t bit = (uint8_t)(1 << in.button);
     if (s != pressed_screen) {
