@@ -228,6 +228,36 @@ uint8_t GameAudio_ReadPlayerFlag93F(void *bridge);
 uint8_t GameAudio_ReadCurrentEntryFlag(void *bridge);
 uint32_t GameAudio_ReadMixerLevel(void);
 uint32_t AudioMixer_GetMusicLevel(void);
+void GameFileService_TaskEntry(void *service);
+void GameFileService_RunWorker(void *service);
+void GameFileService_Perform(void *service, void *entry);
+void GameFileService_Append(void *service, void *entry);
+void GameFileService_Drain(void *service);
+void GameFileService_PerformOpen(void *service, void *entry);
+void GameFileService_PerformClose(void *service, void *entry);
+void GameFileService_PerformRead(void *service, void *entry);
+void GameFileService_PerformWrite(void *service, void *entry);
+void GameFileService_PerformSeek(void *service, void *entry);
+void GameFileService_PerformDelete(void *service, void *entry);
+void GameFileService_PerformRename(void *service, void *entry);
+void GameFileService_PerformList(void *service, void *entry);
+int GameFileService_AddHandle(void *service, void **handle);
+void *GameFileService_GetHandle(void *service, int index);
+void GameFileService_RemoveHandle(void *service, int index);
+void GameRuntime_AppendCompletedRequest(void *runtime, struct GameFileRequest *request);
+struct GameFileRequest *GameRuntime_TakeCompletedRequests(void *runtime);
+void *GameSaveTable_Get(void);
+int GameSaveTable_Open(void *table, uint32_t directory_kind, const char *relative_path, int *out_slot);
+int GameSaveTable_Retain(void *table, uint32_t slot);
+int GameSaveTable_Read(void *table, uint32_t slot, void *buffer, int *byte_count, int whence, uint32_t offset);
+int GameSaveTable_Write(void *table, uint32_t slot, const void *buffer, int byte_count);
+void GameSaveTable_FlushAll(void *table);
+int GameSaveSlot_IsBound(void *slot);
+int GameSaveSlot_Read(void *slot, void *buffer, int *byte_count, int whence, uint32_t offset);
+int GameSaveSlot_Store(void *slot, const void *buffer, uint32_t byte_count);
+void GameSaveSlot_Release(void *slot);
+void GameSaveSlot_Flush(void *slot);
+void GameSaveSlot_Free(void *slot);
 void Bitmap_LoadResource(void *bitmap, const void *resource, uint32_t argument, uint32_t flags);
 void *GraphicsContext_ConstructDefault(void *context);
 void GraphicsContext_FillRect(void *context, const int32_t *rect);
@@ -514,6 +544,13 @@ uint32_t Clock_GetMicroseconds(void);
 char *SetWarmBootModeTag(uint32_t mode);
 void ResetSocAndWait(void);
 void Timer_Stop(void *timer);
+void *FileHandle_Open(void *handle, const char *path, int read_only, int volume, uint32_t buffer_bytes, int flag, int argument);
+void *FileHandle_OpenString(void *handle, struct NativeString *path, int read_only, int volume, uint32_t buffer_bytes, int flag, int argument);
+int FileHandle_OpenNative(void *handle);
+int FileHandle_IsOpen(void *handle);
+int FileHandle_Read(void *handle, uint32_t byte_count, void *buffer, uint32_t *out_count, uint32_t flags);
+int FileHandle_Write(void *handle, uint32_t byte_count, const void *buffer, uint32_t *out_count, uint32_t flags);
+void File_StoreLegacyHandleSize(void *handle, uint32_t *out_bytes);
 int Settings_HandleAction(void *controller, const char *action, uint32_t argument);
 void *SettingsModel_GetInstance(void);
 void SettingsModel_ToggleClicker(void *model);
@@ -1016,6 +1053,36 @@ extern void *MediaArtworkProvider;
 #define ADDR_GameAudio_ReadCurrentEntryFlag 0x0817f054
 #define ADDR_GameAudio_ReadMixerLevel 0x0817f09c
 #define ADDR_AudioMixer_GetMusicLevel 0x081a6b78
+#define ADDR_GameFileService_TaskEntry 0x081e459c
+#define ADDR_GameFileService_RunWorker 0x081e527c
+#define ADDR_GameFileService_Perform 0x081e48f4
+#define ADDR_GameFileService_Append 0x081e45b0
+#define ADDR_GameFileService_Drain 0x081e42c8
+#define ADDR_GameFileService_PerformOpen 0x081e4ea0
+#define ADDR_GameFileService_PerformClose 0x081e4fd8
+#define ADDR_GameFileService_PerformRead 0x081e4f3c
+#define ADDR_GameFileService_PerformWrite 0x081e4ff4
+#define ADDR_GameFileService_PerformSeek 0x081e4f80
+#define ADDR_GameFileService_PerformDelete 0x081e5168
+#define ADDR_GameFileService_PerformRename 0x081e520c
+#define ADDR_GameFileService_PerformList 0x081e5358
+#define ADDR_GameFileService_AddHandle 0x081e50e4
+#define ADDR_GameFileService_GetHandle 0x081e5258
+#define ADDR_GameFileService_RemoveHandle 0x081e52f0
+#define ADDR_GameRuntime_AppendCompletedRequest 0x0828cc60
+#define ADDR_GameRuntime_TakeCompletedRequests 0x0828ceb0
+#define ADDR_GameSaveTable_Get 0x0813ecb4
+#define ADDR_GameSaveTable_Open 0x0813ed94
+#define ADDR_GameSaveTable_Retain 0x0813ef30
+#define ADDR_GameSaveTable_Read 0x0813ed24
+#define ADDR_GameSaveTable_Write 0x0813ef80
+#define ADDR_GameSaveTable_FlushAll 0x0813e9a8
+#define ADDR_GameSaveSlot_IsBound 0x08292428
+#define ADDR_GameSaveSlot_Read 0x0813ea34
+#define ADDR_GameSaveSlot_Store 0x0813eabc
+#define ADDR_GameSaveSlot_Release 0x0813ec20
+#define ADDR_GameSaveSlot_Flush 0x0813eb34
+#define ADDR_GameSaveSlot_Free 0x0813ebc8
 #define ADDR_Bitmap_LoadResource 0x08103984
 #define ADDR_GraphicsContext_ConstructDefault 0x0825b008
 #define ADDR_GraphicsContext_FillRect 0x0825ae34
@@ -1337,6 +1404,13 @@ extern void *MediaArtworkProvider;
 #define ADDR_SetWarmBootModeTag 0x082b3a44
 #define ADDR_ResetSocAndWait 0x0835e934
 #define ADDR_Timer_Stop 0x081219d0
+#define ADDR_FileHandle_Open 0x0826f7bc
+#define ADDR_FileHandle_OpenString 0x0826f884
+#define ADDR_FileHandle_OpenNative 0x0826ec48
+#define ADDR_FileHandle_IsOpen 0x0829be9c
+#define ADDR_FileHandle_Read 0x0826eecc
+#define ADDR_FileHandle_Write 0x0826f3b0
+#define ADDR_File_StoreLegacyHandleSize 0x0806d198
 #define ADDR_Settings_HandleAction 0x0821daf4
 #define ADDR_Settings_CollectPropertyResources 0x08295174
 #define ADDR_SettingsModel_GetInstance 0x081e0ff4
@@ -2110,6 +2184,22 @@ extern void *MediaArtworkProvider;
 #define GameUserList_count 0x4
 #define GameUserList_next_id 0x18
 #define GameUserList_dirty 0x1a
+#define GameFileService_storage 0x8
+#define GameFileService_handles 0xc
+#define GameFileService_lists 0x10
+#define GameFileService_lock 0x14
+#define GameFileService_queue_head 0x28
+#define GameFileService_queue_tail 0x2c
+#define GameFileQueueEntry_request 0x0
+#define GameFileQueueEntry_path 0x4
+#define GameFileQueueEntry_volume 0xc
+#define GameFileQueueEntry_read_only 0xd
+#define GameFileQueueEntry_create 0xe
+#define GameFileQueueEntry_name 0x10
+#define GameFileQueueEntry_next 0x18
+#define GameFileQueueEntry_bytes 0x20
+#define GameSaveTable_slots 0x0
+#define GameSaveTable_total_bytes 0x90
 #define BitmapCache_service 0x0
 #define BitmapCache_resource_id 0x4
 #define BitmapCache_loaded 0x8
@@ -2476,6 +2566,15 @@ extern void *MediaArtworkProvider;
 #define IRQFrame_lr 0x38
 #define IRQFrame_pc 0x3c
 #define IRQFrame_bytes 0x40
+#define FileHandle_filesystem 0x4
+#define FileHandle_writable 0x9
+#define FileHandle_path 0xc
+#define FileHandle_read_only 0x14
+#define FileHandle_descriptor 0x18
+#define FileHandle_status 0x1c
+#define FileHandle_size 0x20
+#define FileHandle_position 0x34
+#define FileHandle_buffered 0x38
 #define MenuSettingsRow_item 0x0
 #define MenuSettingsRow_title 0x4
 #define MenuSettingsRow_layout_kind 0x8
@@ -2878,6 +2977,12 @@ extern void *MediaArtworkProvider;
 #define GamePlaybackState_Playing 0x1
 #define GamePlaybackState_Paused 0x2
 #define GameSettings_Count 0x3
+#define GameDirectoryStatus_More 0x0
+#define GameDirectoryStatus_Last 0x1
+#define GameSaveStatus_EndOfData 0x5
+#define GameSaveStatus_BadOffset 0x6
+#define GameSaveStatus_BadSlot 0x8
+#define GameSaveStatus_TooLarge 0x19
 #define GraphicsDrawMode_Copy 0x0
 #define GraphicsDrawMode_Text 0x21
 #define GraphicsDrawMode_Blend 0x22
@@ -2987,6 +3092,16 @@ extern void *MediaArtworkProvider;
 #define FileSeek_End 0x2
 #define FileError_NotFound 0xffffffd5
 #define FileError_EndOfFile 0xffffffd9
+#define FileStatus_Ok 0x0
+#define FileStatus_VolumeUnavailable 0x2
+#define FileStatus_BadHandle 0x4
+#define FileStatus_NotFound 0x7
+#define FileStatus_OpenForWrite 0x9
+#define FileStatus_OpenForRead 0xa
+#define FileStatus_ListTruncated 0x14
+#define FileStatus_NotPermitted 0x15
+#define FileStatus_NoSlot 0x19
+#define FileStatus_BadRequestType 0x21
 #define ClockRegister_Microseconds 0x3c7000b4
 #define Service_Preferences 0x6000
 #define Preference_Toggle 0x60bf
