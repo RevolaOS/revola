@@ -46,12 +46,12 @@ class ThemeTests(unittest.TestCase):
                 packages,
                 {
                     "flat": {
-                        "format": "rvt",
+                        "format": "revola-theme-v1",
                         "version": "1.2",
                         "file": str(out / "themes/flat/flat.rvt"),
                     },
                     "night": {
-                        "format": "rvt",
+                        "format": "revola-theme-v1",
                         "version": "3",
                         "file": str(out / "themes/night/night.rvt"),
                     },
@@ -88,16 +88,28 @@ class ThemeTests(unittest.TestCase):
             with patch("release.run"), self.assertRaises(ValueError):
                 release.build_themes(themes, out)
 
-    def test_specification_carries_extensions_themes_and_the_core(self):
+    def test_specification_carries_extensions_themes_homebrew_and_the_core(self):
         extensions = {"eq": {"format": "revola-extension-v1"}}
-        themes = {"flat": {"format": "rvt"}}
+        themes = {"flat": {"format": "revola-theme-v1"}}
+        games = {"2048": {"format": "revola-eapp-v1"}}
+        apps = {"clock": {"format": "revola-eapp-v1"}}
         core = {"api": 1, "firmware_build_id": 1, "catalog_fingerprint": "00" * 8}
         with patch("release.firmware.load", return_value={"compatibility": {}}):
             spec = release.specification(
-                "1.0.0", "1.0.0", Path("out"), Path("helper"), extensions, themes, core
+                "1.0.0",
+                "1.0.0",
+                Path("out"),
+                Path("helper"),
+                extensions,
+                themes,
+                games,
+                apps,
+                core,
             )
         self.assertEqual(spec["extensions"], extensions)
         self.assertEqual(spec["themes"], themes)
+        self.assertEqual(spec["games"], games)
+        self.assertEqual(spec["apps"], apps)
         self.assertEqual(spec["core"], core)
 
     def test_catalog_fingerprint_comes_from_the_themes_catalog(self):
