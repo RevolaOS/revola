@@ -43,13 +43,16 @@ struct rv_app_frame {
 };
 
 /* The app: its package folder name under the root rv_app.mk builds it for
- * (/Revola/Apps/ or /Revola/Games/), without slashes, and its callbacks. */
+ * (/Revola/Apps/ or /Revola/Games/), without slashes, and its callbacks.
+ * Play, Next and Previous releases go to the iPod's music control after the
+ * input callback, as in Apple's games, unless the app handles them itself. */
 struct rv_app {
     const char *package_id;
     void (*init)(void);
     void (*input)(const struct rv_app_input_event *event);
     void (*frame)(const struct rv_app_frame *frame);
     void (*shutdown)(void);
+    uint8_t handles_music_buttons;
 };
 
 extern const struct rv_app rv_app_application;
@@ -206,6 +209,94 @@ void rv_app_sound_set_next(struct rv_app_sound *sound, struct rv_app_sound *next
  * 0 ms leaves the music alone. */
 void rv_app_sound_set_music_duck(struct rv_app_sound *sound, uint32_t level,
                                  uint32_t milliseconds);
+
+/* Music: the iPod's player, through the host. A command is queued for the
+ * host's UI task: state, track_count and the settings read back at once,
+ * position, track_index and scanning report the old values until the UI
+ * task has run. The volume takes effect at
+ * once. Transport commands and the repeat, shuffle, EQ and speed setters do
+ * nothing while no playlist is loaded. The host restores repeat, shuffle,
+ * speed, gain and an EQ set until exit when the app ends; the volume and
+ * set_eq stay. */
+enum rv_app_music_state {
+    RV_APP_MUSIC_STOPPED = 0,
+    RV_APP_MUSIC_PLAYING = 1,
+    RV_APP_MUSIC_PAUSED = 2,
+};
+
+enum rv_app_music_state rv_app_music_state(void);
+/* 1 while a list is loaded, also when stopped. */
+int rv_app_music_has_playlist(void);
+void rv_app_music_play_pause(void);
+/* Stop ends playback and drops the playlist: has_playlist is 0 afterwards
+ * and play_pause does nothing until the user starts music again. The host
+ * reads repeat and shuffle as off after a stop until they are set again. */
+void rv_app_music_stop(void);
+void rv_app_music_next(void);
+void rv_app_music_previous(void);
+/* Starts track `index` of the playlist, counted from 0; an index past the
+ * end is dropped. */
+void rv_app_music_play_track(uint32_t index);
+/* Into the track; past its end the player moves on. */
+void rv_app_music_seek(uint32_t milliseconds);
+/* The press-and-hold fast forward and rewind; scan_stop resumes. */
+void rv_app_music_scan_forward(void);
+void rv_app_music_scan_backward(void);
+void rv_app_music_scan_stop(void);
+/* 1 forward, -1 backward, 0 not scanning. */
+int rv_app_music_scanning(void);
+uint32_t rv_app_music_position(void); /* Milliseconds into the track. */
+uint32_t rv_app_music_duration(void); /* The position plus what is left. */
+uint32_t rv_app_music_track_index(void); /* From 0. */
+uint32_t rv_app_music_track_count(void);
+
+enum rv_app_music_repeat {
+    RV_APP_MUSIC_REPEAT_OFF = 0,
+    RV_APP_MUSIC_REPEAT_ONE = 1,
+    RV_APP_MUSIC_REPEAT_ALL = 2,
+};
+
+enum rv_app_music_shuffle {
+    RV_APP_MUSIC_SHUFFLE_OFF = 0,
+    RV_APP_MUSIC_SHUFFLE_SONGS = 1,
+    RV_APP_MUSIC_SHUFFLE_ALBUMS = 2,
+};
+
+enum rv_app_music_repeat rv_app_music_repeat_mode(void);
+void rv_app_music_set_repeat_mode(enum rv_app_music_repeat mode);
+enum rv_app_music_shuffle rv_app_music_shuffle_mode(void);
+void rv_app_music_set_shuffle_mode(enum rv_app_music_shuffle mode);
+
+#define RV_APP_MUSIC_VOLUME_MAX 255
+
+/* The volume on the iPod's scale, up to the user's volume limit; set_volume
+ * clamps to the limit and is not restored at exit. */
+uint32_t rv_app_music_volume(void);
+uint32_t rv_app_music_volume_limit(void);
+void rv_app_music_set_volume(uint32_t volume);
+/* The index into the EQ list of Settings. set_eq_until_exit is undone
+ * when the app ends; set_eq stays on the player, while the Settings list
+ * keeps showing the user's own choice. */
+uint32_t rv_app_music_eq(void);
+void rv_app_music_set_eq_until_exit(uint32_t index);
+void rv_app_music_set_eq(uint32_t index);
+
+#define RV_APP_MUSIC_SPEED_MIN 500 /* Per mille; the audiobook speed. */
+#define RV_APP_MUSIC_SPEED_MAX 2000
+#define RV_APP_MUSIC_GAIN_MAX 32767 /* The host's unit. */
+
+uint32_t rv_app_music_speed(void);
+/* Outside the range the call is ignored. */
+void rv_app_music_set_speed(uint32_t per_mille);
+int32_t rv_app_music_gain(void);
+/* Clamped to -RV_APP_MUSIC_GAIN_MAX..RV_APP_MUSIC_GAIN_MAX. */
+void rv_app_music_set_gain(int32_t gain);
+
+/* Hands a button to the music control the way the host does for Apple's
+ * games: a Play release toggles play and pause, Next and Previous releases
+ * skip; anything else is ignored. For an app that handles the music buttons
+ * but passes some on. */
+void rv_app_music_pass_button(const struct rv_app_input_event *event);
 
 #ifdef __cplusplus
 }

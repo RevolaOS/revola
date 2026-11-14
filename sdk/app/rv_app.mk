@@ -43,10 +43,12 @@ RV_APP_CFLAGS := -std=c11 -Os $(RV_APP_ARCH_FLAGS) -mlong-calls \
 RV_APP_LDFLAGS := -nostdlib -Wl,-T,$(SDK)/app/runtime/rv_app.lds -Wl,--gc-sections
 RV_APP_RUNTIME_DIR := $(OUT)/runtime
 RV_APP_RUNTIME := $(RV_APP_RUNTIME_DIR)/librv_app.a
-RV_APP_STARTUP := $(RV_APP_RUNTIME_DIR)/startup.o
+# What every image begins with: the eApp header and the entry code, linked
+# as objects so the archive's pull rules do not decide about them.
+RV_APP_STARTUP := $(RV_APP_RUNTIME_DIR)/header.o $(RV_APP_RUNTIME_DIR)/startup.o
 RV_APP_RUNTIME_OBJECTS := $(addprefix $(RV_APP_RUNTIME_DIR)/,\
     runtime.o imports.o request.o memory.o time.o input.o files.o directory.o save.o display.o \
-    draw.o ui.o wheel.o random.o sound.o)
+    draw.o ui.o wheel.o random.o sound.o music.o)
 
 $(RV_APP_RUNTIME): $(RV_APP_RUNTIME_OBJECTS)
 	$(RM) $@
@@ -66,11 +68,11 @@ $(RV_APP_RUNTIME_DIR)/imports.o: $(SDK)/app/runtime/imports.S $(SDK)/app/runtime
 	@mkdir -p $(@D)
 	$(CC) $(RV_APP_ARCH_FLAGS) -I$(@D) -I$(SDK)/app/runtime -c $< -o $@
 
-$(RV_APP_STARTUP): $(SDK)/app/runtime/startup.S $(SDK)/app/rv_app.mk
+$(RV_APP_RUNTIME_DIR)/startup.o: $(SDK)/app/runtime/startup.S $(SDK)/app/rv_app.mk
 	@mkdir -p $(@D)
 	$(CC) $(RV_APP_ARCH_FLAGS) -c $< -o $@
 
--include $(RV_APP_RUNTIME_OBJECTS:.o=.d)
+-include $(RV_APP_RUNTIME_OBJECTS:.o=.d) $(RV_APP_RUNTIME_DIR)/header.d
 
 # The default rules for an app of plain C sources without a C library.
 RV_APP_OBJECTS := $(patsubst %,$(OUT)/app/%.o,$(SOURCES))

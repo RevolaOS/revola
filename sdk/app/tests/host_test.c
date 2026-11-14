@@ -10,13 +10,15 @@
 
 #include "osos-2.0.5.h"
 #include "platform.h"
+#include "runtime.h"
 #include "rv_app.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-const struct rv_app rv_app_application = {.package_id = "test-game"};
+static void record_input(const struct rv_app_input_event *event);
+const struct rv_app rv_app_application = {.package_id = "test-game", .input = record_input};
 
 /* The heap: one arena that does not cross a 4 GiB boundary, so the 32-bit
  * word a request carries for its buffer leads back to the pointer, and a
@@ -655,6 +657,364 @@ int GameSound_SetMusicDuck(int handle, uint32_t level, uint32_t milliseconds)
     return 1;
 }
 
+
+/* The music player and the bridge in front of it: a command is a queued
+ * event ui_task_runs() applies; the bridge predicts the playback state and
+ * caches a setting as soon as its command is queued, and answers the rest
+ * from the player. Buttons the host forwards are logged. */
+struct fake_player {
+    uint8_t state, has_list;
+    uint32_t index, count, position, remaining, repeat, order, volume, limit, eq, eq_saved;
+    int speed, scanning, eq_restore;
+    int32_t gain;
+};
+static struct fake_player player;
+static int predicted_state = -1;
+static int cache_repeat = -1, cache_order = -1, cache_eq = -1, cache_speed, cache_gain = -40000;
+
+enum music_command {
+    MUSIC_TOGGLE = 1,
+    MUSIC_STOP,
+    MUSIC_NEXT,
+    MUSIC_PREVIOUS,
+    MUSIC_PLAY_INDEX,
+    MUSIC_SEEK,
+    MUSIC_SCAN_FORWARD,
+    MUSIC_SCAN_BACKWARD,
+    MUSIC_SCAN_STOP,
+    MUSIC_REPEAT,
+    MUSIC_ORDER,
+    MUSIC_EQ,
+    MUSIC_EQ_TEMPORARY,
+    MUSIC_SPEED,
+    MUSIC_GAIN,
+};
+static struct {
+    enum music_command command;
+    uint32_t value;
+} music_queue[16];
+static unsigned music_queued, speed_calls;
+static struct {
+    uint8_t button, type;
+} forwarded[8];
+static unsigned forwarded_count;
+
+static int predicted_or_player_state(void)
+{
+    return predicted_state != -1 ? predicted_state : player.state;
+}
+
+static void post_music(enum music_command command, uint32_t value)
+{
+    assert(music_queued < sizeof music_queue / sizeof music_queue[0]);
+    music_queue[music_queued].command = command;
+    music_queue[music_queued++].value = value;
+    if (command == MUSIC_TOGGLE) {
+        int state = predicted_or_player_state();
+        if (state == GamePlaybackState_Playing)
+            predicted_state = GamePlaybackState_Paused;
+        else if (state == GamePlaybackState_Paused)
+            predicted_state = GamePlaybackState_Playing;
+    } else if (command == MUSIC_STOP) {
+        predicted_state = GamePlaybackState_Stopped;
+    } else if (command == MUSIC_PLAY_INDEX) {
+        predicted_state = GamePlaybackState_Playing;
+    }
+}
+
+static void ui_task_runs(void)
+{
+    for (unsigned i = 0; i < music_queued; ++i) {
+        uint32_t value = music_queue[i].value;
+        switch (music_queue[i].command) {
+        case MUSIC_TOGGLE:
+            if (!player.has_list)
+                break;
+            if (player.state == GamePlaybackState_Playing)
+                player.state = GamePlaybackState_Paused;
+            else
+                player.state = GamePlaybackState_Playing;
+            break;
+        case MUSIC_STOP:
+            player.state = GamePlaybackState_Stopped;
+            player.has_list = 0;
+            player.count = 0;
+            cache_repeat = cache_order = 0;
+            break;
+        case MUSIC_NEXT:
+            ++player.index;
+            break;
+        case MUSIC_PREVIOUS:
+            --player.index;
+            break;
+        case MUSIC_PLAY_INDEX:
+            player.index = value;
+            player.state = GamePlaybackState_Playing;
+            break;
+        case MUSIC_SEEK:
+            player.position = value;
+            break;
+        case MUSIC_SCAN_FORWARD:
+            player.scanning = 1;
+            break;
+        case MUSIC_SCAN_BACKWARD:
+            player.scanning = -1;
+            break;
+        case MUSIC_SCAN_STOP:
+            player.scanning = 0;
+            break;
+        case MUSIC_REPEAT:
+            player.repeat = value;
+            break;
+        case MUSIC_ORDER:
+            player.order = value;
+            break;
+        case MUSIC_EQ:
+        case MUSIC_EQ_TEMPORARY:
+            player.eq = value;
+            break;
+        case MUSIC_SPEED:
+            player.speed = (int)value;
+            break;
+        case MUSIC_GAIN:
+            player.gain = (int32_t)value;
+            break;
+        }
+    }
+    music_queued = 0;
+    predicted_state = -1;
+}
+
+uint8_t GameAudio_GetPlaybackState(void)
+{
+    return (uint8_t)predicted_or_player_state();
+}
+
+int GameAudio_HasPlaybackList(void)
+{
+    return player.has_list;
+}
+
+void GameAudio_TogglePlayPause(uint8_t wait)
+{
+    assert(wait == 0);
+    post_music(MUSIC_TOGGLE, 0);
+}
+
+void GameAudio_Stop(void)
+{
+    post_music(MUSIC_STOP, 0);
+}
+
+void GameAudio_NextTrack(void)
+{
+    post_music(MUSIC_NEXT, 0);
+}
+
+void GameAudio_PreviousTrack(void)
+{
+    post_music(MUSIC_PREVIOUS, 0);
+}
+
+uint32_t GameAudio_GetEntryCount(void)
+{
+    return player.count;
+}
+
+uint32_t GameAudio_GetCurrentIndex(void)
+{
+    return player.index;
+}
+
+void GameAudio_PlayIndex(uint32_t index, uint8_t flag, uint32_t option)
+{
+    assert(flag == 0 && option == 0);
+    post_music(MUSIC_PLAY_INDEX, index);
+}
+
+void GameAudio_Seek(uint32_t milliseconds)
+{
+    post_music(MUSIC_SEEK, milliseconds);
+}
+
+void GameAudio_StartScanForward(void)
+{
+    post_music(MUSIC_SCAN_FORWARD, 0);
+}
+
+void GameAudio_StartScanBackward(void)
+{
+    post_music(MUSIC_SCAN_BACKWARD, 0);
+}
+
+void GameAudio_StopScan(void)
+{
+    post_music(MUSIC_SCAN_STOP, 0);
+}
+
+int GameAudio_IsScanningForward(void)
+{
+    return player.scanning > 0;
+}
+
+int GameAudio_IsScanningBackward(void)
+{
+    return player.scanning < 0;
+}
+
+uint32_t GameAudio_GetPosition(void)
+{
+    return player.position;
+}
+
+uint32_t GameAudio_GetRemainingPosition(void)
+{
+    return player.remaining;
+}
+
+uint32_t GameAudio_GetRepeatMode(void)
+{
+    if (cache_repeat == -1)
+        cache_repeat = (int)player.repeat;
+    return (uint32_t)cache_repeat & 0xff;
+}
+
+void GameAudio_SetRepeatMode(uint8_t mode)
+{
+    if (!player.has_list)
+        return;
+    cache_repeat = mode;
+    post_music(MUSIC_REPEAT, mode);
+}
+
+uint32_t GameAudio_GetPlaybackOrder(void)
+{
+    if (cache_order == -1)
+        cache_order = (int)player.order;
+    return (uint32_t)cache_order & 0xff;
+}
+
+void GameAudio_SetPlaybackOrder(uint8_t order)
+{
+    if (!player.has_list)
+        return;
+    cache_order = order;
+    post_music(MUSIC_ORDER, order);
+}
+
+uint32_t GameAudio_GetVolume(void)
+{
+    return player.volume;
+}
+
+uint32_t GameAudio_GetVolumeLimit(void)
+{
+    return player.limit;
+}
+
+void GameAudio_SetVolume(uint32_t volume)
+{
+    player.volume = volume > GameAudio_VolumeMax ? GameAudio_VolumeMax : volume;
+}
+
+uint32_t GameAudio_GetEQMenuIndex(void)
+{
+    if (cache_eq == -1)
+        cache_eq = (int)player.eq;
+    return (uint32_t)cache_eq;
+}
+
+void GameAudio_SetEQMenuIndexTemporary(uint32_t index)
+{
+    if (!player.has_list)
+        return;
+    cache_eq = (int)index;
+    player.eq_restore = 1;
+    post_music(MUSIC_EQ_TEMPORARY, index);
+}
+
+void GameAudio_SetEQMenuIndex(uint32_t index)
+{
+    if (!player.has_list)
+        return;
+    cache_eq = (int)index;
+    player.eq_saved = index;
+    post_music(MUSIC_EQ, index);
+}
+
+int GameAudio_GetSpeed(void)
+{
+    if (cache_speed == 0)
+        cache_speed = player.speed;
+    return cache_speed;
+}
+
+int GameAudio_SetSpeed(int speed)
+{
+    ++speed_calls;
+    if (speed < 500 || speed > 2000 || !player.has_list)
+        return 0;
+    cache_speed = speed;
+    post_music(MUSIC_SPEED, (uint32_t)speed);
+    return 1;
+}
+
+int32_t GameAudio_GetGain(void)
+{
+    if (cache_gain == -40000)
+        cache_gain = player.gain;
+    return cache_gain;
+}
+
+void GameAudio_SetGain(int32_t gain)
+{
+    assert(gain >= -0x7fff && gain <= 0x7fff);
+    cache_gain = gain;
+    post_music(MUSIC_GAIN, (uint32_t)gain);
+}
+
+/* The host acts on releases of Play, Next and Previous; a Menu release
+ * would leave the game, so it is logged too and must never arrive. */
+void GameInput_ForwardButtonEvent(const struct GameInputEvent *event)
+{
+    const struct rv_app_eapp_input_event *native = (const void *)event;
+    assert(forwarded_count < sizeof forwarded / sizeof forwarded[0]);
+    forwarded[forwarded_count].button = native->button;
+    forwarded[forwarded_count++].type = native->type;
+    if (native->type != GameButtonEvent_Release)
+        return;
+    if (native->button == GameButton_Play)
+        post_music(MUSIC_TOGGLE, 0);
+    else if (native->button == GameButton_Next)
+        post_music(MUSIC_NEXT, 0);
+    else if (native->button == GameButton_Previous)
+        post_music(MUSIC_PREVIOUS, 0);
+}
+
+/* What runtime.c needs besides the host: the display, which has no surface
+ * here, and the app's input log. */
+void *rv_app_platform_begin_frame(const struct rv_app_eapp_frame_input *input,
+                                  struct rv_app_framebuffer *framebuffer)
+{
+    (void)input;
+    (void)framebuffer;
+    return NULL;
+}
+
+void rv_app_platform_present(void *surface)
+{
+    (void)surface;
+}
+
+static struct rv_app_input_event received[8];
+static unsigned received_count;
+
+static void record_input(const struct rv_app_input_event *event)
+{
+    assert(received_count < sizeof received / sizeof received[0]);
+    received[received_count++] = *event;
+}
+
 static void check_names(void)
 {
     const char *invalid[] = {NULL,   "/root", "../other", "roms/../../other",
@@ -958,6 +1318,160 @@ static void check_sounds(void)
     assert(LIVE(0));
 }
 
+
+static void check_music(void)
+{
+    player = (struct fake_player){.state = GamePlaybackState_Playing,
+                                  .has_list = 1,
+                                  .index = 2,
+                                  .count = 5,
+                                  .position = 1000,
+                                  .remaining = 179000,
+                                  .repeat = GameRepeatMode_All,
+                                  .order = GamePlaybackOrder_Songs,
+                                  .volume = 120,
+                                  .limit = 200,
+                                  .eq = 4,
+                                  .speed = 1000};
+    assert(rv_app_music_has_playlist() && rv_app_music_state() == RV_APP_MUSIC_PLAYING);
+    assert(rv_app_music_position() == 1000 && rv_app_music_duration() == 180000);
+    assert(rv_app_music_track_index() == 2 && rv_app_music_track_count() == 5);
+
+    /* The state is predicted as soon as a command is queued; the player
+     * follows when the UI task runs. */
+    rv_app_music_play_pause();
+    assert(rv_app_music_state() == RV_APP_MUSIC_PAUSED && player.state == GamePlaybackState_Playing);
+    rv_app_music_play_pause();
+    assert(rv_app_music_state() == RV_APP_MUSIC_PLAYING && music_queued == 2);
+    ui_task_runs();
+    assert(rv_app_music_state() == RV_APP_MUSIC_PLAYING && player.state == GamePlaybackState_Playing);
+    /* Stop drops the playlist; play_pause then does nothing. */
+    rv_app_music_stop();
+    assert(rv_app_music_state() == RV_APP_MUSIC_STOPPED);
+    ui_task_runs();
+    assert(player.state == GamePlaybackState_Stopped && !rv_app_music_has_playlist());
+    assert(rv_app_music_repeat_mode() == RV_APP_MUSIC_REPEAT_OFF);
+    assert(rv_app_music_shuffle_mode() == RV_APP_MUSIC_SHUFFLE_OFF);
+    rv_app_music_play_pause();
+    ui_task_runs();
+    assert(rv_app_music_state() == RV_APP_MUSIC_STOPPED && rv_app_music_track_count() == 0);
+    player.has_list = 1;
+    player.count = 5;
+    rv_app_music_play_pause();
+    ui_task_runs();
+    assert(rv_app_music_state() == RV_APP_MUSIC_PLAYING);
+
+    /* Position, track index and scanning lag until the UI task runs. */
+    rv_app_music_next();
+    assert(rv_app_music_track_index() == 2);
+    ui_task_runs();
+    assert(rv_app_music_track_index() == 3);
+    rv_app_music_previous();
+    ui_task_runs();
+    assert(rv_app_music_track_index() == 2);
+    rv_app_music_seek(5000);
+    assert(rv_app_music_position() == 1000);
+    ui_task_runs();
+    assert(rv_app_music_position() == 5000);
+    rv_app_music_scan_forward();
+    assert(rv_app_music_scanning() == 0);
+    ui_task_runs();
+    assert(rv_app_music_scanning() == 1);
+    rv_app_music_scan_backward();
+    ui_task_runs();
+    assert(rv_app_music_scanning() == -1);
+    rv_app_music_scan_stop();
+    ui_task_runs();
+    assert(rv_app_music_scanning() == 0);
+
+    /* A track past the end is dropped; a valid one plays. */
+    rv_app_music_play_pause();
+    ui_task_runs();
+    rv_app_music_play_track(5);
+    assert(music_queued == 0 && rv_app_music_state() == RV_APP_MUSIC_PAUSED);
+    rv_app_music_play_track(4);
+    assert(rv_app_music_state() == RV_APP_MUSIC_PLAYING && rv_app_music_track_index() == 2);
+    ui_task_runs();
+    assert(rv_app_music_track_index() == 4 && player.state == GamePlaybackState_Playing);
+
+    /* Settings read back at once from the bridge's cache. */
+    rv_app_music_set_repeat_mode(RV_APP_MUSIC_REPEAT_ONE);
+    rv_app_music_set_shuffle_mode(RV_APP_MUSIC_SHUFFLE_ALBUMS);
+    assert(rv_app_music_repeat_mode() == RV_APP_MUSIC_REPEAT_ONE);
+    assert(rv_app_music_shuffle_mode() == RV_APP_MUSIC_SHUFFLE_ALBUMS);
+    assert(player.repeat == GameRepeatMode_All && player.order == GamePlaybackOrder_Songs);
+    ui_task_runs();
+    assert(player.repeat == GameRepeatMode_One && player.order == GamePlaybackOrder_Albums);
+    assert(rv_app_music_volume() == 120 && rv_app_music_volume_limit() == 200);
+    rv_app_music_set_volume(RV_APP_MUSIC_VOLUME_MAX);
+    assert(rv_app_music_volume() == 200);
+    rv_app_music_set_volume(50);
+    assert(rv_app_music_volume() == 50 && music_queued == 0);
+    assert(rv_app_music_eq() == 4);
+    rv_app_music_set_eq_until_exit(3);
+    assert(rv_app_music_eq() == 3 && player.eq_restore && player.eq_saved == 0);
+    rv_app_music_set_eq(2);
+    assert(rv_app_music_eq() == 2 && player.eq_saved == 2);
+    ui_task_runs();
+    assert(player.eq == 2);
+    assert(rv_app_music_speed() == 1000);
+    rv_app_music_set_speed(RV_APP_MUSIC_SPEED_MIN - 1);
+    rv_app_music_set_speed(RV_APP_MUSIC_SPEED_MAX + 1);
+    assert(rv_app_music_speed() == 1000 && music_queued == 0 && speed_calls == 0);
+    rv_app_music_set_speed(1500);
+    assert(rv_app_music_speed() == 1500 && speed_calls == 1);
+    assert(rv_app_music_gain() == 0);
+    rv_app_music_set_gain(40000);
+    assert(rv_app_music_gain() == RV_APP_MUSIC_GAIN_MAX);
+    rv_app_music_set_gain(-40000);
+    assert(rv_app_music_gain() == -RV_APP_MUSIC_GAIN_MAX);
+    rv_app_music_set_gain(-5);
+    ui_task_runs();
+    assert(player.speed == 1500 && player.gain == -5);
+
+    /* pass_button hands only Play, Next and Previous releases to the host. */
+    struct rv_app_input_event event = {.button = RV_APP_BUTTON_PLAY, .type = RV_APP_INPUT_PRESS};
+    rv_app_music_pass_button(&event);
+    event.button = RV_APP_BUTTON_MENU;
+    event.type = RV_APP_INPUT_RELEASE;
+    rv_app_music_pass_button(&event);
+    event.button = RV_APP_BUTTON_CENTER;
+    rv_app_music_pass_button(&event);
+    rv_app_music_pass_button(NULL);
+    assert(forwarded_count == 0);
+    event.button = RV_APP_BUTTON_PLAY;
+    event.timestamp_ms = 77;
+    rv_app_music_pass_button(&event);
+    assert(forwarded_count == 1 && forwarded[0].button == GameButton_Play);
+    assert(forwarded[0].type == GameButtonEvent_Release);
+    assert(rv_app_music_state() == RV_APP_MUSIC_PAUSED);
+    ui_task_runs();
+
+    /* The runtime hands every event to the app, then the releases of Play,
+     * Next and Previous to the host, never Menu, Center or a press. The
+     * opt-out is a field of the const application and is checked in the
+     * emulator. */
+    uint8_t buttons[6] = {RV_APP_BUTTON_NEXT,   RV_APP_BUTTON_NEXT, RV_APP_BUTTON_MENU,
+                          RV_APP_BUTTON_CENTER, RV_APP_BUTTON_PLAY, RV_APP_BUTTON_PREVIOUS};
+    uint8_t types[6] = {RV_APP_INPUT_PRESS,   RV_APP_INPUT_RELEASE, RV_APP_INPUT_RELEASE,
+                        RV_APP_INPUT_RELEASE, RV_APP_INPUT_RELEASE, RV_APP_INPUT_RELEASE};
+    forwarded_count = 0;
+    for (unsigned i = 0; i < 6; ++i) {
+        struct rv_app_eapp_input_event native = {
+            .button = buttons[i], .type = types[i], .timestamp = 10 * i};
+        rv_app_runtime_input(&native);
+    }
+    assert(received_count == 6 && received[1].button == RV_APP_BUTTON_NEXT);
+    assert(received[1].type == RV_APP_INPUT_RELEASE && received[1].timestamp_ms == 10);
+    assert(received[3].button == RV_APP_BUTTON_CENTER);
+    assert(forwarded_count == 3 && forwarded[0].button == GameButton_Next);
+    assert(forwarded[1].button == GameButton_Play && forwarded[2].button == GameButton_Previous);
+    assert(forwarded[0].type == GameButtonEvent_Release && music_queued == 3);
+    assert(rv_app_music_state() == RV_APP_MUSIC_PLAYING); /* Paused before the loop. */
+    ui_task_runs();
+    assert(rv_app_music_track_index() == 4 && player.state == GamePlaybackState_Playing);
+}
+
 int main(void)
 {
     arena = malloc(ARENA_BYTES);
@@ -971,7 +1485,8 @@ int main(void)
     check_saves();
     wav_files();
     check_sounds();
+    check_music();
     assert(!pending.request);
-    printf("path rules, requests, files, folders, data files, saves and sounds pass\n");
+    printf("path rules, requests, files, folders, data files, saves, sounds and music pass\n");
     return 0;
 }

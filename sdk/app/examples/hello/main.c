@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
-/* Draws a greeting, the wheel direction, the time since start and how often
- * it ran, kept in Apple's save store; Center plays a tone computed at start,
- * Play the beep.wav of the package; Menu exits. */
+/* Draws a greeting, the wheel direction, the time since start, how often it
+ * ran, kept in Apple's save store, and what the music player does; Center
+ * plays a tone computed at start, a wheel touch the beep.wav of the package;
+ * Play, Next and Previous go to the music player; Menu exits. */
 
 #include "rv_app_draw.h"
 
-static char seconds[12], runs[12];
+static char seconds[12], runs[12], track[26], times[20];
 static struct rv_app_sound *tone, *beep;
+static uint8_t touched;
 
 /* 300 ms of a 441 Hz square wave, 16-bit mono 44100 Hz, in a heap block
  * that stays the app's while the sound exists. */
@@ -55,8 +57,32 @@ static void input(const struct rv_app_input_event *event)
         rv_app_request_exit();
     else if (event->button == RV_APP_BUTTON_CENTER)
         rv_app_sound_play(tone);
-    else if (event->button == RV_APP_BUTTON_PLAY)
-        rv_app_sound_play(beep);
+}
+
+/* Writes `value` in decimal at `out` and returns the end. */
+static char *number(char *out, uint32_t value)
+{
+    char digits[11];
+    unsigned i = 0;
+    do {
+        digits[i++] = '0' + value % 10;
+        value /= 10;
+    } while (value);
+    while (i)
+        *out++ = digits[--i];
+    *out = 0;
+    return out;
+}
+
+static char *minutes_seconds(char *out, uint32_t milliseconds)
+{
+    uint32_t total = milliseconds / 1000;
+    out = number(out, total / 60);
+    *out++ = ':';
+    *out++ = '0' + total % 60 / 10;
+    *out++ = '0' + total % 10;
+    *out = 0;
+    return out;
 }
 
 static void shutdown(void)
@@ -88,6 +114,9 @@ static void frame(const struct rv_app_frame *frame)
 
     struct rv_app_wheel wheel = rv_app_read_wheel();
     uint8_t direction = rv_app_wheel_directions(&wheel, RV_APP_WHEEL_TOP_POSITION);
+    if (wheel.touched && !touched)
+        rv_app_sound_play(beep);
+    touched = wheel.touched;
     rv_app_draw_text(fb, 20, 60, "WHEEL:", 0xffff, 1);
     rv_app_draw_text(fb, 62, 60, direction & RV_APP_DIRECTION_UP ? "UP" : "", 0xffff, 1);
     rv_app_draw_text(fb, 80, 60, direction & RV_APP_DIRECTION_DOWN ? "DOWN" : "", 0xffff, 1);
@@ -105,7 +134,29 @@ static void frame(const struct rv_app_frame *frame)
                      rv_app_sound_playing(tone) || rv_app_sound_playing(beep) ? "ON" : "OFF",
                      0xffff, 1);
 
-    rv_app_draw_text(fb, 20, 200, "CENTER: TONE  PLAY: BEEP", 0x8410, 1);
+    enum rv_app_music_state state = rv_app_music_state();
+    rv_app_draw_text(fb, 20, 140, "MUSIC:", 0xffff, 1);
+    rv_app_draw_text(fb, 62, 140,
+                     state == RV_APP_MUSIC_PLAYING  ? "PLAYING"
+                     : state == RV_APP_MUSIC_PAUSED ? "PAUSED"
+                                                    : "STOPPED",
+                     0xffff, 1);
+    if (rv_app_music_has_playlist()) {
+        char *end = minutes_seconds(times, rv_app_music_position());
+        *end++ = ' ';
+        minutes_seconds(end, rv_app_music_duration());
+        rv_app_draw_text(fb, 116, 140, times, 0xffff, 1);
+        end = number(track, rv_app_music_track_index() + 1);
+        *end++ = ' ';
+        *end++ = 'O';
+        *end++ = 'F';
+        *end++ = ' ';
+        number(end, rv_app_music_track_count());
+        rv_app_draw_text(fb, 20, 160, "TRACK:", 0xffff, 1);
+        rv_app_draw_text(fb, 62, 160, track, 0xffff, 1);
+    }
+
+    rv_app_draw_text(fb, 20, 200, "CENTER: TONE  WHEEL: BEEP", 0x8410, 1);
     rv_app_draw_text(fb, 20, 220, "MENU: EXIT", 0x8410, 1);
 }
 

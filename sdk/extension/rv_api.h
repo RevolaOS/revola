@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define RV_API_MAJOR 1
-#define RV_API_MINOR 62
+#define RV_API_MINOR 63
 #define RV_API_VERSION ((RV_API_MAJOR << 16) | RV_API_MINOR)
 
 /* Whether a table with a leading `size` (rv_api, rv_gfx, rv_debug_info) has
