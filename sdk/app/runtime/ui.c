@@ -2,33 +2,6 @@
 /* Adapted from RepriseOS game-sdk/runtime/ui.c by lgreitis. */
 #include "rv_app_ui.h"
 
-void rv_app_fill_rect(const struct rv_app_framebuffer *fb, int x, int y, int width, int height,
-                      uint16_t color)
-{
-    if (!fb || !fb->pixels)
-        return;
-    int right = x + width, bottom = y + height;
-    if (x < 0)
-        x = 0;
-    if (y < 0)
-        y = 0;
-    if (right > (int)fb->width)
-        right = fb->width;
-    if (bottom > (int)fb->height)
-        bottom = fb->height;
-    for (; y < bottom; ++y) {
-        uint16_t *row = fb->pixels + (unsigned)y * fb->stride_pixels;
-        for (int px = x; px < right; ++px)
-            row[px] = color;
-    }
-}
-
-void rv_app_clear(const struct rv_app_framebuffer *fb, uint16_t color)
-{
-    if (fb)
-        rv_app_fill_rect(fb, 0, 0, fb->width, fb->height, color);
-}
-
 static void move(struct rv_app_menu *menu, int direction)
 {
     if (direction < 0 && menu->selected)
@@ -68,7 +41,7 @@ void rv_app_menu_draw(const struct rv_app_menu *menu, const struct rv_app_frameb
     rv_app_clear(fb, 0);
     if (!fb || !fb->pixels || fb->height < 70)
         return;
-    rv_app_draw_text(fb, 12, 12, menu->title, 0xffff);
+    rv_app_draw_text(fb, 12, 12, menu->title, 0xffff, 1);
     unsigned rows = (fb->height - 70) / 16;
     if (!rows)
         return;
@@ -76,13 +49,13 @@ void rv_app_menu_draw(const struct rv_app_menu *menu, const struct rv_app_frameb
     for (unsigned i = first; i < menu->count && i - first < rows; ++i) {
         unsigned y = 42 + (i - first) * 16;
         if (i == menu->selected)
-            rv_app_draw_text(fb, 12, y, "+", 0xffff);
+            rv_app_draw_text(fb, 12, y, "+", 0xffff, 1);
         rv_app_draw_text(fb, 24, y, menu->items[i].label,
-                         i == menu->selected ? 0xffff : 0x8410);
+                         i == menu->selected ? 0xffff : 0x8410, 1);
     }
     if (!menu->count)
-        rv_app_draw_text(fb, 12, 55, "NO FILES", 0xffff);
-    rv_app_draw_text(fb, 12, fb->height - 20, "CENTER: SELECT   MENU: BACK", 0x8410);
+        rv_app_draw_text(fb, 12, 55, "NO FILES", 0xffff, 1);
+    rv_app_draw_text(fb, 12, fb->height - 20, "CENTER: SELECT   MENU: BACK", 0x8410, 1);
 }
 
 static unsigned text_length(const char *text)

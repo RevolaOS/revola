@@ -54,15 +54,6 @@ struct rv_app {
 
 extern const struct rv_app rv_app_application;
 
-/* Clipped 5x7 text in the SDK font: digits, upper-case letters, '-', '+' and ':';
- * lower-case letters are drawn in upper case, other characters are skipped. */
-void rv_app_draw_text(const struct rv_app_framebuffer *framebuffer, unsigned x, unsigned y,
-                      const char *text, uint16_t color);
-/* The same text with every font pixel `scale` pixels wide and high: a glyph
- * cell is 6 x 7 font pixels. */
-void rv_app_draw_text_scaled(const struct rv_app_framebuffer *framebuffer, unsigned x,
-                             unsigned y, const char *text, uint16_t color, unsigned scale);
-
 /* Ends the app after the current callback returns. */
 void rv_app_request_exit(void);
 
@@ -72,6 +63,10 @@ void *rv_app_realloc(void *pointer, size_t size);
 void rv_app_free(void *pointer);
 uint32_t rv_app_ticks_ms(void);
 void rv_app_sleep_ms(uint32_t milliseconds);
+
+/* xorshift32 from a fixed state until seeded; seed 0 is treated as that state. */
+void rv_app_random_seed(uint32_t seed);
+uint32_t rv_app_random(void);
 
 struct rv_app_wheel {
     int32_t delta;    /* Positive clockwise; consumed by each read. */

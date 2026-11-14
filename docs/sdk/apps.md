@@ -21,7 +21,7 @@ static void input(const struct rv_app_input_event *event)
 static void frame(const struct rv_app_frame *frame)
 {
     rv_app_clear(&frame->framebuffer, 0);
-    rv_app_draw_text(&frame->framebuffer, 20, 20, "HELLO", 0xffff);
+    rv_app_draw_text(&frame->framebuffer, 20, 20, "HELLO", 0xffff, 1);
 }
 
 const struct rv_app rv_app_application = {
@@ -59,12 +59,13 @@ make SDK=/path/to/revola-sdk
 
 | Area | Calls |
 |---|---|
-| Drawing | `frame->framebuffer`: 320 x 240 RGB565 pixels, borrowed for one `frame` call and shown when it returns; `rv_app_clear`, `rv_app_fill_rect`, `rv_app_draw_text` and `rv_app_draw_text_scaled` (5 x 7 font at 1 to n pixels per font pixel: digits, upper-case letters, `-`, `+`, `:`) |
+| Drawing | `frame->framebuffer`: 320 x 240 RGB565 pixels, borrowed for one `frame` call and shown when it returns; `rv_app_draw.h` draws on it, below |
 | Buttons | `input` receives Menu, Center, Next, Previous and Play presses and releases with a millisecond timestamp |
 | Wheel | `rv_app_read_wheel` (clockwise delta since the last read, position, touched), `rv_app_wheel_directions` (eight sectors as Up, Right, Down, Left bits) |
 | Hold | `rv_app_hold_locked` |
 | Heap | `rv_app_alloc`, `rv_app_realloc`, `rv_app_free` from the host's heap, at most 8 MiB per block, all freed when the app ends |
 | Time | `rv_app_ticks_ms` since the first call, `rv_app_sleep_ms` |
+| Random | `rv_app_random` (xorshift32, 32 bits per call), `rv_app_random_seed`; the stream starts the same every run until seeded, say from the first input's timestamp |
 | Files | `rv_app_file_open`, `read`, `seek`, `size`, `position`, `close`: read only, paths inside the package, twelve open at once with the data files |
 | Data | `rv_app_data_open` opens a path inside the package's data folder for reading or writing, `rv_app_file_write` on a handle opened for writing, `rv_app_data_delete`; writing creates the folder and replaces the file, and the bytes are on disk when the handle is closed. The host names the folder: `/Revola/Data/Games/<id>/` or `/Revola/Data/Apps/<id>/` under RevolaOS, where Homebrew redirects it, and Apple's `iPod_Control/gamedata_RW/<id>/` anywhere else |
 | Saves | `rv_app_save_open`, `read`, `write`, `size`, `close`: Apple's save store for an app with little to keep, a file of the data folder whose contents the host holds in memory and writes at the next system save or app launch, not when the app exits. Four slots exist on the device, 100 KiB together; `write` replaces the contents. Anything larger, or that must be on disk when the app exits, is a data file |
@@ -74,6 +75,25 @@ make SDK=/path/to/revola-sdk
 | Exit | `rv_app_request_exit` ends the app after the current callback |
 
 TODO: audio.
+
+## Drawing
+
+`rv_app_draw.h` works on the framebuffer directly. Colours are RGB565. Every call clips to the framebuffer and takes coordinates outside it.
+
+| Call | Draws |
+|---|---|
+| `rv_app_clear(fb, color)` | the whole framebuffer |
+| `rv_app_fill_rect(fb, x, y, width, height, color)`, `rv_app_draw_rect(...)` | a filled rectangle, or its 1 px outline just inside |
+| `rv_app_draw_pixel(fb, x, y, color)` | one pixel |
+| `rv_app_draw_line(fb, x0, y0, x1, y1, color)` | a 1 px line, both ends included |
+| `rv_app_fill_triangle(fb, x0, y0, x1, y1, x2, y2, color)` | a filled triangle |
+| `rv_app_draw_circle(fb, cx, cy, radius, color)`, `rv_app_fill_circle(...)` | a 1 px circle, or a filled one |
+| `rv_app_draw_bitmap(fb, x, y, &bitmap)` | a `struct rv_app_bitmap`: RGB565 pixels with a width, height and stride, and a `transparent` colour that is skipped (-1 for none) |
+| `rv_app_draw_bitmap_part(fb, x, y, &bitmap, source_x, source_y, width, height)` | a part of the bitmap, for a sprite sheet |
+| `rv_app_draw_mono_bitmap(fb, x, y, bits, width, height, color)` | set bits in `color`: one bit per pixel, most significant first, rows padded to a byte |
+| `rv_app_draw_text(fb, x, y, text, color, scale)` | text in the SDK's 5 x 7 font, every font pixel `scale` pixels: digits, upper-case letters, `-`, `+`, `:`; lower case drawn as upper, other characters leave their cell empty |
+| `rv_app_draw_text_in(fb, x, y, width, text, color, scale, align)` | the same text at the left, centre or right of the `width` pixels from `x` (`RV_APP_ALIGN_LEFT`, `CENTER`, `RIGHT`) |
+| `rv_app_text_width(text, scale)` | the pixels a text spans: glyph cells 6 font pixels apart, no gap after the last |
 
 ## With a C library
 

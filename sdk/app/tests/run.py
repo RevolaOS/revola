@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 """Check the package path rules, the request lifecycle and the file, folder and
-save store calls against host stand-ins: python3 tests/run.py [SYMBOLS_HEADER]."""
+save store calls against host stand-ins, and the drawing and random calls on a
+small framebuffer: python3 tests/run.py [SYMBOLS_HEADER]."""
 
 import os
 import subprocess
@@ -18,32 +19,34 @@ header = (
 )
 if header is None or not header.is_file():
     sys.exit("osos-2.0.5.h not found; pass its path")
+PROGRAMS = {
+    "files_test": ("request.c", "files.c", "directory.c", "save.c"),
+    "draw_test": ("draw.c", "random.c"),
+}
 with tempfile.TemporaryDirectory(prefix="rv-app-tests-") as name:
     work = Path(name)
-    executable = work / "files_test"
-    subprocess.run(
-        [
-            os.environ.get("HOST_CC", "cc"),
-            "-std=c11",
-            "-g",
-            "-O1",
-            "-fsanitize=address,undefined",
-            "-fno-sanitize-recover=all",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            "-I" + str(root),
-            "-I" + str(root / "runtime"),
-            "-I" + str(header.parent),
-            str(root / "tests/files_test.c"),
-            str(root / "runtime/request.c"),
-            str(root / "runtime/files.c"),
-            str(root / "runtime/directory.c"),
-            str(root / "runtime/save.c"),
-            "-o",
-            str(executable),
-        ],
-        check=True,
-    )
-    subprocess.run([str(executable)], check=True)
+    for program, sources in PROGRAMS.items():
+        executable = work / program
+        subprocess.run(
+            [
+                os.environ.get("HOST_CC", "cc"),
+                "-std=c11",
+                "-g",
+                "-O1",
+                "-fsanitize=address,undefined",
+                "-fno-sanitize-recover=all",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-I" + str(root),
+                "-I" + str(root / "runtime"),
+                "-I" + str(header.parent),
+                str(root / "tests" / (program + ".c")),
+                *(str(root / "runtime" / source) for source in sources),
+                "-o",
+                str(executable),
+            ],
+            check=True,
+        )
+        subprocess.run([str(executable)], check=True)
 print("eApp SDK host checks passed")

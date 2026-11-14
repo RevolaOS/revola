@@ -4,7 +4,7 @@
 #ifndef RV_APP_UI_H
 #define RV_APP_UI_H
 
-#include "rv_app.h"
+#include "rv_app_draw.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,10 +32,6 @@ enum rv_app_menu_action rv_app_menu_input(struct rv_app_menu *menu,
                                           const struct rv_app_input_event *event);
 void rv_app_menu_scroll(struct rv_app_menu *menu, const struct rv_app_wheel *wheel);
 void rv_app_menu_draw(const struct rv_app_menu *menu, const struct rv_app_framebuffer *fb);
-void rv_app_clear(const struct rv_app_framebuffer *fb, uint16_t color);
-/* A filled rectangle, clipped to the framebuffer. */
-void rv_app_fill_rect(const struct rv_app_framebuffer *fb, int x, int y, int width, int height,
-                      uint16_t color);
 
 /* The files with an extension under a folder of the package ("" for its root)
  * and its subfolders, sorted by name; the extension's case does not matter and
